@@ -82,6 +82,14 @@ PART 2 — InstantDB: connect Google
      the "Client secret" and paste it here (Instant needs it to verify tokens).
    - Save.
 
+4. IMPORTANT — still in InstantDB "Auth" tab, find "Redirect Origins" (a.k.a.
+   approved origins). Click Add and add your site's ORIGIN (no path):
+         https://YOURNAME.github.io
+   This is REQUIRED even for the Google button. It is SEPARATE from the Google
+   Cloud origin in Part 1 — you need BOTH lists to contain the same origin.
+   Without it, sign-in reaches Google, you pick your account, then it fails with
+   "Validation failed for origin: Unauthorized origin."
+
 
 ----------------------------------------------------------
 PART 3 — Permissions (server-side lock — do NOT skip)
@@ -175,6 +183,10 @@ TROUBLESHOOTING
 - Google button does nothing / "origin not allowed": the site address doesn't
   match "Authorized JavaScript origins" in Google Cloud (Part 1 step 4). They
   must be identical, https, no trailing path.
+- "Validation failed for origin: Unauthorized origin" (AFTER you pick your Google
+  account): your site origin is missing from InstantDB's "Redirect Origins" list.
+  Add it in Instant → Auth → Redirect Origins (Part 2 step 4). This is a DIFFERENT
+  list from the Google Cloud one in Part 1 — the origin must be in BOTH.
 - "Access denied" after signing in: you used a different Google account. Only
   keremladkeholland@gmail.com is allowed. Sign out and use the right account.
 - Signed in but stuck on "Approval needed": approve it from an already-trusted
