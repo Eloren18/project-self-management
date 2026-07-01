@@ -1,0 +1,185 @@
+==========================================================
+  PROJECT SELF-MANAGEMENT — SETUP
+  (Google Sign-In + trusted devices + cloud sync)
+==========================================================
+
+You'll do this ONCE. No coding — just copy/paste a few IDs.
+
+  PART 1 — Google Sign-In (create the sign-in button)        ~7 min
+  PART 2 — InstantDB (database + connect Google)             ~5 min
+  PART 3 — Permissions (lock it to your account)             ~2 min
+  PART 4 — Put it online (so Google sign-in works)           ~5 min
+
+Why online? Google sign-in only works on a real web address (https://…),
+not by double-clicking the file. So we host it first, then sign in there.
+
+You already have:
+  • InstantDB App ID:  62048635-507a-4feb-9d3b-69941179a9fc   (already pasted in)
+  • Authorized email:  keremladkeholland@gmail.com            (already set)
+
+You still need to create ONE thing: a Google "Client ID".
+
+
+----------------------------------------------------------
+PART 4 FIRST? No — do PART 4 last. But you need your final web
+address (e.g. https://YOURNAME.github.io/psm/) for PART 1.
+If you already know it, great. If not, skim PART 4 to pick your
+address, then come back to PART 1.
+----------------------------------------------------------
+
+
+----------------------------------------------------------
+PART 1 — Create a Google Client ID
+----------------------------------------------------------
+1. Go to  https://console.cloud.google.com/  and sign in with
+   keremladkeholland@gmail.com.
+
+2. Create a project (top bar → project dropdown → "New Project").
+   Name it e.g. "Self-Management". Select it.
+
+3. Left menu → "APIs & Services" → "OAuth consent screen".
+   - User type: "External" → Create.
+   - App name: "Project Self-Management". User support email: your email.
+   - Developer contact: your email. Save and continue through the steps.
+   - On "Test users" (or "Audience"): add  keremladkeholland@gmail.com.
+     (You can leave it in "Testing" mode — that's fine for personal use and
+      actually TIGHTENS access to listed test users.)
+
+4. Left menu → "APIs & Services" → "Credentials" →
+   "Create Credentials" → "OAuth client ID".
+   - Application type: "Web application".
+   - Name: "psm-web".
+   - Under "Authorized JavaScript origins", click ADD URI and add your
+     site's ORIGIN (no path), for example:
+         https://YOURNAME.github.io
+     (If you'll also test locally, add  http://localhost:8091  too.)
+   - You can leave "Authorized redirect URIs" empty (we use the button flow).
+   - Click Create.
+
+5. Copy the "Client ID" it shows you (ends in
+   .apps.googleusercontent.com).
+
+6. Open  index.html  in Notepad. Near the top of the <script>, find:
+         const GOOGLE_CLIENT_ID = "";
+   Paste your Client ID between the quotes. Save.
+
+
+----------------------------------------------------------
+PART 2 — InstantDB: connect Google
+----------------------------------------------------------
+1. Go to  https://instantdb.com  and sign in.
+
+2. Open your app (App ID 62048635-507a-4feb-9d3b-69941179a9fc).
+
+3. Left menu → "Auth" → "Google".
+   - Click "Add Google client" (or "Set up").
+   - Client name:  google-web
+     ^^^ IMPORTANT: it must be EXACTLY  google-web  — that's what index.html
+         sends (the GOOGLE_CLIENT_NAME line). If you use a different name,
+         change that line in index.html to match.
+   - Google Client ID: paste the SAME Client ID from Part 1 step 5.
+   - Google Client Secret: in Google Cloud → Credentials → your client, copy
+     the "Client secret" and paste it here (Instant needs it to verify tokens).
+   - Save.
+
+
+----------------------------------------------------------
+PART 3 — Permissions (server-side lock — do NOT skip)
+----------------------------------------------------------
+This is what actually makes the app private. Without it, the database is open.
+
+1. In the InstantDB dashboard → your app → "Permissions" tab.
+2. Replace everything with the block below and click Save:
+
+{
+  "workspaces": {
+    "allow": {
+      "view": "auth.id != null && 'keremladkeholland@gmail.com' in auth.ref('$user.email') && auth.id in data.ref('owner.id')",
+      "create": "auth.id != null && 'keremladkeholland@gmail.com' in auth.ref('$user.email')",
+      "update": "auth.id != null && 'keremladkeholland@gmail.com' in auth.ref('$user.email') && auth.id in data.ref('owner.id')",
+      "delete": "false"
+    }
+  },
+  "devices": {
+    "allow": {
+      "view": "auth.id != null && 'keremladkeholland@gmail.com' in auth.ref('$user.email') && auth.id in data.ref('owner.id')",
+      "create": "auth.id != null && 'keremladkeholland@gmail.com' in auth.ref('$user.email')",
+      "update": "auth.id != null && 'keremladkeholland@gmail.com' in auth.ref('$user.email') && auth.id in data.ref('owner.id')",
+      "delete": "auth.id != null && 'keremladkeholland@gmail.com' in auth.ref('$user.email') && auth.id in data.ref('owner.id')"
+    }
+  },
+  "securityLog": {
+    "allow": {
+      "view": "auth.id != null && 'keremladkeholland@gmail.com' in auth.ref('$user.email') && auth.id in data.ref('owner.id')",
+      "create": "auth.id != null && 'keremladkeholland@gmail.com' in auth.ref('$user.email')",
+      "update": "false",
+      "delete": "false"
+    }
+  }
+}
+
+   (The schema fields are created automatically the first time the app saves.
+    Advanced: instead of pasting, you can run
+      npx instant-cli@latest push schema
+      npx instant-cli@latest push perms
+    using the included instant.schema.ts / instant.perms.ts.)
+
+
+----------------------------------------------------------
+PART 4 — Host it free on GitHub Pages
+----------------------------------------------------------
+1. Make a free account at  https://github.com  (skip if you have one).
+
+2. New repository (top-right "+"):
+   - Name: e.g.  psm   (this becomes part of the address).
+   - Visibility: Public (Pages needs Public on the free plan).
+   - Create.
+
+3. Upload the app:
+   - "Add file" → "Upload files".
+   - Drag  index.html  onto the page (make sure it already has BOTH IDs
+     pasted in from Parts 1 & 2!). You can drag the other files too.
+   - Commit changes.
+
+4. Turn on Pages:
+   - Repo → Settings → Pages.
+   - Source: "Deploy from a branch". Branch: main, folder: / (root). Save.
+
+5. Wait ~1 min, refresh. It shows:
+       "Your site is live at  https://YOURNAME.github.io/psm/"
+   THAT address must match the "Authorized JavaScript origin" from Part 1
+   (the origin part:  https://YOURNAME.github.io ). If you guessed wrong in
+   Part 1, go back and fix the origin.
+
+6. Open the address → click "Sign in with Google" → choose
+   keremladkeholland@gmail.com. This first device becomes your TRUSTED
+   device automatically. Bookmark the address.
+
+
+----------------------------------------------------------
+ADDING A NEW DEVICE LATER (phone, laptop)
+----------------------------------------------------------
+- Open the SAME address on the new device → Sign in with Google.
+- It will say "Approval needed". On a device you ALREADY trust, open the app
+  → shield icon (top right) → find the new device under "Awaiting approval"
+  → Approve. The new device unlocks automatically (no refresh).
+- To kick a device out: shield icon → Revoke. It's signed out immediately and
+  must be re-approved.
+
+
+----------------------------------------------------------
+TROUBLESHOOTING
+----------------------------------------------------------
+- "Finish setup" screen won't go away: GOOGLE_CLIENT_ID is still empty in
+  index.html, or you uploaded the file before pasting it. Re-check Part 1 step 6.
+- Google button does nothing / "origin not allowed": the site address doesn't
+  match "Authorized JavaScript origins" in Google Cloud (Part 1 step 4). They
+  must be identical, https, no trailing path.
+- "Access denied" after signing in: you used a different Google account. Only
+  keremladkeholland@gmail.com is allowed. Sign out and use the right account.
+- Signed in but stuck on "Approval needed": approve it from an already-trusted
+  device (shield icon). The very first device ever is auto-trusted.
+- Data not syncing: confirm Part 3 permissions were saved, and that Google is
+  connected in Instant with the client name EXACTLY  google-web  (Part 2).
+
+==========================================================
