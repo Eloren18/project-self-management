@@ -336,6 +336,10 @@
   /* ===== glossary ===== */
   .gl-row{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--border);margin-bottom:8px;transition:.12s;}
   .gl-row:hover{border-color:var(--text);}
+  .gl-row.dragging{opacity:.45;}
+  .gl-row.drag-over{outline:2px dashed var(--primary);outline-offset:-2px;}
+  .gl-top .grip{color:var(--faint);cursor:grab;flex:none;display:inline-flex;}
+  .gl-top .grip:hover{color:var(--muted);}
   .gl-top{display:flex;align-items:center;gap:9px;padding:10px 12px;cursor:pointer;}
   .gl-term{font-weight:750;font-size:13px;}
   .gl-top .chev{color:var(--faint);transition:transform .15s var(--ease);flex:none;}
@@ -783,7 +787,7 @@ function normalize(d){
   d.docs = Array.isArray(d.docs) ? d.docs : [];
   d.docs.forEach(doc=>{ doc.id ||= uid(); doc.title ??= ""; doc.body ??= ""; doc.rich = !!doc.rich; doc.createdAt ??= Date.now(); doc.updatedAt ??= doc.createdAt; });
   d.glossary = Array.isArray(d.glossary) ? d.glossary : [];
-  d.glossary.forEach(g=>{ g.id ||= uid(); g.term ??= ""; g.definition ??= ""; g.source ??= GLOSSARY_SOURCES[0]; g.category ??= ""; g.createdAt ??= Date.now(); g.updatedAt ??= g.createdAt; });
+  d.glossary.forEach(g=>{ g.id ||= uid(); g.term ??= ""; g.definition ??= ""; g.source ??= GLOSSARY_SOURCES[0]; g.category ??= ""; if(typeof g.order!=="number") g.order=null; g.createdAt ??= Date.now(); g.updatedAt ??= g.createdAt; });
   d.glossaryCollapsed = Array.isArray(d.glossaryCollapsed) ? d.glossaryCollapsed.filter(x=>typeof x==="string") : [];
   d.glossaryCatOrder = (d.glossaryCatOrder && typeof d.glossaryCatOrder==="object" && !Array.isArray(d.glossaryCatOrder)) ? d.glossaryCatOrder : {};
   d.settings = d.settings || {}; d.settings.theme ??= "light";
@@ -1583,11 +1587,17 @@ function renderGlossary(){
   const q=glSearch.toLowerCase().trim();
   const sources=glSources();
   const match=g=>(!glFilter||g.source===glFilter) && (!q||((g.term||"")+" "+(g.definition||"")+" "+(g.category||"")).toLowerCase().includes(q));
-  const bySrc=s=>data.glossary.filter(g=>g.source===s && match(g)).sort((a,b)=>(a.term||"￿").localeCompare(b.term||"￿",undefined,{sensitivity:"base"}));
+  const bySrc=s=>data.glossary.filter(g=>g.source===s && match(g)).sort((a,b)=>{
+    /* manual drag order first; terms never dragged fall back to alphabetical after them */
+    const ao=(typeof a.order==="number")?a.order:Infinity, bo=(typeof b.order==="number")?b.order:Infinity;
+    if(ao!==bo) return ao-bo;
+    return (a.term||"￿").localeCompare(b.term||"￿",undefined,{sensitivity:"base"});
+  });
   const rowHTML=g=>{
     const open=glOpenId===g.id, c=glColor(g.source);
-    return `<div class="gl-row ${open?'open':''}" data-gid="${g.id}" style="border-left-color:${c}">
+    return `<div class="gl-row ${open?'open':''}" data-gid="${g.id}" data-gsrc="${esc(g.source)}" data-gcatn="${esc(g.category||"")}" style="border-left-color:${c}">
       <div class="gl-top" data-gtoggle>
+        <span class="grip" draggable="true" title="Drag to reorder within the group"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="5" r="1.6"/><circle cx="16" cy="5" r="1.6"/><circle cx="8" cy="12" r="1.6"/><circle cx="16" cy="12" r="1.6"/><circle cx="8" cy="19" r="1.6"/><circle cx="16" cy="19" r="1.6"/></svg></span>
         <span class="gl-term">${g.term?esc(g.term):'<span style="color:var(--faint);font-weight:500">Untitled term</span>'}</span>
         <span class="chip" style="background:color-mix(in srgb,${c} 14%,transparent);color:${c}">${esc(g.source)}</span>
         <span class="grow"></span>
@@ -1677,7 +1687,26 @@ function renderGlossary(){
   [$("glTerm"),$("glCat"),$("glDef")].forEach(el=>el.addEventListener("keydown",e=>{ if(e.key==="Enter") addTerm(); }));
   host.querySelectorAll(".gl-row").forEach(row=>{
     const g=data.glossary.find(x=>x.id===row.dataset.gid); if(!g) return;
-    row.querySelector("[data-gtoggle]").addEventListener("click",e=>{ if(e.target.closest("input,select,textarea,button")) return; glOpenId=(glOpenId===g.id)?null:g.id; renderGlossary(); });
+    row.querySelector("[data-gtoggle]").addEventListener("click",e=>{ if(e.target.closest("input,select,textarea,button,.grip")) return; glOpenId=(glOpenId===g.id)?null:g.id; renderGlossary(); });
+    const grip=row.querySelector(".grip");
+    grip.addEventListener("dragstart",e=>{ e.stopPropagation(); e.dataTransfer.setData("application/x-psm-glterm",JSON.stringify([g.source,g.category||"",g.id])); e.dataTransfer.setDragImage(row,14,14); row.classList.add("dragging"); });
+    grip.addEventListener("dragend",()=>row.classList.remove("dragging"));
+    row.addEventListener("dragover",e=>{ if(![...e.dataTransfer.types].includes("application/x-psm-glterm")) return; e.preventDefault(); e.stopPropagation(); row.classList.add("drag-over"); });
+    row.addEventListener("dragleave",()=>row.classList.remove("drag-over"));
+    row.addEventListener("drop",e=>{
+      const raw=e.dataTransfer.getData("application/x-psm-glterm"); if(!raw) return;
+      e.preventDefault(); e.stopPropagation(); row.classList.remove("drag-over");
+      let fromSrc,fromCat,fromId; try{ [fromSrc,fromCat,fromId]=JSON.parse(raw); }catch(_e){ return; }
+      if(fromSrc!==g.source || fromCat!==(g.category||"") || fromId===g.id) return;
+      /* rebuild the group's term order from the current visual order */
+      const idsNow=[...host.querySelectorAll(".gl-row")].filter(x=>x.dataset.gsrc===g.source && x.dataset.gcatn===(g.category||"")).map(x=>x.dataset.gid);
+      const arr=idsNow.filter(x=>x!==fromId);
+      const rect=row.getBoundingClientRect();
+      let idx=arr.indexOf(g.id); if(e.clientY>rect.top+rect.height/2) idx++;
+      arr.splice(idx,0,fromId);
+      arr.forEach((idv,i)=>{ const gg=data.glossary.find(x=>x.id===idv); if(gg) gg.order=i; });
+      save(); renderGlossary(); toast("Term order updated");
+    });
     const te=row.querySelector("[data-gterm]");
     if(te){
       te.addEventListener("input",e=>{ g.term=e.target.value; g.updatedAt=Date.now(); save(); });
@@ -1696,14 +1725,14 @@ function renderGlossary(){
       if(i>-1) data.glossaryCollapsed.splice(i,1); else data.glossaryCollapsed.push(key);
       save(); renderGlossary();
     });
-    head.addEventListener("dragstart",e=>{ e.stopPropagation(); e.dataTransfer.setData("text/plain","glcat|"+JSON.stringify([src,cat])); gr.classList.add("dragging"); });
+    head.addEventListener("dragstart",e=>{ if(e.target.closest(".gl-row")) return; e.stopPropagation(); e.dataTransfer.setData("application/x-psm-glcat",JSON.stringify([src,cat])); gr.classList.add("dragging"); });
     head.addEventListener("dragend",()=>gr.classList.remove("dragging"));
-    gr.addEventListener("dragover",e=>{ e.preventDefault(); gr.classList.add("drag-over"); });
+    gr.addEventListener("dragover",e=>{ if(![...e.dataTransfer.types].includes("application/x-psm-glcat")) return; e.preventDefault(); gr.classList.add("drag-over"); });
     gr.addEventListener("dragleave",()=>gr.classList.remove("drag-over"));
     gr.addEventListener("drop",e=>{
+      const raw=e.dataTransfer.getData("application/x-psm-glcat"); if(!raw) return;
       e.preventDefault(); gr.classList.remove("drag-over");
-      const raw=e.dataTransfer.getData("text/plain")||""; if(!raw.startsWith("glcat|")) return;
-      let fromSrc,fromCat; try{ [fromSrc,fromCat]=JSON.parse(raw.slice(6)); }catch(_e){ return; }
+      let fromSrc,fromCat; try{ [fromSrc,fromCat]=JSON.parse(raw); }catch(_e){ return; }
       if(fromSrc!==src || fromCat===cat) return;
       /* rebuild this source's order from the current visual order, dropping into place by cursor half */
       const catsNow=[...host.querySelectorAll(".gl-group")].filter(x=>x.dataset.gsrc===src).map(x=>x.dataset.gcat);
