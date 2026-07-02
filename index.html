@@ -198,6 +198,14 @@
   .dl-btn{width:100%;justify-content:flex-start;}
   .dl-btn.set{border-color:var(--primary);color:var(--text);font-weight:700;}
 
+  /* ===== project color picker ===== */
+  .colorrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .cswatch{width:22px;height:22px;border:1px solid var(--border);padding:0;cursor:pointer;transition:.1s;}
+  .cswatch:hover{transform:scale(1.12);}
+  .cswatch.sel{outline:2px solid var(--text);outline-offset:1px;}
+  .cswatch.auto{width:auto;padding:0 9px;height:22px;background:var(--surface);color:var(--muted);font-size:9.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;}
+  .colorrow input[type=color]{width:28px;height:24px;padding:1px;border:1px solid var(--border);background:var(--surface);cursor:pointer;}
+
   /* ===== detail slide-over ===== */
   .overlay{position:fixed;inset:0;z-index:60;background:rgba(15,17,21,.45);display:flex;justify-content:flex-end;opacity:0;transition:opacity .22s var(--ease);}
   .overlay.show{opacity:1;}
@@ -274,6 +282,8 @@
   .pk-wk{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--border-soft);margin-bottom:4px;font-size:11.5px;cursor:pointer;font-weight:600;}
   .pk-wk:hover{border-color:var(--primary);background:var(--primary-soft);}
   .pk-wk.sel{border-color:var(--primary);background:var(--primary-soft);font-weight:800;}
+  .pk-wk.now{outline:1px solid var(--primary);outline-offset:-1px;}
+  .pk-wk.now::after{content:"current";font-size:8.5px;font-weight:800;color:var(--primary);letter-spacing:.5px;text-transform:uppercase;align-self:center;}
 
   /* ===== modal ===== */
   .modal-back{position:fixed;inset:0;z-index:70;background:rgba(15,17,21,.5);display:grid;place-items:center;padding:20px;opacity:0;transition:.2s;}
@@ -291,6 +301,13 @@
   .badge.trusted{background:color-mix(in srgb,var(--s-done) 14%,transparent);color:var(--s-done);}
   .badge.pending{background:color-mix(in srgb,var(--s-hold) 16%,transparent);color:var(--s-hold);}
   .badge.this{background:var(--primary-soft);color:var(--primary);}
+  .badge.next{background:color-mix(in srgb,var(--s-progress) 14%,transparent);color:var(--s-progress);}
+  .badge.past{background:var(--surface-2);color:var(--faint);border:1px solid var(--border-soft);}
+
+  /* ===== week prep ===== */
+  .prep-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:20px;align-items:start;}
+  .prep-side{background:var(--surface);border:1px solid var(--border);padding:12px;}
+  .prep-side .wk-ev{margin-bottom:6px;}
   .log-row{display:flex;gap:10px;font-size:11.5px;padding:7px 0;border-bottom:1px solid var(--border-soft);color:var(--muted);}
   .log-row .lt{color:var(--faint);white-space:nowrap;font-variant-numeric:tabular-nums;}
   .log-row .le{font-weight:700;color:var(--text);}
@@ -322,7 +339,7 @@
     .tab{width:auto;white-space:nowrap;padding:14px 12px;margin-bottom:0;}
     .tab.active{box-shadow:inset 0 -3px 0 #E4002B;background:transparent;}
     .sidefoot{display:none;}
-    .board{grid-template-columns:repeat(2,1fr);} .year-grid{grid-template-columns:repeat(2,1fr);} .pp-grid{grid-template-columns:1fr;}
+    .board{grid-template-columns:repeat(2,1fr);} .year-grid{grid-template-columns:repeat(2,1fr);} .pp-grid{grid-template-columns:1fr;} .prep-grid{grid-template-columns:1fr;}
   }
   @media(max-width:680px){
     #topbar{flex-wrap:wrap;padding:10px 14px;gap:8px;height:auto;}
@@ -354,6 +371,7 @@
     <button class="tab" data-tab="todo">To-Do</button>
     <button class="tab" data-tab="calendar">Calendar</button>
     <button class="tab" data-tab="year">Year Plan</button>
+    <button class="tab" data-tab="weekprep">Week Prep</button>
   </nav>
   <div class="sidefoot"><span class="av" id="sideAvatar">?</span><div><div class="nm" id="sideName">Local workspace</div><div class="ro">Workspace owner</div></div></div>
 </aside>
@@ -435,6 +453,11 @@
       <span style="font-size:12.5px;color:var(--muted)">52 weeks (Mon-start) · drag items between weeks · click a week to add</span>
     </div>
     <div class="year-grid" id="yearGrid"></div>
+  </section>
+
+  <!-- WEEK PREP -->
+  <section class="page hidden" id="page-weekprep">
+    <div id="weekPrepBody"></div>
   </section>
 
   <!-- PROJECT PAGE -->
@@ -601,6 +624,23 @@ const PRIORITIES = ["ASAP","High","Medium","Low"];
 const PRIO_COLOR = { "ASAP":"var(--p-asap)","High":"var(--p-high)","Medium":"var(--p-medium)","Low":"var(--p-low)" };
 const PROG_COLOR = { "Not Started":"var(--s-nostart)","In Progress":"var(--s-progress)","On Hold":"var(--s-hold)","Done":"var(--s-done)" };
 const PRIO_RANK  = { "ASAP":0,"High":1,"Medium":2,"Low":3 };
+const PROJECT_PALETTE = ["#E4002B","#c76a00","#caa500","#0c6b3d","#0e8f8f","#1d4fb8","#6b3fb8","#b83f8e","#5b6472"];
+/* Project color: custom if set, otherwise falls back to the priority color.
+   Tasks always take their project's color, so the link stays intact. */
+function projColor(p){ return (p && p.color) ? p.color : PRIO_COLOR[(p && p.priority) || "Medium"]; }
+function colorFieldHTML(p){
+  return `<div class="field"><label>Project color</label><div class="colorrow" id="colorRow">
+    <button type="button" class="cswatch auto ${p.color?'':'sel'}" data-c="" title="Automatic — follows priority">Auto</button>
+    ${PROJECT_PALETTE.map(c=>`<button type="button" class="cswatch ${p.color===c?'sel':''}" data-c="${c}" style="background:${c}" title="${c}"></button>`).join("")}
+    <input type="color" data-ccustom value="${/^#[0-9a-fA-F]{6}$/.test(p.color||"")?p.color:"#E4002B"}" title="Custom color…">
+  </div></div>`;
+}
+function bindColorField(host, getP, after){
+  const row=host.querySelector("#colorRow"); if(!row) return;
+  const apply=c=>{ const p=getP(); if(!p) return; p.color=c; save(); renderProjects(); renderCalendar(); renderYear(); renderTodo(); if(after) after(); };
+  row.querySelectorAll(".cswatch").forEach(b=>b.onclick=()=>apply(b.dataset.c));
+  const ci=row.querySelector("[data-ccustom]"); if(ci) ci.addEventListener("change",()=>apply(ci.value));
+}
 const $ = id => document.getElementById(id);
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "id"+Math.random().toString(36).slice(2)+Date.now());
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -663,6 +703,7 @@ function normalize(d){
     p.id ||= uid(); p.name ??= "Untitled"; p.category ??= CATEGORIES[0];
     p.description ??= ""; p.progress = PROGRESS.includes(p.progress)?p.progress:"Not Started";
     p.priority = PRIORITIES.includes(p.priority)?p.priority:"Medium"; p.deadline ??= ""; p.deadlineWeek = !!p.deadlineWeek;
+    p.color ??= "";
     p.involved ??= ""; p.informed ??= ""; p.docLink ??= ""; p.valueProp ??= "";
     // migrate legacy working-notes fields into project notes (no data loss)
     if(p.notes===undefined){ let n=""; if(p.lastDiscussed) n+="Last discussed: "+p.lastDiscussed+"\n"; if(p.nextSteps) n+=p.nextSteps; p.notes=n; }
@@ -674,6 +715,8 @@ function normalize(d){
     if(typeof p.order!=="number") p.order=idx;
   });
   d.tasks = Array.isArray(d.tasks) ? d.tasks : []; d.tasks.forEach(normTask);
+  d.weekPrep = Array.isArray(d.weekPrep) ? d.weekPrep : [];
+  d.weekPrep.forEach(w=>{ w.id ||= uid(); w.weekStart ??= ""; w.notes ??= ""; if(!Array.isArray(w.items)) w.items=[]; w.items.forEach(it=>{ it.id ||= uid(); it.text ??= ""; it.done = !!it.done; }); w.updatedAt ??= 0; });
   d.settings = d.settings || {}; d.settings.theme ??= "light";
   d.updatedAt ??= Date.now();
   return d;
@@ -853,7 +896,7 @@ function signOutOthers(){
    RENDER: dispatch
    ============================================================ */
 function renderAll(){
-  renderProjects(); renderTodo(); renderCalendar(); renderYear(); populateCategoryFilter();
+  renderProjects(); renderTodo(); renderCalendar(); renderYear(); renderWeekPrep(); populateCategoryFilter();
   if(curTab==="project" && openProjectId) renderProjectPage();
   else if(openProjectId && !$("detailOverlay").classList.contains("hidden")) renderDetail();
 }
@@ -908,7 +951,7 @@ function renderProjects(){
 function projectCardHTML(p){
   const tp=taskProgress(p); const tcount=p.tasks.length, tdone=p.tasks.filter(t=>t.done).length; const done=p.progress==="Done";
   const over=isOverdue(p.deadline,done,p.deadlineWeek);
-  return `<div class="pcard ${done?'done':''}" draggable="true" data-id="${p.id}">
+  return `<div class="pcard ${done?'done':''}" draggable="true" data-id="${p.id}"${done?'':` style="border-left-color:${projColor(p)}"`}>
     <div class="pcard-top">
       <div class="check-sm ${done?'on':''}" data-done title="Mark complete">${done?TICK:''}</div>
       <div class="pc-title">${esc(p.name)}</div>
@@ -990,7 +1033,11 @@ function renderDetail(){
       <div class="field"><label>Progress</label><select data-f="progress">${PROGRESS.map(s=>`<option${s===p.progress?" selected":""}>${esc(s)}</option>`).join("")}</select></div>
       <div class="field"><label>Priority</label><select data-f="priority">${PRIORITIES.map(s=>`<option${s===p.priority?" selected":""}>${esc(s)}</option>`).join("")}</select></div>
     </div>
+    ${colorFieldHTML(p)}
     <div class="field"><label>Key objective / description</label><textarea data-f="description" rows="2">${esc(p.description)}</textarea></div>
+    <div class="section-h">Tasks${p.tasks.length?` · ${p.tasks.filter(t=>t.done).length}/${p.tasks.length}`:""} <span class="line"></span></div>
+    <div id="dTasks"></div>
+    <button class="btn ghost sm" id="dAddTask" style="margin-bottom:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add task</button>
     <div class="section-h">Business value <span class="line"></span></div>
     <div class="field"><label>Key business value proposition</label><textarea data-f="valueProp" rows="3">${esc(p.valueProp)}</textarea></div>
     <button class="btn primary" id="dGotoPage" style="width:100%;justify-content:center;margin-top:6px">Open full project page →</button>
@@ -998,13 +1045,21 @@ function renderDetail(){
   `;
   $("detailBody").querySelectorAll("[data-f]").forEach(el=>{ const f=el.dataset.f; const ev=(el.tagName==="SELECT")?"change":"input"; el.addEventListener(ev,()=>{ const pp=proj(); if(!pp) return; pp[f]=el.value; save(); if(["progress","priority","category"].includes(f)){ renderProjects(); populateCategoryFilter(); } }); });
   $("dDeadline").addEventListener("click",()=>{ const pp=proj(); openPicker($("dDeadline"),{deadline:pp.deadline,isWk:pp.deadlineWeek},sel=>{ pp.deadline=sel.deadline; pp.deadlineWeek=sel.isWk; save(); renderDetail(); renderProjects(); renderCalendar(); renderYear(); }); });
+  bindColorField($("detailBody"), proj, renderDetail);
+  renderDetailTasks(p);
+  $("dAddTask").addEventListener("click",()=>{ const pp=proj(); if(!pp) return; pp.tasks.push({id:uid(),text:"",done:false,deadline:"",deadlineWeek:false,notes:""}); save(); renderDetailTasks(pp); const inps=$("dTasks").querySelectorAll(".trow-text"); if(inps.length) inps[inps.length-1].focus(); });
   $("dGotoPage").addEventListener("click",()=>showProjectPage(p.id));
+}
+function renderDetailTasks(p){
+  const host=$("dTasks"); if(!host) return;
+  host.innerHTML = p.tasks.length ? p.tasks.map(t=>taskRowHTML(t,null,{showProject:false})).join("") : `<div style="font-size:12.5px;color:var(--faint);padding:4px 0 8px">No tasks yet.</div>`;
+  bindTaskRows(host);
 }
 
 /* ---- Full project page ---- */
 function showProjectPage(id){
   openProjectId=id; curTab="project";
-  ["projects","todo","calendar","year"].forEach(x=>$("page-"+x).classList.add("hidden"));
+  ["projects","todo","calendar","year","weekprep"].forEach(x=>$("page-"+x).classList.add("hidden"));
   $("page-project").classList.remove("hidden");
   $("tabs").querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));
   $("viewTitle").textContent = "Project";
@@ -1030,6 +1085,7 @@ function renderProjectPage(){
       <div class="field"><label>Progress</label><select data-f="progress">${PROGRESS.map(s=>`<option${s===p.progress?" selected":""}>${esc(s)}</option>`).join("")}</select></div>
       <div class="field"><label>Priority</label><select data-f="priority">${PRIORITIES.map(s=>`<option${s===p.priority?" selected":""}>${esc(s)}</option>`).join("")}</select></div>
     </div>
+    ${colorFieldHTML(p)}
     <div class="field"><label>Key objective / description</label><textarea data-f="description" rows="2">${esc(p.description)}</textarea></div>
     <div class="pp-grid">
       <div class="field"><label>Stakeholders — directly involved</label><input data-f="involved" value="${esc(p.involved)}"></div>
@@ -1059,6 +1115,7 @@ function renderProjectPage(){
   $("ppName").addEventListener("input",()=>{ p.name=$("ppName").value; save(); renderProjects(); });
   $("projectPageBody").querySelectorAll("[data-f]").forEach(el=>{ const f=el.dataset.f; const ev=(el.tagName==="SELECT")?"change":"input"; el.addEventListener(ev,()=>{ p[f]=el.value; save(); if(["progress","priority","category"].includes(f)){ renderProjects(); populateCategoryFilter(); } }); });
   $("ppDeadline").onclick=()=>openPicker($("ppDeadline"),{deadline:p.deadline,isWk:p.deadlineWeek},sel=>{ p.deadline=sel.deadline; p.deadlineWeek=sel.isWk; save(); renderProjectPage(); renderProjects(); renderCalendar(); renderYear(); });
+  bindColorField($("projectPageBody"), ()=>p, renderProjectPage);
   renderPPTasks(p);
   $("ppAddTask").onclick=()=>{ p.tasks.push({id:uid(),text:"",done:false,deadline:"",deadlineWeek:false,notes:""}); save(); renderPPTasks(p); const inps=$("ppTasks").querySelectorAll(".trow-text"); if(inps.length) inps[inps.length-1].focus(); };
   renderPPMeetings(p);
@@ -1089,7 +1146,7 @@ function renderPPMeetings(p){
 /* ---- Shared task rows (project page + to-do) ---- */
 function taskRowHTML(t, project, opts){
   opts=opts||{}; const over=isOverdue(t.deadline,t.done,t.deadlineWeek);
-  const projTag = opts.showProject ? (project?`<span class="trow-proj" data-goproj="${project.id}">${esc(project.name)}</span>`:`<span class="trow-proj adhoc">Ad-hoc</span>`) : "";
+  const projTag = opts.showProject ? (project?`<span class="trow-proj" data-goproj="${project.id}" style="color:${projColor(project)};background:color-mix(in srgb,${projColor(project)} 12%,transparent)">${esc(project.name)}</span>`:`<span class="trow-proj adhoc">Ad-hoc</span>`) : "";
   return `<div class="trow ${t.done?'done':''} ${over?'overdue':''}" data-tid="${t.id}">
     <div class="check-sm ${t.done?'on':''}" data-tdone title="Mark done">${t.done?TICK:''}</div>
     <div class="trow-main">
@@ -1114,7 +1171,7 @@ function bindTaskRows(host){
     const gp=row.querySelector("[data-goproj]"); if(gp) gp.addEventListener("click",()=>showProjectPage(gp.dataset.goproj));
   });
 }
-function refreshTaskViews(){ if(curTab==="project"&&openProjectId){ renderProjectPage(); } renderTodo(); renderProjects(); renderCalendar(); renderYear(); }
+function refreshTaskViews(){ if(curTab==="project"&&openProjectId){ renderProjectPage(); } else if(openProjectId && !$("detailOverlay").classList.contains("hidden")){ renderDetail(); } renderTodo(); renderProjects(); renderCalendar(); renderYear(); }
 
 /* ---- To-Do ---- */
 function renderTodo(){
@@ -1169,8 +1226,8 @@ function newStandaloneTask(){ const t={id:uid(),text:"",done:false,deadline:"",d
 /* ---- Calendar + Year (tasks + project deadlines) ---- */
 function calItems(){
   const out=[];
-  data.projects.forEach(p=>{ if(p.deadline) out.push({kind:"project",id:p.id,name:p.name||"(untitled)",color:PRIO_COLOR[p.priority],done:p.progress==="Done",deadline:p.deadline,isWk:p.deadlineWeek}); });
-  allTasks().forEach(({t,project})=>{ if(t.deadline) out.push({kind:"task",id:t.id,name:t.text||"(untitled task)",color:project?PRIO_COLOR[project.priority]:"var(--primary)",done:t.done,deadline:t.deadline,isWk:t.deadlineWeek}); });
+  data.projects.forEach(p=>{ if(p.deadline) out.push({kind:"project",id:p.id,name:p.name||"(untitled)",color:projColor(p),done:p.progress==="Done",deadline:p.deadline,isWk:p.deadlineWeek}); });
+  allTasks().forEach(({t,project})=>{ if(t.deadline) out.push({kind:"task",id:t.id,name:t.text||"(untitled task)",color:project?projColor(project):"var(--primary)",done:t.done,deadline:t.deadline,isWk:t.deadlineWeek}); });
   return out;
 }
 function calBlock(it){
@@ -1230,6 +1287,77 @@ function renderYear(){
     wk.addEventListener("drop",e=>{ e.preventDefault(); wk.classList.remove("drag-over"); const raw=e.dataTransfer.getData("text/plain")||""; const bar=raw.indexOf("|"); if(bar<0) return; const kind=raw.slice(0,bar), idv=raw.slice(bar+1); if(kind==="col"||!idv) return; moveItemToWeek(kind,idv,wk.dataset.ws); });
   });
 }
+/* ---- Week Prep (Friday ritual: notes + focus points for the week ahead) ---- */
+function prepDefaultWeek(){ const t=new Date(); const dow=(t.getDay()+6)%7; const ws=weekStart(t); if(dow>=4) ws.setDate(ws.getDate()+7); return iso(ws); } // Fri/Sat/Sun → next week
+let prepWeekStart = prepDefaultWeek();
+function getPrep(ws){ return data.weekPrep.find(w=>w.weekStart===ws); }
+function ensurePrep(ws){ let w=getPrep(ws); if(!w){ w={id:uid(),weekStart:ws,notes:"",items:[],updatedAt:Date.now()}; data.weekPrep.push(w); } return w; }
+function renderWeekPrep(){
+  const host=$("weekPrepBody"); if(!host) return;
+  const s=parseISO(prepWeekStart), e=addDays(s,6); const wi=weekInfo(prepWeekStart);
+  const nowWs=iso(weekStart(new Date())), nextWs=iso(addDays(weekStart(new Date()),7));
+  const badge = prepWeekStart===nowWs ? '<span class="badge this">This week</span>'
+    : prepWeekStart===nextWs ? '<span class="badge next">Next week</span>'
+    : prepWeekStart<nowWs ? '<span class="badge past">Past</span>' : "";
+  const w=getPrep(prepWeekStart);
+  const items=w?w.items:[], notes=w?w.notes:"";
+  const due=calItems().filter(it=>{ const d=parseISO(it.deadline); if(!d) return false; const end=it.isWk?addDays(d,6):d; return d<=e && end>=s; }).sort((a,b)=>a.deadline.localeCompare(b.deadline));
+  host.innerHTML=`
+    <div class="cal-head">
+      <button class="icon-btn" id="wpPrev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button>
+      <h2>W${wi?wi.week:"?"} · ${fmtShort(prepWeekStart)} – ${fmtShort(iso(e))}</h2>
+      <button class="icon-btn" id="wpNext"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg></button>
+      ${badge}
+      <div class="grow"></div>
+      <button class="btn ghost sm" id="wpThisBtn">This week</button>
+      <button class="btn sm" id="wpNextBtn">Prep next week →</button>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 16px">Your Friday ritual — capture what's coming and what to prepare for the week ahead.</p>
+    <div class="prep-grid">
+      <div>
+        <div class="section-h" style="margin-top:0">Key things to look for / prepare${items.length?` · ${items.filter(i=>i.done).length}/${items.length}`:""} <span class="line"></span></div>
+        <div id="wpItems">${items.map(it=>`
+          <div class="trow" data-wid="${it.id}" style="align-items:center">
+            <div class="check-sm ${it.done?'on':''}" data-wdone title="Done">${it.done?TICK:''}</div>
+            <input class="trow-text" data-wtext value="${esc(it.text)}" placeholder="Focus point…" style="${it.done?'text-decoration:line-through;color:var(--faint)':''}">
+            <button class="tk-del" data-wdel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          </div>`).join("")||`<div style="font-size:12.5px;color:var(--faint);padding:2px 0 8px">Nothing yet — add the key things to watch for below.</div>`}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <input id="wpNewItem" placeholder="Add a key thing… press Enter" style="flex:1;padding:8px 11px;border:1px solid var(--border);background:var(--surface);outline:none;font-weight:500">
+          <button class="btn sm" id="wpAddItem">Add</button>
+        </div>
+        <div class="section-h">Notes for the week <span class="line"></span></div>
+        <div class="field"><textarea id="wpNotes" rows="10" placeholder="What's happening that week? Meetings to prepare, people to chase, decisions coming up, risks to watch…">${esc(notes)}</textarea></div>
+        ${w&&w.updatedAt?`<div style="font-size:11px;color:var(--faint)">Last edited ${new Date(w.updatedAt).toLocaleString()}</div>`:""}
+      </div>
+      <div>
+        <div class="section-h" style="margin-top:0">Already due that week <span class="line"></span></div>
+        <div class="prep-side">
+        ${due.map(it=> it.kind==="project"
+          ? `<div class="wk-ev projev ${it.done?'done':''}" data-kind="project" data-id="${it.id}" title="Project: ${esc(it.name)}"><span class="d" style="background:${it.color}"></span>🚩 ${esc(it.name)}${it.isWk?'':' · '+esc(fmtShort(it.deadline))}</div>`
+          : `<div class="wk-ev taskev ${it.done?'done':''}" data-kind="task" data-id="${it.id}" title="Task: ${esc(it.name)}"><span class="d" style="background:${it.color}"></span>${esc(it.name)}${it.isWk?'':' · '+esc(fmtShort(it.deadline))}</div>`).join("")
+          ||`<div style="font-size:12px;color:var(--faint)">Nothing scheduled for this week yet.</div>`}
+        </div>
+      </div>
+    </div>`;
+  $("wpPrev").onclick=()=>{ prepWeekStart=iso(addDays(parseISO(prepWeekStart),-7)); renderWeekPrep(); };
+  $("wpNext").onclick=()=>{ prepWeekStart=iso(addDays(parseISO(prepWeekStart),7)); renderWeekPrep(); };
+  $("wpThisBtn").onclick=()=>{ prepWeekStart=nowWs; renderWeekPrep(); };
+  $("wpNextBtn").onclick=()=>{ prepWeekStart=nextWs; renderWeekPrep(); };
+  $("wpNotes").addEventListener("input",e=>{ const p=ensurePrep(prepWeekStart); p.notes=e.target.value; p.updatedAt=Date.now(); save(); });
+  const addItem=()=>{ const inp=$("wpNewItem"); const txt=(inp.value||"").trim(); if(!txt){ inp.focus(); return; } const p=ensurePrep(prepWeekStart); p.items.push({id:uid(),text:txt,done:false}); p.updatedAt=Date.now(); save(); renderWeekPrep(); $("wpNewItem").focus(); };
+  $("wpAddItem").onclick=addItem;
+  $("wpNewItem").addEventListener("keydown",e=>{ if(e.key==="Enter") addItem(); });
+  host.querySelectorAll("#wpItems .trow").forEach(row=>{
+    const p=getPrep(prepWeekStart); if(!p) return; const it=p.items.find(x=>x.id===row.dataset.wid); if(!it) return;
+    row.querySelector("[data-wdone]").addEventListener("click",()=>{ it.done=!it.done; p.updatedAt=Date.now(); save(); renderWeekPrep(); });
+    row.querySelector("[data-wtext]").addEventListener("input",e=>{ it.text=e.target.value; p.updatedAt=Date.now(); save(); });
+    row.querySelector("[data-wdel]").addEventListener("click",()=>{ p.items=p.items.filter(x=>x.id!==it.id); p.updatedAt=Date.now(); save(); renderWeekPrep(); });
+  });
+  host.querySelectorAll(".wk-ev").forEach(ev=>ev.addEventListener("click",()=>openEvItem(ev.dataset.kind,ev.dataset.id)));
+}
+
 function openEvItem(kind,id){ if(kind==="project"){ openDetail(id); } else { openTaskModal(id); } }
 function itemObj(kind,id){ if(kind==="project") return data.projects.find(x=>x.id===id); const r=findTask(id); return r?r.t:null; }
 function moveItemToDate(kind,id,isoStr){ const o=itemObj(kind,id); if(!o) return; o.deadline=isoStr; o.deadlineWeek=false; save(); renderCalendar(); renderYear(); renderProjects(); renderTodo(); if(curTab==="project") renderProjectPage(); toast("Moved to "+fmtShort(isoStr)); }
@@ -1242,7 +1370,7 @@ function moveItemToWeek(kind,id,weekStartIso){
 
 /* ---- New project / create-from-calendar / task modal ---- */
 function newProject(){
-  const p={ id:uid(),name:"New project",category:CATEGORIES[0],description:"",progress:"Not Started",priority:"Medium",deadline:"",deadlineWeek:false,involved:"",informed:"",docLink:"",valueProp:"",notes:"",meetingNotes:[],prevProgress:"In Progress",tasks:[],order:data.projects.length,createdAt:Date.now() };
+  const p={ id:uid(),name:"New project",category:CATEGORIES[0],description:"",progress:"Not Started",priority:"Medium",deadline:"",deadlineWeek:false,color:"",involved:"",informed:"",docLink:"",valueProp:"",notes:"",meetingNotes:[],prevProgress:"In Progress",tasks:[],order:data.projects.length,createdAt:Date.now() };
   data.projects.push(p); save(); showProjectPage(p.id); setTimeout(()=>{ const n=$("ppName"); if(n){ n.focus(); n.select(); } },90);
 }
 function deleteProject(){ const p=proj(); if(!p) return; if(!confirm("Delete “"+p.name+"”? This can't be undone.")) return; data.projects=data.projects.filter(x=>x.id!==p.id); save(); closeDetail(); renderProjects(); renderCalendar(); renderYear(); renderTodo(); }
@@ -1282,7 +1410,7 @@ function doCreate(){
     save(); closeCreate(); renderAll(); toast("Task created");
   } else {
     const name=($("ctName").value||"").trim()||"New project";
-    const p={ id:uid(),name,category:CATEGORIES[0],description:"",progress:"Not Started",priority:"Medium",deadline:createCtx.deadline,deadlineWeek:createCtx.isWk,involved:"",informed:"",docLink:"",valueProp:"",notes:"",meetingNotes:[],prevProgress:"In Progress",tasks:[],order:data.projects.length,createdAt:Date.now() };
+    const p={ id:uid(),name,category:CATEGORIES[0],description:"",progress:"Not Started",priority:"Medium",deadline:createCtx.deadline,deadlineWeek:createCtx.isWk,color:"",involved:"",informed:"",docLink:"",valueProp:"",notes:"",meetingNotes:[],prevProgress:"In Progress",tasks:[],order:data.projects.length,createdAt:Date.now() };
     data.projects.push(p); save(); closeCreate(); showProjectPage(p.id); toast("Project created");
   }
 }
@@ -1343,8 +1471,8 @@ function renderPicker(){
     while(cells.length%7!==0){ const nd=cells.length-(start+dim)+1; cells.push({d:nd,dim:true,date:new Date(y,m+1,nd)}); }
     body=`<div class="pk-grid">${dows.map(d=>`<div class="pk-dow">${d}</div>`).join("")}${cells.map(c=>{ const ci=iso(c.date); const sel=!st.cur.isWk&&st.cur.deadline===ci; const today=ci===todayISO(); return `<button class="pk-d ${c.dim?'dim':''} ${sel?'sel':''} ${today?'today':''}" data-day="${ci}">${c.d}</button>`; }).join("")}</div>`;
   } else {
-    const monthEnd=new Date(y,m+1,0); let s=weekStart(new Date(y,m,1)); const rows=[];
-    while(s<=monthEnd){ const e=new Date(s); e.setDate(s.getDate()+6); const wi=weekInfo(iso(s)); const sel=st.cur.isWk&&st.cur.deadline===iso(s); rows.push(`<div class="pk-wk ${sel?'sel':''}" data-week="${iso(s)}"><span>W${wi?wi.week:'?'}</span><span>${fmtShort(iso(s))} – ${fmtShort(iso(e))}</span></div>`); s=new Date(s); s.setDate(s.getDate()+7); }
+    const monthEnd=new Date(y,m+1,0); let s=weekStart(new Date(y,m,1)); const rows=[]; const nowWs=iso(weekStart(new Date()));
+    while(s<=monthEnd){ const e=new Date(s); e.setDate(s.getDate()+6); const wi=weekInfo(iso(s)); const sel=st.cur.isWk&&st.cur.deadline===iso(s); rows.push(`<div class="pk-wk ${sel?'sel':''}${iso(s)===nowWs?' now':''}" data-week="${iso(s)}"><span>W${wi?wi.week:'?'}</span><span>${fmtShort(iso(s))} – ${fmtShort(iso(e))}</span></div>`); s=new Date(s); s.setDate(s.getDate()+7); }
     body=rows.join("");
   }
   /* quick presets — one click sets the deadline (incl. business-day options) */
@@ -1451,10 +1579,10 @@ function toggleTheme(){ data.settings.theme = (data.settings.theme==="dark")?"li
 /* ---- tabs ---- */
 function switchTab(t){
   curTab=t; $("page-project").classList.add("hidden");
-  ["projects","todo","calendar","year"].forEach(x=>$("page-"+x).classList.toggle("hidden",x!==t));
+  ["projects","todo","calendar","year","weekprep"].forEach(x=>$("page-"+x).classList.toggle("hidden",x!==t));
   $("tabs").querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===t));
-  $("viewTitle").textContent = ({projects:"Projects",todo:"To-Do",calendar:"Calendar",year:"Year Plan"})[t] || "Projects";
-  if(t==="todo") renderTodo(); else if(t==="calendar") renderCalendar(); else if(t==="year") renderYear(); else if(t==="projects") renderProjects();
+  $("viewTitle").textContent = ({projects:"Projects",todo:"To-Do",calendar:"Calendar",year:"Year Plan",weekprep:"Week Prep"})[t] || "Projects";
+  if(t==="todo") renderTodo(); else if(t==="calendar") renderCalendar(); else if(t==="year") renderYear(); else if(t==="weekprep") renderWeekPrep(); else if(t==="projects") renderProjects();
 }
 
 /* ============================================================
