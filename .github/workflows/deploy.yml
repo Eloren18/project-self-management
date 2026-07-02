@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,9 +38,23 @@ jobs:
 
       - name: Deploy to GitHub Pages
         id: deployment
+        continue-on-error: true   # don't fail the job yet — we retry below
         uses: actions/deploy-pages@v4
         with:
-          # Default is 10 min; Pages activation can take longer when GitHub is
-          # degraded (caused the 2026-07-02 "Timeout reached, aborting!" failures).
-          timeout: 1800000   # 30 min, in milliseconds
-          error_count: 15    # tolerate more transient status-poll errors
+          timeout: 600000    # the action's allowed maximum (10 min)
+          error_count: 15    # tolerate transient status-poll errors
+
+      # GitHub Pages flakes with "Deployment failed, try again later" during
+      # degraded periods; a spaced second attempt usually lands (2026-07-02:
+      # every successful publish that day was a retry attempt).
+      - name: Cool down before retry
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 90
+
+      - name: Deploy to GitHub Pages (retry)
+        id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        with:
+          timeout: 600000
+          error_count: 15
