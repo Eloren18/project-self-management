@@ -39,3 +39,8 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # Default is 10 min; Pages activation can take longer when GitHub is
+          # degraded (caused the 2026-07-02 "Timeout reached, aborting!" failures).
+          timeout: 1800000   # 30 min, in milliseconds
+          error_count: 15    # tolerate more transient status-poll errors
