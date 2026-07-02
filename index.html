@@ -333,6 +333,8 @@
   .gl-edit input,.gl-edit select,.gl-edit textarea{width:100%;padding:8px 11px;border:1px solid var(--border);background:var(--surface);outline:none;font-weight:500;}
   .gl-edit input:focus,.gl-edit select:focus,.gl-edit textarea:focus{border-color:var(--primary);}
   .gl-edit textarea{resize:vertical;min-height:64px;line-height:1.5;margin-top:8px;}
+  .gl-cat{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--faint);margin:12px 0 6px 2px;display:flex;align-items:center;gap:7px;}
+  .gl-cat::after{content:"";flex:1;height:1px;background:var(--border-soft);}
   .log-row{display:flex;gap:10px;font-size:11.5px;padding:7px 0;border-bottom:1px solid var(--border-soft);color:var(--muted);}
   .log-row .lt{color:var(--faint);white-space:nowrap;font-variant-numeric:tabular-nums;}
   .log-row .le{font-weight:700;color:var(--text);}
@@ -761,7 +763,7 @@ function normalize(d){
   d.docs = Array.isArray(d.docs) ? d.docs : [];
   d.docs.forEach(doc=>{ doc.id ||= uid(); doc.title ??= ""; doc.body ??= ""; doc.createdAt ??= Date.now(); doc.updatedAt ??= doc.createdAt; });
   d.glossary = Array.isArray(d.glossary) ? d.glossary : [];
-  d.glossary.forEach(g=>{ g.id ||= uid(); g.term ??= ""; g.definition ??= ""; g.source ??= GLOSSARY_SOURCES[0]; g.createdAt ??= Date.now(); g.updatedAt ??= g.createdAt; });
+  d.glossary.forEach(g=>{ g.id ||= uid(); g.term ??= ""; g.definition ??= ""; g.source ??= GLOSSARY_SOURCES[0]; g.category ??= ""; g.createdAt ??= Date.now(); g.updatedAt ??= g.createdAt; });
   d.settings = d.settings || {}; d.settings.theme ??= "light";
   d.updatedAt ??= Date.now();
   return d;
@@ -1456,7 +1458,8 @@ function renderDocs(){
 }
 
 /* ---- Glossary (per-source term definitions: Jumbo, NIQ, AH Data, …) ---- */
-let glSearch="", glFilter="", glOpenId=null, glAddSource=GLOSSARY_SOURCES[0];
+let glSearch="", glFilter="", glOpenId=null, glAddSource=GLOSSARY_SOURCES[0], glAddCat="";
+function glCategories(){ return [...new Set(data.glossary.map(g=>(g.category||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); }
 function glSourceOptions(sel, withNew){
   return glSources().map(s=>`<option value="${esc(s)}"${s===sel?" selected":""}>${esc(s)}</option>`).join("")
        + (withNew?`<option value="__other">＋ New source…</option>`:"");
@@ -1471,7 +1474,7 @@ function renderGlossary(){
   const host=$("glossaryBody"); if(!host) return;
   const q=glSearch.toLowerCase().trim();
   const sources=glSources();
-  const match=g=>(!glFilter||g.source===glFilter) && (!q||((g.term||"")+" "+(g.definition||"")).toLowerCase().includes(q));
+  const match=g=>(!glFilter||g.source===glFilter) && (!q||((g.term||"")+" "+(g.definition||"")+" "+(g.category||"")).toLowerCase().includes(q));
   const bySrc=s=>data.glossary.filter(g=>g.source===s && match(g)).sort((a,b)=>(a.term||"￿").localeCompare(b.term||"￿",undefined,{sensitivity:"base"}));
   const rowHTML=g=>{
     const open=glOpenId===g.id, c=glColor(g.source);
@@ -1487,6 +1490,7 @@ function renderGlossary(){
           <input data-gterm value="${esc(g.term)}" placeholder="Term / abbreviation">
           <select data-gsource>${glSourceOptions(g.source,true)}</select>
         </div>
+        <input data-gcat list="glCatList" value="${esc(g.category)}" placeholder="Subcategory (optional) — e.g. Brand loyalty metrics" style="margin-top:8px">
         <textarea data-gdef placeholder="Definition — what does it mean for this source?">${esc(g.definition)}</textarea>
         <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
           <button class="btn danger sm" data-gdel><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>Delete</button>
@@ -1501,8 +1505,13 @@ function renderGlossary(){
   const sections=(glFilter?[glFilter]:sources).map(s=>{
     const rows=bySrc(s);
     if(!rows.length && (q||glFilter)) return "";
+    /* group terms by subcategory within the source; uncategorized first */
+    const groups={};
+    rows.forEach(g=>{ const c=(g.category||"").trim(); (groups[c] ||= []).push(g); });
+    const cats=Object.keys(groups).sort((a,b)=> a===""?-1 : b===""?1 : a.localeCompare(b));
+    const body=cats.map(cn=>(cn?`<div class="gl-cat">${esc(cn)}</div>`:"")+groups[cn].map(rowHTML).join("")).join("");
     return `<div class="todo-sec"><span class="d" style="width:8px;height:8px;background:${glColor(s)};display:inline-block"></span>${esc(s)} <span class="line"></span><span style="font-weight:700">${rows.length}</span></div>`
-      + (rows.map(rowHTML).join("")||`<div style="font-size:12px;color:var(--faint);padding:2px 0 8px">No ${esc(s)} terms yet.</div>`);
+      + (body||`<div style="font-size:12px;color:var(--faint);padding:2px 0 8px">No ${esc(s)} terms yet.</div>`);
   }).join("");
   host.innerHTML=`
     <div class="toolbar">
@@ -1515,11 +1524,13 @@ function renderGlossary(){
       <div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="glSearchInput" placeholder="Search terms…" value="${esc(glSearch)}"></div>
     </div>
     <div class="qadd">
-      <input id="glTerm" placeholder="Term / abbreviation…" style="flex:0 0 200px;border:none;background:transparent;outline:none;font-weight:600;padding:4px 2px" autocomplete="off">
+      <input id="glTerm" placeholder="Term / abbreviation…" style="flex:0 0 180px;border:none;background:transparent;outline:none;font-weight:600;padding:4px 2px" autocomplete="off">
       <select id="glSource">${glSourceOptions(glAddSource,true)}</select>
-      <input id="glDef" placeholder="Definition… press Enter to add" style="flex:1;min-width:160px;border:none;background:transparent;outline:none;font-weight:500;padding:4px 2px" autocomplete="off">
+      <input id="glCat" list="glCatList" value="${esc(glAddCat)}" placeholder="Subcategory (optional)" style="flex:0 0 170px;border:1px solid var(--border);background:var(--surface);outline:none;font-weight:500;font-size:11.5px;color:var(--muted);padding:6px 8px" autocomplete="off">
+      <input id="glDef" placeholder="Definition… press Enter to add" style="flex:1;min-width:140px;border:none;background:transparent;outline:none;font-weight:500;padding:4px 2px" autocomplete="off">
       <button class="btn primary sm" id="glAdd">Add term</button>
     </div>
+    <datalist id="glCatList">${glCategories().map(c=>`<option value="${esc(c)}">`).join("")}</datalist>
     ${data.glossary.length?sections||`<div class="empty"><div>No terms match your search.</div></div>`
     :`<div class="empty"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg><div>No glossary terms yet.<br><span style="color:var(--faint)">Jumbo, NIQ and AH Data each define things their own way — log a term above so you never have to look it up twice.</span></div></div>`}
   `;
@@ -1529,18 +1540,20 @@ function renderGlossary(){
   $("glSource").addEventListener("change",e=>{ glAddSource=glPickSource(e.target,glAddSource); renderGlossary(); $("glTerm").focus(); });
   const addTerm=()=>{
     const term=($("glTerm").value||"").trim(), def=($("glDef").value||"").trim();
+    glAddCat=($("glCat").value||"").trim();
     if(!term){ $("glTerm").focus(); return; }
-    data.glossary.push({id:uid(),term,definition:def,source:glAddSource,createdAt:Date.now(),updatedAt:Date.now()});
-    save(); renderGlossary(); toast("Term added to "+glAddSource); $("glTerm").focus();
+    data.glossary.push({id:uid(),term,definition:def,source:glAddSource,category:glAddCat,createdAt:Date.now(),updatedAt:Date.now()});
+    save(); renderGlossary(); toast("Term added to "+glAddSource+(glAddCat?" · "+glAddCat:"")); $("glTerm").focus();
   };
   $("glAdd").onclick=addTerm;
-  [$("glTerm"),$("glDef")].forEach(el=>el.addEventListener("keydown",e=>{ if(e.key==="Enter") addTerm(); }));
+  [$("glTerm"),$("glCat"),$("glDef")].forEach(el=>el.addEventListener("keydown",e=>{ if(e.key==="Enter") addTerm(); }));
   host.querySelectorAll(".gl-row").forEach(row=>{
     const g=data.glossary.find(x=>x.id===row.dataset.gid); if(!g) return;
     row.querySelector("[data-gtoggle]").addEventListener("click",e=>{ if(e.target.closest("input,select,textarea,button")) return; glOpenId=(glOpenId===g.id)?null:g.id; renderGlossary(); });
     const te=row.querySelector("[data-gterm]");
     if(te){
       te.addEventListener("input",e=>{ g.term=e.target.value; g.updatedAt=Date.now(); save(); });
+      row.querySelector("[data-gcat]").addEventListener("input",e=>{ g.category=e.target.value.trim(); g.updatedAt=Date.now(); save(); });
       row.querySelector("[data-gdef]").addEventListener("input",e=>{ g.definition=e.target.value; g.updatedAt=Date.now(); save(); });
       row.querySelector("[data-gsource]").addEventListener("change",e=>{ g.source=glPickSource(e.target,g.source); g.updatedAt=Date.now(); save(); renderGlossary(); });
       row.querySelector("[data-gdel]").addEventListener("click",()=>{ if(!confirm("Delete “"+(g.term||"this term")+"”?")) return; data.glossary=data.glossary.filter(x=>x.id!==g.id); glOpenId=null; save(); renderGlossary(); });
