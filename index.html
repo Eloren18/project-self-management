@@ -308,6 +308,31 @@
   .prep-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:20px;align-items:start;}
   .prep-side{background:var(--surface);border:1px solid var(--border);padding:12px;}
   .prep-side .wk-ev{margin-bottom:6px;}
+
+  /* ===== working documents ===== */
+  .docs-grid{display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start;}
+  .doc-list{background:var(--surface);border:1px solid var(--border);max-height:72vh;overflow-y:auto;}
+  .doc-item{padding:11px 13px;border-bottom:1px solid var(--border-soft);cursor:pointer;transition:.1s;}
+  .doc-item:hover{background:var(--surface-2);}
+  .doc-item.active{background:var(--primary-soft);box-shadow:inset 3px 0 0 var(--primary);}
+  .doc-item .dt{font-weight:700;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .doc-item .dm{font-size:10.5px;color:var(--faint);margin-top:3px;}
+  .doc-editor{background:var(--surface);border:1px solid var(--border);padding:18px 22px;}
+  .doc-meta{font-size:11px;color:var(--faint);margin-top:5px;border-bottom:1px solid var(--border-soft);padding-bottom:10px;}
+  .doc-editor textarea{width:100%;border:none;background:transparent;outline:none;resize:vertical;min-height:52vh;line-height:1.65;font-size:13.5px;padding:0;margin-top:14px;color:var(--text);}
+
+  /* ===== glossary ===== */
+  .gl-row{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--border);margin-bottom:8px;transition:.12s;}
+  .gl-row:hover{border-color:var(--text);}
+  .gl-top{display:flex;align-items:center;gap:9px;padding:10px 12px;cursor:pointer;}
+  .gl-term{font-weight:750;font-size:13px;}
+  .gl-top .chev{color:var(--faint);transition:transform .15s var(--ease);flex:none;}
+  .gl-row.open .chev{transform:rotate(180deg);}
+  .gl-def{padding:0 12px 11px;font-size:12.5px;color:var(--muted);line-height:1.55;white-space:pre-wrap;}
+  .gl-edit{padding:2px 12px 12px;}
+  .gl-edit input,.gl-edit select,.gl-edit textarea{width:100%;padding:8px 11px;border:1px solid var(--border);background:var(--surface);outline:none;font-weight:500;}
+  .gl-edit input:focus,.gl-edit select:focus,.gl-edit textarea:focus{border-color:var(--primary);}
+  .gl-edit textarea{resize:vertical;min-height:64px;line-height:1.5;margin-top:8px;}
   .log-row{display:flex;gap:10px;font-size:11.5px;padding:7px 0;border-bottom:1px solid var(--border-soft);color:var(--muted);}
   .log-row .lt{color:var(--faint);white-space:nowrap;font-variant-numeric:tabular-nums;}
   .log-row .le{font-weight:700;color:var(--text);}
@@ -339,7 +364,7 @@
     .tab{width:auto;white-space:nowrap;padding:14px 12px;margin-bottom:0;}
     .tab.active{box-shadow:inset 0 -3px 0 #E4002B;background:transparent;}
     .sidefoot{display:none;}
-    .board{grid-template-columns:repeat(2,1fr);} .year-grid{grid-template-columns:repeat(2,1fr);} .pp-grid{grid-template-columns:1fr;} .prep-grid{grid-template-columns:1fr;}
+    .board{grid-template-columns:repeat(2,1fr);} .year-grid{grid-template-columns:repeat(2,1fr);} .pp-grid{grid-template-columns:1fr;} .prep-grid{grid-template-columns:1fr;} .docs-grid{grid-template-columns:1fr;} .doc-list{max-height:34vh;}
   }
   @media(max-width:680px){
     #topbar{flex-wrap:wrap;padding:10px 14px;gap:8px;height:auto;}
@@ -372,6 +397,8 @@
     <button class="tab" data-tab="calendar">Calendar</button>
     <button class="tab" data-tab="year">Year Plan</button>
     <button class="tab" data-tab="weekprep">Week Prep</button>
+    <button class="tab" data-tab="docs">Documents</button>
+    <button class="tab" data-tab="glossary">Glossary</button>
   </nav>
   <div class="sidefoot"><span class="av" id="sideAvatar">?</span><div><div class="nm" id="sideName">Local workspace</div><div class="ro">Workspace owner</div></div></div>
 </aside>
@@ -458,6 +485,16 @@
   <!-- WEEK PREP -->
   <section class="page hidden" id="page-weekprep">
     <div id="weekPrepBody"></div>
+  </section>
+
+  <!-- WORKING DOCUMENTS -->
+  <section class="page hidden" id="page-docs">
+    <div id="docsBody"></div>
+  </section>
+
+  <!-- GLOSSARY -->
+  <section class="page hidden" id="page-glossary">
+    <div id="glossaryBody"></div>
   </section>
 
   <!-- PROJECT PAGE -->
@@ -625,6 +662,10 @@ const PRIO_COLOR = { "ASAP":"var(--p-asap)","High":"var(--p-high)","Medium":"var
 const PROG_COLOR = { "Not Started":"var(--s-nostart)","In Progress":"var(--s-progress)","On Hold":"var(--s-hold)","Done":"var(--s-done)" };
 const PRIO_RANK  = { "ASAP":0,"High":1,"Medium":2,"Low":3 };
 const PROJECT_PALETTE = ["#E4002B","#c76a00","#caa500","#0c6b3d","#0e8f8f","#1d4fb8","#6b3fb8","#b83f8e","#5b6472"];
+const GLOSSARY_SOURCES = ["Jumbo","NIQ","AH Data"];
+const GL_COLORS = { "Jumbo":"#d99a00","NIQ":"#1d4fb8","AH Data":"#0092b8" };
+function glSources(){ return [...new Set([...GLOSSARY_SOURCES, ...data.glossary.map(g=>g.source).filter(Boolean)])]; }
+function glColor(src){ if(GL_COLORS[src]) return GL_COLORS[src]; const custom=glSources().filter(s=>!GL_COLORS[s]); return PROJECT_PALETTE[(custom.indexOf(src)+3)%PROJECT_PALETTE.length]; }
 /* Project color: custom if set, otherwise falls back to the priority color.
    Tasks always take their project's color, so the link stays intact. */
 function projColor(p){ return (p && p.color) ? p.color : PRIO_COLOR[(p && p.priority) || "Medium"]; }
@@ -717,6 +758,10 @@ function normalize(d){
   d.tasks = Array.isArray(d.tasks) ? d.tasks : []; d.tasks.forEach(normTask);
   d.weekPrep = Array.isArray(d.weekPrep) ? d.weekPrep : [];
   d.weekPrep.forEach(w=>{ w.id ||= uid(); w.weekStart ??= ""; w.notes ??= ""; if(!Array.isArray(w.items)) w.items=[]; w.items.forEach(it=>{ it.id ||= uid(); it.text ??= ""; it.done = !!it.done; }); w.updatedAt ??= 0; });
+  d.docs = Array.isArray(d.docs) ? d.docs : [];
+  d.docs.forEach(doc=>{ doc.id ||= uid(); doc.title ??= ""; doc.body ??= ""; doc.createdAt ??= Date.now(); doc.updatedAt ??= doc.createdAt; });
+  d.glossary = Array.isArray(d.glossary) ? d.glossary : [];
+  d.glossary.forEach(g=>{ g.id ||= uid(); g.term ??= ""; g.definition ??= ""; g.source ??= GLOSSARY_SOURCES[0]; g.createdAt ??= Date.now(); g.updatedAt ??= g.createdAt; });
   d.settings = d.settings || {}; d.settings.theme ??= "light";
   d.updatedAt ??= Date.now();
   return d;
@@ -896,7 +941,7 @@ function signOutOthers(){
    RENDER: dispatch
    ============================================================ */
 function renderAll(){
-  renderProjects(); renderTodo(); renderCalendar(); renderYear(); renderWeekPrep(); populateCategoryFilter();
+  renderProjects(); renderTodo(); renderCalendar(); renderYear(); renderWeekPrep(); renderDocs(); renderGlossary(); populateCategoryFilter();
   if(curTab==="project" && openProjectId) renderProjectPage();
   else if(openProjectId && !$("detailOverlay").classList.contains("hidden")) renderDetail();
 }
@@ -1059,7 +1104,7 @@ function renderDetailTasks(p){
 /* ---- Full project page ---- */
 function showProjectPage(id){
   openProjectId=id; curTab="project";
-  ["projects","todo","calendar","year","weekprep"].forEach(x=>$("page-"+x).classList.add("hidden"));
+  ["projects","todo","calendar","year","weekprep","docs","glossary"].forEach(x=>$("page-"+x).classList.add("hidden"));
   $("page-project").classList.remove("hidden");
   $("tabs").querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));
   $("viewTitle").textContent = "Project";
@@ -1358,6 +1403,152 @@ function renderWeekPrep(){
   host.querySelectorAll(".wk-ev").forEach(ev=>ev.addEventListener("click",()=>openEvItem(ev.dataset.kind,ev.dataset.id)));
 }
 
+/* ---- Working documents (freeform notes on bigger topics) ---- */
+let curDocId=null, docSearch="";
+function wordsOf(s){ return (String(s||"").trim().match(/\S+/g)||[]).length; }
+function updateDocMeta(dd){ const m=$("docMeta"); if(m) m.textContent = "Created "+new Date(dd.createdAt).toLocaleDateString()+" · Last edited "+new Date(dd.updatedAt).toLocaleString()+" · "+wordsOf(dd.body)+" words"; }
+function renderDocs(){
+  const host=$("docsBody"); if(!host) return;
+  const q=docSearch.toLowerCase().trim();
+  const sorted=[...data.docs].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+  const list=q?sorted.filter(dd=>((dd.title||"")+" "+(dd.body||"")).toLowerCase().includes(q)):sorted;
+  let cur=data.docs.find(dd=>dd.id===curDocId);
+  if(!cur && list.length){ cur=list[0]; curDocId=cur.id; }
+  host.innerHTML=`
+    <div class="toolbar">
+      <h1 class="page-title">Working documents</h1>
+      <div class="grow"></div>
+      <div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="docSearch" placeholder="Search documents…" value="${esc(docSearch)}"></div>
+      <button class="btn primary" id="docNew"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New document</button>
+    </div>
+    ${data.docs.length?`
+    <div class="docs-grid">
+      <div class="doc-list">${list.map(dd=>`
+        <div class="doc-item ${cur&&dd.id===cur.id?'active':''}" data-doc="${dd.id}">
+          <div class="dt">${esc(dd.title||"Untitled")}</div>
+          <div class="dm">${new Date(dd.updatedAt||dd.createdAt).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"})} · ${wordsOf(dd.body)} words</div>
+        </div>`).join("")||`<div style="padding:14px;font-size:12px;color:var(--faint)">No documents match your search.</div>`}
+      </div>
+      ${cur?`
+      <div class="doc-editor">
+        <div style="display:flex;gap:10px;align-items:center">
+          <input class="title-input" id="docTitle" value="${esc(cur.title)}" placeholder="Document title — e.g. Store selections for campaigns">
+          <button class="btn danger sm" id="docDelete" title="Delete document"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>
+        </div>
+        <div class="doc-meta" id="docMeta"></div>
+        <textarea id="docBody" placeholder="Start writing… How we do it today, what else we could try, learnings, links, open questions.">${esc(cur.body)}</textarea>
+      </div>`:`<div class="empty" style="min-height:200px;display:grid;place-items:center">Select a document on the left.</div>`}
+    </div>`
+    :`<div class="empty"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/><path d="M9 13h6M9 17h6M9 9h1"/></svg><div>No working documents yet.<br><span style="color:var(--faint)">Create one to collect notes on a bigger topic — how you select stores for campaigns, new capabilities you're learning, anything worth keeping.</span></div></div>`}
+  `;
+  $("docNew").onclick=()=>{ const dd={id:uid(),title:"",body:"",createdAt:Date.now(),updatedAt:Date.now()}; data.docs.unshift(dd); curDocId=dd.id; docSearch=""; save(); renderDocs(); const t=$("docTitle"); if(t) t.focus(); };
+  const si=$("docSearch");
+  if(si) si.addEventListener("input",e=>{ docSearch=e.target.value; renderDocs(); const s2=$("docSearch"); if(s2){ s2.focus(); s2.setSelectionRange(s2.value.length,s2.value.length); } });
+  host.querySelectorAll(".doc-item").forEach(it=>it.addEventListener("click",()=>{ curDocId=it.dataset.doc; renderDocs(); }));
+  const cur2=cur?data.docs.find(dd=>dd.id===cur.id):null;
+  if(cur2 && $("docTitle")){
+    /* Typing updates data + the list entry in place — no full re-render, so focus is never lost. */
+    $("docTitle").addEventListener("input",e=>{ cur2.title=e.target.value; cur2.updatedAt=Date.now(); save(); const li=host.querySelector(`.doc-item[data-doc="${cur2.id}"] .dt`); if(li) li.textContent=cur2.title||"Untitled"; updateDocMeta(cur2); });
+    $("docBody").addEventListener("input",e=>{ cur2.body=e.target.value; cur2.updatedAt=Date.now(); save(); updateDocMeta(cur2); });
+    $("docDelete").onclick=()=>{ if(!confirm("Delete “"+(cur2.title||"Untitled")+"”? This can't be undone.")) return; data.docs=data.docs.filter(x=>x.id!==cur2.id); curDocId=null; save(); renderDocs(); };
+    updateDocMeta(cur2);
+  }
+}
+
+/* ---- Glossary (per-source term definitions: Jumbo, NIQ, AH Data, …) ---- */
+let glSearch="", glFilter="", glOpenId=null, glAddSource=GLOSSARY_SOURCES[0];
+function glSourceOptions(sel, withNew){
+  return glSources().map(s=>`<option value="${esc(s)}"${s===sel?" selected":""}>${esc(s)}</option>`).join("")
+       + (withNew?`<option value="__other">＋ New source…</option>`:"");
+}
+function glPickSource(selEl, fallback){
+  if(selEl.value!=="__other") return selEl.value;
+  const name=(prompt("Name of the new source (e.g. another retailer or data provider):")||"").trim();
+  if(!name){ selEl.value=fallback; return fallback; }
+  return name;
+}
+function renderGlossary(){
+  const host=$("glossaryBody"); if(!host) return;
+  const q=glSearch.toLowerCase().trim();
+  const sources=glSources();
+  const match=g=>(!glFilter||g.source===glFilter) && (!q||((g.term||"")+" "+(g.definition||"")).toLowerCase().includes(q));
+  const bySrc=s=>data.glossary.filter(g=>g.source===s && match(g)).sort((a,b)=>(a.term||"￿").localeCompare(b.term||"￿",undefined,{sensitivity:"base"}));
+  const rowHTML=g=>{
+    const open=glOpenId===g.id, c=glColor(g.source);
+    return `<div class="gl-row ${open?'open':''}" data-gid="${g.id}" style="border-left-color:${c}">
+      <div class="gl-top" data-gtoggle>
+        <span class="gl-term">${g.term?esc(g.term):'<span style="color:var(--faint);font-weight:500">Untitled term</span>'}</span>
+        <span class="chip" style="background:color-mix(in srgb,${c} 14%,transparent);color:${c}">${esc(g.source)}</span>
+        <span class="grow"></span>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      ${open?`<div class="gl-edit">
+        <div class="grid2">
+          <input data-gterm value="${esc(g.term)}" placeholder="Term / abbreviation">
+          <select data-gsource>${glSourceOptions(g.source,true)}</select>
+        </div>
+        <textarea data-gdef placeholder="Definition — what does it mean for this source?">${esc(g.definition)}</textarea>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+          <button class="btn danger sm" data-gdel><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>Delete</button>
+          <span class="grow" style="font-size:11px;color:var(--faint)">Updated ${new Date(g.updatedAt).toLocaleDateString()}</span>
+          <button class="btn sm" data-gclose>Done</button>
+        </div>
+      </div>`
+      :`<div class="gl-def">${g.definition?esc(g.definition):'<span style="color:var(--faint)">No definition yet — click to add one.</span>'}</div>`}
+    </div>`;
+  };
+  const counts=s=>data.glossary.filter(g=>g.source===s).length;
+  const sections=(glFilter?[glFilter]:sources).map(s=>{
+    const rows=bySrc(s);
+    if(!rows.length && (q||glFilter)) return "";
+    return `<div class="todo-sec"><span class="d" style="width:8px;height:8px;background:${glColor(s)};display:inline-block"></span>${esc(s)} <span class="line"></span><span style="font-weight:700">${rows.length}</span></div>`
+      + (rows.map(rowHTML).join("")||`<div style="font-size:12px;color:var(--faint);padding:2px 0 8px">No ${esc(s)} terms yet.</div>`);
+  }).join("");
+  host.innerHTML=`
+    <div class="toolbar">
+      <h1 class="page-title">Glossary</h1>
+      <div class="seg" id="glSeg">
+        <button data-src="" class="${glFilter===""?'active':''}">All · ${data.glossary.length}</button>
+        ${sources.map(s=>`<button data-src="${esc(s)}" class="${glFilter===s?'active':''}">${esc(s)} · ${counts(s)}</button>`).join("")}
+      </div>
+      <div class="grow"></div>
+      <div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="glSearchInput" placeholder="Search terms…" value="${esc(glSearch)}"></div>
+    </div>
+    <div class="qadd">
+      <input id="glTerm" placeholder="Term / abbreviation…" style="flex:0 0 200px;border:none;background:transparent;outline:none;font-weight:600;padding:4px 2px" autocomplete="off">
+      <select id="glSource">${glSourceOptions(glAddSource,true)}</select>
+      <input id="glDef" placeholder="Definition… press Enter to add" style="flex:1;min-width:160px;border:none;background:transparent;outline:none;font-weight:500;padding:4px 2px" autocomplete="off">
+      <button class="btn primary sm" id="glAdd">Add term</button>
+    </div>
+    ${data.glossary.length?sections||`<div class="empty"><div>No terms match your search.</div></div>`
+    :`<div class="empty"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg><div>No glossary terms yet.<br><span style="color:var(--faint)">Jumbo, NIQ and AH Data each define things their own way — log a term above so you never have to look it up twice.</span></div></div>`}
+  `;
+  $("glSeg").querySelectorAll("button").forEach(b=>b.onclick=()=>{ glFilter=b.dataset.src; renderGlossary(); });
+  const si=$("glSearchInput");
+  si.addEventListener("input",e=>{ glSearch=e.target.value; renderGlossary(); const s2=$("glSearchInput"); if(s2){ s2.focus(); s2.setSelectionRange(s2.value.length,s2.value.length); } });
+  $("glSource").addEventListener("change",e=>{ glAddSource=glPickSource(e.target,glAddSource); renderGlossary(); $("glTerm").focus(); });
+  const addTerm=()=>{
+    const term=($("glTerm").value||"").trim(), def=($("glDef").value||"").trim();
+    if(!term){ $("glTerm").focus(); return; }
+    data.glossary.push({id:uid(),term,definition:def,source:glAddSource,createdAt:Date.now(),updatedAt:Date.now()});
+    save(); renderGlossary(); toast("Term added to "+glAddSource); $("glTerm").focus();
+  };
+  $("glAdd").onclick=addTerm;
+  [$("glTerm"),$("glDef")].forEach(el=>el.addEventListener("keydown",e=>{ if(e.key==="Enter") addTerm(); }));
+  host.querySelectorAll(".gl-row").forEach(row=>{
+    const g=data.glossary.find(x=>x.id===row.dataset.gid); if(!g) return;
+    row.querySelector("[data-gtoggle]").addEventListener("click",e=>{ if(e.target.closest("input,select,textarea,button")) return; glOpenId=(glOpenId===g.id)?null:g.id; renderGlossary(); });
+    const te=row.querySelector("[data-gterm]");
+    if(te){
+      te.addEventListener("input",e=>{ g.term=e.target.value; g.updatedAt=Date.now(); save(); });
+      row.querySelector("[data-gdef]").addEventListener("input",e=>{ g.definition=e.target.value; g.updatedAt=Date.now(); save(); });
+      row.querySelector("[data-gsource]").addEventListener("change",e=>{ g.source=glPickSource(e.target,g.source); g.updatedAt=Date.now(); save(); renderGlossary(); });
+      row.querySelector("[data-gdel]").addEventListener("click",()=>{ if(!confirm("Delete “"+(g.term||"this term")+"”?")) return; data.glossary=data.glossary.filter(x=>x.id!==g.id); glOpenId=null; save(); renderGlossary(); });
+      row.querySelector("[data-gclose]").addEventListener("click",()=>{ glOpenId=null; renderGlossary(); });
+    }
+  });
+}
+
 function openEvItem(kind,id){ if(kind==="project"){ openDetail(id); } else { openTaskModal(id); } }
 function itemObj(kind,id){ if(kind==="project") return data.projects.find(x=>x.id===id); const r=findTask(id); return r?r.t:null; }
 function moveItemToDate(kind,id,isoStr){ const o=itemObj(kind,id); if(!o) return; o.deadline=isoStr; o.deadlineWeek=false; save(); renderCalendar(); renderYear(); renderProjects(); renderTodo(); if(curTab==="project") renderProjectPage(); toast("Moved to "+fmtShort(isoStr)); }
@@ -1579,10 +1770,10 @@ function toggleTheme(){ data.settings.theme = (data.settings.theme==="dark")?"li
 /* ---- tabs ---- */
 function switchTab(t){
   curTab=t; $("page-project").classList.add("hidden");
-  ["projects","todo","calendar","year","weekprep"].forEach(x=>$("page-"+x).classList.toggle("hidden",x!==t));
+  ["projects","todo","calendar","year","weekprep","docs","glossary"].forEach(x=>$("page-"+x).classList.toggle("hidden",x!==t));
   $("tabs").querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===t));
-  $("viewTitle").textContent = ({projects:"Projects",todo:"To-Do",calendar:"Calendar",year:"Year Plan",weekprep:"Week Prep"})[t] || "Projects";
-  if(t==="todo") renderTodo(); else if(t==="calendar") renderCalendar(); else if(t==="year") renderYear(); else if(t==="weekprep") renderWeekPrep(); else if(t==="projects") renderProjects();
+  $("viewTitle").textContent = ({projects:"Projects",todo:"To-Do",calendar:"Calendar",year:"Year Plan",weekprep:"Week Prep",docs:"Working Documents",glossary:"Glossary"})[t] || "Projects";
+  if(t==="todo") renderTodo(); else if(t==="calendar") renderCalendar(); else if(t==="year") renderYear(); else if(t==="weekprep") renderWeekPrep(); else if(t==="docs") renderDocs(); else if(t==="glossary") renderGlossary(); else if(t==="projects") renderProjects();
 }
 
 /* ============================================================
