@@ -180,7 +180,13 @@
   .trow-proj.adhoc{color:var(--faint);background:var(--surface-2);cursor:default;}
   .trow-dl{border:1px solid var(--border);background:var(--surface-2);color:var(--muted);cursor:pointer;font-weight:700;}
   .trow-dl.over{color:#fff;background:var(--p-asap);border-color:var(--p-asap);}
-  .trow-notes{flex:1;min-width:120px;border:none;background:transparent;font-size:11.5px;color:var(--muted);outline:none;}
+  .trow-note-btn{border:1px solid var(--border);background:var(--surface-2);color:var(--muted);cursor:pointer;font-weight:700;}
+  .trow-note-btn.has{background:#ffe86b;border-color:#dcc353;color:#141519;}
+  .postit{margin:8px 0 3px 28px;max-width:440px;}
+  .postit.hidden{display:none;}
+  .postit textarea{width:100%;background:linear-gradient(135deg,#fff9bf 0%,#ffef8f 100%);border:1px solid #e3d370;border-radius:2px 2px 16px 2px;color:#3a3413;font-size:12.5px;line-height:1.55;padding:12px 14px;resize:none;outline:none;box-shadow:2px 3px 8px rgba(0,0,0,.14);min-height:60px;overflow:hidden;transform:rotate(-.3deg);}
+  .postit textarea:focus{border-color:#c9b752;transform:none;}
+  .postit textarea::placeholder{color:#a89a55;}
   .tk-del{border:none;background:transparent;color:var(--faint);padding:2px;}
   .tk-del:hover{color:var(--p-asap);}
   .todo-sec{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin:20px 0 9px;display:flex;align-items:center;gap:8px;}
@@ -352,6 +358,16 @@
   .gl-group{margin-bottom:4px;}
   .gl-group.dragging{opacity:.45;}
   .gl-group.drag-over{outline:2px dashed var(--primary);outline-offset:2px;background:var(--primary-soft);}
+  /* ===== recurring meetings ===== */
+  .mtg-entry{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--border);margin-bottom:8px;}
+  .mtg-entry.open{border-left-color:#6b3fb8;}
+  .mtg-entry-head{display:flex;align-items:center;gap:9px;padding:10px 12px;cursor:pointer;user-select:none;}
+  .mtg-entry-head .chev{color:var(--faint);transition:transform .15s var(--ease);flex:none;}
+  .mtg-entry.open .chev{transform:rotate(180deg);}
+  .mtg-entry-body{padding:2px 12px 12px;}
+  .mtg-entry-body textarea{width:100%;padding:8px 11px;border:1px solid var(--border);background:var(--surface);outline:none;font-weight:500;resize:vertical;line-height:1.5;}
+  .mtg-entry-body textarea:focus{border-color:var(--primary);}
+
   .gl-cat{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--faint);margin:12px 0 6px 2px;display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;padding:3px 0;}
   .gl-cat:hover{color:var(--muted);}
   .gl-cat .grip{color:var(--faint);cursor:grab;flex:none;}
@@ -420,6 +436,7 @@
     <div class="lbl">Workspace</div>
     <button class="tab active" data-tab="projects">Projects</button>
     <button class="tab" data-tab="todo">To-Do</button>
+    <button class="tab" data-tab="meetings">Meetings</button>
     <button class="tab" data-tab="calendar">Calendar</button>
     <button class="tab" data-tab="year">Year Plan</button>
     <button class="tab" data-tab="weekprep">Week Prep</button>
@@ -464,8 +481,9 @@
     <div class="toolbar">
       <h1 class="page-title">To-Do</h1>
       <div class="grow"></div>
+      <div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="todoSearchInput" placeholder="Search tasks…"></div>
       <label style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="todoShowDone" style="width:auto"> Show completed</label>
-      <button class="btn primary" id="newTaskBtn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New task</button>
+      <button class="btn primary" id="todoNewProject"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New project</button>
     </div>
     <div class="qadd" id="qaBar">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.6" stroke-linecap="round" style="flex:none"><path d="M12 5v14M5 12h14"/></svg>
@@ -521,6 +539,11 @@
   <!-- GLOSSARY -->
   <section class="page hidden" id="page-glossary">
     <div id="glossaryBody"></div>
+  </section>
+
+  <!-- RECURRING MEETINGS -->
+  <section class="page hidden" id="page-meetings">
+    <div id="meetingsBody"></div>
   </section>
 
   <!-- PROJECT PAGE -->
@@ -732,8 +755,12 @@ function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; 
 function addBusinessDays(d,n){ const x=d0(d); let left=n; while(left>0){ x.setDate(x.getDate()+1); const w=x.getDay(); if(w!==0&&w!==6) left--; } return x; }
 function nextMonday(d){ const x=weekStart(d); x.setDate(x.getDate()+7); return x; }
 function endOfMonth(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0); }
-function allTasks(){ const out=[]; data.projects.forEach(p=>p.tasks.forEach(t=>out.push({t,project:p}))); (data.tasks||[]).forEach(t=>out.push({t,project:null})); return out; }
-function findTask(tid){ for(const p of data.projects){ const t=p.tasks.find(x=>x.id===tid); if(t) return {t,project:p,arr:p.tasks}; } const t=(data.tasks||[]).find(x=>x.id===tid); if(t) return {t,project:null,arr:data.tasks}; return null; }
+/* Meeting action items ride through the whole task system (To-Do, calendar,
+   year, KPIs) via a project-shaped reference, tinted with a fixed accent. */
+const MEETING_COLOR="#6b3fb8";
+function meetingRef(m){ return { id:m.id, name:m.name, color:MEETING_COLOR, priority:"Medium", _meeting:true }; }
+function allTasks(){ const out=[]; data.projects.forEach(p=>p.tasks.forEach(t=>out.push({t,project:p}))); (data.meetings||[]).forEach(m=>m.tasks.forEach(t=>out.push({t,project:meetingRef(m)}))); (data.tasks||[]).forEach(t=>out.push({t,project:null})); return out; }
+function findTask(tid){ for(const p of data.projects){ const t=p.tasks.find(x=>x.id===tid); if(t) return {t,project:p,arr:p.tasks}; } for(const m of (data.meetings||[])){ const t=m.tasks.find(x=>x.id===tid); if(t) return {t,project:meetingRef(m),arr:m.tasks}; } const t=(data.tasks||[]).find(x=>x.id===tid); if(t) return {t,project:null,arr:data.tasks}; return null; }
 const TICK = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 
 /* ============================================================
@@ -790,6 +817,13 @@ function normalize(d){
   d.glossary.forEach(g=>{ g.id ||= uid(); g.term ??= ""; g.definition ??= ""; g.source ??= GLOSSARY_SOURCES[0]; g.category ??= ""; if(typeof g.order!=="number") g.order=null; g.createdAt ??= Date.now(); g.updatedAt ??= g.createdAt; });
   d.glossaryCollapsed = Array.isArray(d.glossaryCollapsed) ? d.glossaryCollapsed.filter(x=>typeof x==="string") : [];
   d.glossaryCatOrder = (d.glossaryCatOrder && typeof d.glossaryCatOrder==="object" && !Array.isArray(d.glossaryCatOrder)) ? d.glossaryCatOrder : {};
+  d.meetings = Array.isArray(d.meetings) ? d.meetings : [];
+  d.meetings.forEach(m=>{
+    m.id ||= uid(); m.name ??= "Untitled meeting"; m.cadence ??= ""; m.attendees ??= ""; m.createdAt ??= Date.now();
+    m.entries = Array.isArray(m.entries) ? m.entries : [];
+    m.entries.forEach(en=>{ en.id ||= uid(); en.date ??= ""; en.agenda ??= ""; en.notes ??= ""; en.createdAt ??= Date.now(); en.updatedAt ??= en.createdAt; });
+    m.tasks = Array.isArray(m.tasks) ? m.tasks : []; m.tasks.forEach(normTask);
+  });
   d.settings = d.settings || {}; d.settings.theme ??= "light";
   d.updatedAt ??= Date.now();
   return d;
@@ -809,7 +843,7 @@ let calDate = new Date(); calDate.setDate(1);
 let yearNum = new Date().getFullYear();
 let openProjectId = null;
 let listSort = {key:"deadline", dir:1};
-let todoShowDone = false;
+let todoShowDone = false, todoSearch = "";
 let createCtx = null, taskModalId = null, pkState = null;
 const deviceId = getDeviceId();
 
@@ -969,7 +1003,7 @@ function signOutOthers(){
    RENDER: dispatch
    ============================================================ */
 function renderAll(){
-  renderProjects(); renderTodo(); renderCalendar(); renderYear(); renderWeekPrep(); renderDocs(); renderGlossary(); populateCategoryFilter();
+  renderProjects(); renderTodo(); renderCalendar(); renderYear(); renderWeekPrep(); renderDocs(); renderGlossary(); renderMeetings(); populateCategoryFilter();
   if(curTab==="project" && openProjectId) renderProjectPage();
   else if(openProjectId && !$("detailOverlay").classList.contains("hidden")) renderDetail();
 }
@@ -1088,7 +1122,7 @@ function toggleProjectDone(p){
   if(!p) return;
   if(p.progress==="Done"){ p.progress=(PROGRESS.includes(p.prevProgress)&&p.prevProgress!=="Done")?p.prevProgress:"In Progress"; }
   else { p.prevProgress=p.progress; p.progress="Done"; }
-  save(); renderProjects(); renderCalendar(); renderYear();
+  save(); renderProjects(); renderCalendar(); renderYear(); renderTodo();
   if(openProjectId===p.id){ if(curTab==="project") renderProjectPage(); else if(!$("detailOverlay").classList.contains("hidden")) renderDetail(); }
 }
 
@@ -1120,7 +1154,7 @@ function renderDetail(){
   $("dDeadline").addEventListener("click",()=>{ const pp=proj(); openPicker($("dDeadline"),{deadline:pp.deadline,isWk:pp.deadlineWeek},sel=>{ pp.deadline=sel.deadline; pp.deadlineWeek=sel.isWk; save(); renderDetail(); renderProjects(); renderCalendar(); renderYear(); }); });
   bindColorField($("detailBody"), proj, renderDetail);
   renderDetailTasks(p);
-  $("dAddTask").addEventListener("click",()=>{ const pp=proj(); if(!pp) return; pp.tasks.push({id:uid(),text:"",done:false,deadline:"",deadlineWeek:false,notes:""}); save(); renderDetailTasks(pp); const inps=$("dTasks").querySelectorAll(".trow-text"); if(inps.length) inps[inps.length-1].focus(); });
+  $("dAddTask").addEventListener("click",()=>{ const pp=proj(); if(!pp) return; pp.tasks.push({id:uid(),text:"",done:false,deadline:todayISO(),deadlineWeek:false,notes:""}); save(); renderDetailTasks(pp); const inps=$("dTasks").querySelectorAll(".trow-text"); if(inps.length) inps[inps.length-1].focus(); });
   $("dGotoPage").addEventListener("click",()=>showProjectPage(p.id));
 }
 function renderDetailTasks(p){
@@ -1132,7 +1166,7 @@ function renderDetailTasks(p){
 /* ---- Full project page ---- */
 function showProjectPage(id){
   openProjectId=id; curTab="project";
-  ["projects","todo","calendar","year","weekprep","docs","glossary"].forEach(x=>$("page-"+x).classList.add("hidden"));
+  ["projects","todo","calendar","year","weekprep","docs","glossary","meetings"].forEach(x=>$("page-"+x).classList.add("hidden"));
   $("page-project").classList.remove("hidden");
   $("tabs").querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));
   $("viewTitle").textContent = "Project";
@@ -1190,7 +1224,7 @@ function renderProjectPage(){
   $("ppDeadline").onclick=()=>openPicker($("ppDeadline"),{deadline:p.deadline,isWk:p.deadlineWeek},sel=>{ p.deadline=sel.deadline; p.deadlineWeek=sel.isWk; save(); renderProjectPage(); renderProjects(); renderCalendar(); renderYear(); });
   bindColorField($("projectPageBody"), ()=>p, renderProjectPage);
   renderPPTasks(p);
-  $("ppAddTask").onclick=()=>{ p.tasks.push({id:uid(),text:"",done:false,deadline:"",deadlineWeek:false,notes:""}); save(); renderPPTasks(p); const inps=$("ppTasks").querySelectorAll(".trow-text"); if(inps.length) inps[inps.length-1].focus(); };
+  $("ppAddTask").onclick=()=>{ p.tasks.push({id:uid(),text:"",done:false,deadline:todayISO(),deadlineWeek:false,notes:""}); save(); renderPPTasks(p); const inps=$("ppTasks").querySelectorAll(".trow-text"); if(inps.length) inps[inps.length-1].focus(); };
   renderPPMeetings(p);
   $("ppAddMeeting").onclick=()=>{ p.meetingNotes.unshift({id:uid(),date:todayISO(),text:""}); save(); renderPPMeetings(p); const t=$("ppMeetings").querySelector("textarea"); if(t) t.focus(); };
 }
@@ -1217,8 +1251,10 @@ function renderPPMeetings(p){
 }
 
 /* ---- Shared task rows (project page + to-do) ---- */
+const openNoteIds=new Set(); /* which tasks have their post-it open this session */
 function taskRowHTML(t, project, opts){
   opts=opts||{}; const over=isOverdue(t.deadline,t.done,t.deadlineWeek);
+  const hasNote=!!(t.notes&&t.notes.trim());
   const projTag = opts.showProject ? (project?`<span class="trow-proj" data-goproj="${project.id}" style="color:${projColor(project)};background:color-mix(in srgb,${projColor(project)} 12%,transparent)">${esc(project.name)}</span>`:`<span class="trow-proj adhoc">Ad-hoc</span>`) : "";
   return `<div class="trow ${t.done?'done':''} ${over?'overdue':''}" data-tid="${t.id}">
     <div class="check-sm ${t.done?'on':''}" data-tdone title="Mark done">${t.done?TICK:''}</div>
@@ -1227,8 +1263,9 @@ function taskRowHTML(t, project, opts){
       <div class="trow-sub">
         ${projTag}
         <button class="chip trow-dl ${over?'over':''}" data-tdl>${t.deadline?esc(fmtDL(t.deadline,t.deadlineWeek))+(over?' · overdue':''):'+ deadline'}</button>
-        <input class="trow-notes" data-tnotes value="${esc(t.notes)}" placeholder="notes">
+        <button class="chip trow-note-btn ${hasNote?'has':''}" data-tnotebtn title="${hasNote?'View / edit the note':'Add a note'}">🗒 ${hasNote?'Notes':'+ note'}</button>
       </div>
+      <div class="postit ${openNoteIds.has(t.id)?'':'hidden'}"><textarea data-tnotes rows="3" placeholder="Note for this task…">${esc(t.notes)}</textarea></div>
     </div>
     <button class="tk-del" data-tdel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
   </div>`;
@@ -1238,20 +1275,39 @@ function bindTaskRows(host){
     const tid=row.dataset.tid; const ref=findTask(tid); if(!ref) return; const t=ref.t;
     row.querySelector("[data-tdone]").addEventListener("click",()=>{ t.done=!t.done; save(); refreshTaskViews(); });
     row.querySelector("[data-ttext]").addEventListener("input",e=>{ t.text=e.target.value; save(); });
-    row.querySelector("[data-tnotes]").addEventListener("input",e=>{ t.notes=e.target.value; save(); });
-    row.querySelector("[data-tdl]").addEventListener("click",e=>{ openPicker(e.currentTarget,{deadline:t.deadline,isWk:t.deadlineWeek},sel=>{ t.deadline=sel.deadline; t.deadlineWeek=sel.isWk; save(); refreshTaskViews(); }); });
+    const noteBox=row.querySelector(".postit"), noteTa=row.querySelector("[data-tnotes]"), noteBtn=row.querySelector("[data-tnotebtn]");
+    const fitNote=()=>{ noteTa.style.height="auto"; noteTa.style.height=(noteTa.scrollHeight+2)+"px"; };
+    const labelNote=()=>{ const has=!!(t.notes&&t.notes.trim()); noteBtn.classList.toggle("has",has); noteBtn.innerHTML="🗒 "+(has?"Notes":"+ note"); };
+    noteTa.addEventListener("input",e=>{ t.notes=e.target.value; save(); fitNote(); labelNote(); });
+    noteBtn.addEventListener("click",()=>{
+      const nowOpen=noteBox.classList.contains("hidden");
+      noteBox.classList.toggle("hidden",!nowOpen);
+      if(nowOpen){ openNoteIds.add(t.id); fitNote(); noteTa.focus(); } else openNoteIds.delete(t.id);
+    });
+    if(!noteBox.classList.contains("hidden")) fitNote();
+    row.querySelector("[data-tdl]").addEventListener("click",e=>{ openPicker(e.currentTarget,{deadline:t.deadline,isWk:t.deadlineWeek,required:true},sel=>{ t.deadline=sel.deadline; t.deadlineWeek=sel.isWk; save(); refreshTaskViews(); }); });
     row.querySelector("[data-tdel]").addEventListener("click",()=>{ const idx=ref.arr.indexOf(t); if(idx>-1) ref.arr.splice(idx,1); save(); refreshTaskViews(); });
-    const gp=row.querySelector("[data-goproj]"); if(gp) gp.addEventListener("click",()=>showProjectPage(gp.dataset.goproj));
+    const gp=row.querySelector("[data-goproj]"); if(gp) gp.addEventListener("click",()=>{ const pid=gp.dataset.goproj; if(data.projects.find(x=>x.id===pid)) showProjectPage(pid); else if(data.meetings.find(x=>x.id===pid)) openMeetingPage(pid); });
   });
 }
-function refreshTaskViews(){ if(curTab==="project"&&openProjectId){ renderProjectPage(); } else if(openProjectId && !$("detailOverlay").classList.contains("hidden")){ renderDetail(); } renderTodo(); renderProjects(); renderCalendar(); renderYear(); }
+function refreshTaskViews(){ if(curTab==="project"&&openProjectId){ renderProjectPage(); } else if(openProjectId && !$("detailOverlay").classList.contains("hidden")){ renderDetail(); } renderMeetings(); renderTodo(); renderProjects(); renderCalendar(); renderYear(); }
 
 /* ---- To-Do ---- */
 function renderTodo(){
-  populateQaProject();
+  populateQaProject(); qaLabel();
   const host=$("todoView");
-  const items=allTasks();
-  if(!items.length){ host.innerHTML=`<div class="empty"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><div>No tasks yet. Log one in the bar above, or add tasks inside a project / on the calendar.</div></div>`; return; }
+  const q=(todoSearch||"").toLowerCase().trim();
+  const items=allTasks().filter(x=>{ if(!q) return true; return ((x.t.text||"")+" "+(x.t.notes||"")+" "+(x.project?x.project.name:"")).toLowerCase().includes(q); });
+  /* projects past their deadline and not completed surface here too */
+  const overdueProjects=data.projects
+    .filter(p=>p.progress!=="Done" && isOverdue(p.deadline,false,p.deadlineWeek) && (!q||((p.name||"")+" "+(p.description||"")).toLowerCase().includes(q)))
+    .sort((a,b)=>(a.deadline||"").localeCompare(b.deadline||""));
+  if(!items.length && !overdueProjects.length){
+    host.innerHTML = q
+      ? `<div class="empty"><div>No tasks or overdue projects match “${esc(todoSearch)}”.</div></div>`
+      : `<div class="empty"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><div>No tasks yet. Log one in the bar above, or add tasks inside a project / on the calendar.</div></div>`;
+    return;
+  }
   const byDL=(a,b)=>((a.t.deadline||"9999-99").localeCompare(b.t.deadline||"9999-99"));
   const active=items.filter(x=>!x.t.done), doneItems=items.filter(x=>x.t.done);
   const t0=d0(new Date()), wkS=weekStart(new Date()), wkE=addDays(wkS,6);
@@ -1267,8 +1323,19 @@ function renderTodo(){
   });
   [overdue,today,thisWk,later].forEach(a=>a.sort(byDL));
   const sec=(title,arr,cls)=> arr.length?`<div class="todo-sec ${cls||''}">${title} <span class="line"></span><span style="font-weight:700">${arr.length}</span></div>`+arr.map(x=>taskRowHTML(x.t,x.project,{showProject:true})).join(""):"";
+  const projRowHTML=p=>`<div class="trow overdue" data-goprojrow="${p.id}" style="cursor:pointer">
+    <div class="check-sm" data-pjdone="${p.id}" title="Mark project complete"></div>
+    <div class="trow-main">
+      <div style="font-weight:700;font-size:13px;padding:2px 0">🚩 ${esc(p.name)}</div>
+      <div class="trow-sub"><span class="chip" style="background:color-mix(in srgb,${projColor(p)} 14%,transparent);color:${projColor(p)}">Project</span><span class="chip trow-dl over" style="cursor:default">${esc(fmtDL(p.deadline,p.deadlineWeek))} · overdue</span></div>
+    </div>
+  </div>`;
   let html="";
-  html+=sec("⚠ Overdue",overdue,"over");
+  if(overdue.length||overdueProjects.length){
+    html+=`<div class="todo-sec over">⚠ Overdue <span class="line"></span><span style="font-weight:700">${overdue.length+overdueProjects.length}</span></div>`;
+    html+=overdueProjects.map(projRowHTML).join("");
+    html+=overdue.map(x=>taskRowHTML(x.t,x.project,{showProject:true})).join("");
+  }
   html+=sec("Today",today,"today");
   html+=sec("This week",thisWk);
   html+=sec("Upcoming",later);
@@ -1276,9 +1343,11 @@ function renderTodo(){
   if(todoShowDone) html+=sec("Completed",doneItems.sort(byDL));
   host.innerHTML=html||`<div class="empty"><div>All caught up! 🎉 <span style="color:var(--faint)">(tick “Show completed” to see finished tasks)</span></div></div>`;
   bindTaskRows(host);
+  host.querySelectorAll("[data-goprojrow]").forEach(r=>r.addEventListener("click",e=>{ if(e.target.closest("[data-pjdone]")) return; showProjectPage(r.dataset.goprojrow); }));
+  host.querySelectorAll("[data-pjdone]").forEach(b=>b.addEventListener("click",e=>{ e.stopPropagation(); toggleProjectDone(data.projects.find(p=>p.id===b.dataset.pjdone)); }));
 }
 /* ---- quick-add bar ---- */
-let qaDL={deadline:"",isWk:false};
+let qaDL={deadline:todayISO(),isWk:false}; /* tasks always carry a deadline — default today */
 function qaLabel(){ const b=$("qaDeadline"); b.textContent = qaDL.deadline ? "📅 "+fmtDL(qaDL.deadline,qaDL.isWk) : "📅 No deadline"; b.style.borderColor = qaDL.deadline ? "var(--primary)" : ""; b.style.color = qaDL.deadline ? "var(--primary)" : ""; }
 function populateQaProject(){
   const sel=$("qaProject"); if(!sel) return; const cur=sel.value;
@@ -1287,14 +1356,13 @@ function populateQaProject(){
 function qaAddTask(){
   const inp=$("qaText"); const text=(inp.value||"").trim();
   if(!text){ inp.focus(); return; }
-  const t={id:uid(),text,done:false,deadline:qaDL.deadline,deadlineWeek:qaDL.isWk,notes:""};
+  const t={id:uid(),text,done:false,deadline:qaDL.deadline||todayISO(),deadlineWeek:qaDL.isWk,notes:""};
   const pid=$("qaProject").value;
   if(pid){ const p=data.projects.find(x=>x.id===pid); (p?p.tasks:data.tasks).push(t); } else data.tasks.push(t);
-  save(); inp.value=""; qaDL={deadline:"",isWk:false}; qaLabel();
+  save(); inp.value=""; qaDL={deadline:todayISO(),isWk:false}; qaLabel();
   renderTodo(); renderCalendar(); renderYear(); renderProjects();
   toast("Task logged"); inp.focus();
 }
-function newStandaloneTask(){ const t={id:uid(),text:"",done:false,deadline:"",deadlineWeek:false,notes:""}; data.tasks.unshift(t); save(); renderTodo(); const row=$("todoView").querySelector('.trow[data-tid="'+t.id+'"]'); const inp=row&&row.querySelector(".trow-text"); if(inp) inp.focus(); }
 
 /* ---- Calendar + Year (tasks + project deadlines) ---- */
 function calItems(){
@@ -1746,6 +1814,122 @@ function renderGlossary(){
   });
 }
 
+/* ---- Recurring meetings (ongoing doc per series + dated entries + action items) ---- */
+let curMeetingId=null, meetOpenEntryId=null;
+function openMeetingPage(id){ curMeetingId=id; meetOpenEntryId=null; switchTab("meetings"); }
+function meetingEntriesSorted(m){ return [...m.entries].sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.createdAt||0)-(a.createdAt||0)); }
+function meetingPanelHTML(m){
+  const entries=meetingEntriesSorted(m);
+  if(!entries.find(e=>e.id===meetOpenEntryId)) meetOpenEntryId=entries.length?entries[0].id:null;
+  const doneT=m.tasks.filter(t=>t.done).length;
+  return `<div class="doc-editor" id="mtgPanel">
+    <div style="display:flex;gap:10px;align-items:center">
+      <input class="title-input" id="mtgName" value="${esc(m.name)}" placeholder="Meeting name — e.g. Weekly Home Team sync">
+      <button class="btn danger sm" id="mtgDelete" title="Delete meeting"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>
+    </div>
+    <div class="grid2" style="margin-top:12px">
+      <div class="field"><label>Cadence</label><input id="mtgCadence" value="${esc(m.cadence)}" placeholder="e.g. Weekly · Monday 10:00"></div>
+      <div class="field"><label>Attendees</label><input id="mtgAtt" value="${esc(m.attendees)}" placeholder="Who's usually there"></div>
+    </div>
+    <div class="section-h">Action items${m.tasks.length?` · ${doneT}/${m.tasks.length}`:""} <span class="line"></span></div>
+    <div id="mtgTasks">${m.tasks.map(t=>taskRowHTML(t,null,{showProject:false})).join("")||`<div style="font-size:12.5px;color:var(--faint);padding:2px 0 8px">No action items yet — they'll also show up in your To-Do and calendar.</div>`}</div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <input id="mtgNewTask" placeholder="Add an action item from this meeting… press Enter" style="flex:1;padding:8px 11px;border:1px solid var(--border);background:var(--surface);outline:none;font-weight:500" autocomplete="off">
+      <button class="btn sm" id="mtgAddTask">Add</button>
+    </div>
+    <div class="section-h">Meeting log <span class="line"></span></div>
+    <button class="btn sm" id="mtgNewEntry"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New entry (today)</button>
+    <div id="mtgEntries" style="margin-top:10px">${entries.map((en,i)=>{
+      const open=en.id===meetOpenEntryId;
+      const d=parseISO(en.date);
+      const label=d ? d.toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short",year:"numeric"}) : "No date";
+      const hasPrev=i<entries.length-1;
+      return `<div class="mtg-entry ${open?'open':''}" data-en="${en.id}">
+        <div class="mtg-entry-head" data-entoggle>
+          <b style="font-size:12.5px">${label}</b>
+          ${i===0?'<span class="badge this">Latest</span>':''}
+          ${!open&&en.agenda?`<span style="font-size:11.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px">${esc(en.agenda)}</span>`:''}
+          <span class="grow"></span>
+          <button class="tk-del" data-endel title="Delete entry"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+        ${open?`<div class="mtg-entry-body">
+          <div class="field"><label>Date</label><input type="date" data-endate value="${esc(en.date)}" style="width:170px"></div>
+          <div class="field">
+            <div style="display:flex;align-items:center;margin-bottom:6px"><label style="margin:0">Agenda</label><span class="grow"></span>${hasPrev?`<button class="btn sm" data-enimport title="Copy the agenda from the previous entry">⤓ Import last agenda</button>`:""}</div>
+            <textarea data-enagenda rows="4" placeholder="What's on the table this time…">${esc(en.agenda)}</textarea>
+          </div>
+          <div class="field"><label>Notes &amp; decisions</label><textarea data-ennotes rows="6" placeholder="Discussion, decisions, who said what, follow-ups…">${esc(en.notes)}</textarea></div>
+        </div>`:""}
+      </div>`;}).join("")||`<div style="font-size:12.5px;color:var(--faint);padding:6px 0">No entries yet — create one for today's meeting.</div>`}
+    </div>
+  </div>`;
+}
+function renderMeetings(){
+  const host=$("meetingsBody"); if(!host) return;
+  const lastDate=m=>m.entries.reduce((mx,e)=>(e.date&&e.date>mx?e.date:mx),"");
+  const meetings=[...data.meetings].sort((a,b)=>lastDate(b).localeCompare(lastDate(a)));
+  let cur=data.meetings.find(m=>m.id===curMeetingId);
+  if(!cur && meetings.length){ cur=meetings[0]; curMeetingId=cur.id; }
+  host.innerHTML=`
+    <div class="toolbar">
+      <h1 class="page-title">Recurring meetings</h1>
+      <div class="grow"></div>
+      <button class="btn primary" id="mtgNew"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New meeting</button>
+    </div>
+    ${data.meetings.length?`
+    <div class="docs-grid">
+      <div class="doc-list">${meetings.map(m=>{
+        const openN=m.tasks.filter(t=>!t.done).length; const last=lastDate(m);
+        return `<div class="doc-item ${cur&&m.id===cur.id?'active':''}" data-mtg="${m.id}">
+          <div class="dt">${esc(m.name||"Untitled meeting")}</div>
+          <div class="dm">${esc(m.cadence||"")}${m.cadence?" · ":""}${last?"last "+fmtShort(last):"no entries"}${openN?` · ${openN} open item${openN>1?"s":""}`:""}</div>
+        </div>`;}).join("")}
+      </div>
+      ${cur?meetingPanelHTML(cur):`<div class="empty" style="min-height:200px;display:grid;place-items:center">Select a meeting on the left.</div>`}
+    </div>`
+    :`<div class="empty"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v4M16 2v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/></svg><div>No recurring meetings yet.<br><span style="color:var(--faint)">Create one per series (weekly sync, monthly review…) — each keeps an ongoing log of agendas, notes and action items.</span></div></div>`}
+  `;
+  $("mtgNew").onclick=()=>{
+    const m={id:uid(),name:"New meeting",cadence:"Weekly",attendees:"",entries:[{id:uid(),date:todayISO(),agenda:"",notes:"",createdAt:Date.now(),updatedAt:Date.now()}],tasks:[],createdAt:Date.now()};
+    data.meetings.push(m); curMeetingId=m.id; meetOpenEntryId=m.entries[0].id; save(); renderMeetings();
+    const n=$("mtgName"); if(n){ n.focus(); n.select(); }
+  };
+  host.querySelectorAll(".doc-item[data-mtg]").forEach(it=>it.addEventListener("click",()=>{ curMeetingId=it.dataset.mtg; meetOpenEntryId=null; renderMeetings(); }));
+  const cur2=cur?data.meetings.find(m=>m.id===cur.id):null;
+  if(!cur2 || !$("mtgPanel")) return;
+  $("mtgName").addEventListener("input",e=>{ cur2.name=e.target.value; save(); const li=host.querySelector(`.doc-item[data-mtg="${cur2.id}"] .dt`); if(li) li.textContent=cur2.name||"Untitled meeting"; });
+  $("mtgDelete").onclick=()=>{ if(!confirm("Delete “"+cur2.name+"” with all its notes and action items? This can't be undone.")) return; data.meetings=data.meetings.filter(x=>x.id!==cur2.id); curMeetingId=null; save(); refreshTaskViews(); };
+  $("mtgCadence").addEventListener("input",e=>{ cur2.cadence=e.target.value; save(); });
+  $("mtgAtt").addEventListener("input",e=>{ cur2.attendees=e.target.value; save(); });
+  bindTaskRows($("mtgTasks"));
+  const addT=()=>{ const inp=$("mtgNewTask"); const txt=(inp.value||"").trim(); if(!txt){ inp.focus(); return; } cur2.tasks.push({id:uid(),text:txt,done:false,deadline:todayISO(),deadlineWeek:false,notes:""}); save(); refreshTaskViews(); const i2=$("mtgNewTask"); if(i2) i2.focus(); };
+  $("mtgAddTask").onclick=addT;
+  $("mtgNewTask").addEventListener("keydown",e=>{ if(e.key==="Enter") addT(); });
+  $("mtgNewEntry").onclick=()=>{ const en={id:uid(),date:todayISO(),agenda:"",notes:"",createdAt:Date.now(),updatedAt:Date.now()}; cur2.entries.push(en); meetOpenEntryId=en.id; save(); renderMeetings(); const a=host.querySelector("[data-enagenda]"); if(a) a.focus(); };
+  const entriesSorted=meetingEntriesSorted(cur2);
+  host.querySelectorAll(".mtg-entry").forEach(row=>{
+    const en=cur2.entries.find(x=>x.id===row.dataset.en); if(!en) return;
+    row.querySelector("[data-entoggle]").addEventListener("click",e=>{ if(e.target.closest("input,textarea,button")) return; meetOpenEntryId=(meetOpenEntryId===en.id)?null:en.id; renderMeetings(); });
+    row.querySelector("[data-endel]").addEventListener("click",()=>{ if(!confirm("Delete the entry of "+(en.date?fmtShort(en.date):"(no date)")+"?")) return; cur2.entries=cur2.entries.filter(x=>x.id!==en.id); save(); renderMeetings(); });
+    const dateEl=row.querySelector("[data-endate]");
+    if(dateEl){
+      dateEl.addEventListener("change",e=>{ en.date=e.target.value; en.updatedAt=Date.now(); save(); renderMeetings(); });
+      row.querySelector("[data-enagenda]").addEventListener("input",e=>{ en.agenda=e.target.value; en.updatedAt=Date.now(); save(); });
+      row.querySelector("[data-ennotes]").addEventListener("input",e=>{ en.notes=e.target.value; en.updatedAt=Date.now(); save(); });
+      const imp=row.querySelector("[data-enimport]");
+      if(imp) imp.addEventListener("click",()=>{
+        const idx=entriesSorted.findIndex(x=>x.id===en.id);
+        const prev=entriesSorted[idx+1];
+        if(!prev){ toast("No earlier entry to import from"); return; }
+        if(en.agenda.trim() && !confirm("Replace this agenda with the one from "+(prev.date?fmtShort(prev.date):"the previous entry")+"?")) return;
+        en.agenda=prev.agenda; en.updatedAt=Date.now(); save(); renderMeetings();
+        toast("Agenda imported from "+(prev.date?fmtShort(prev.date):"previous entry"));
+      });
+    }
+  });
+}
+
 function openEvItem(kind,id){ if(kind==="project"){ openDetail(id); } else { openTaskModal(id); } }
 function itemObj(kind,id){ if(kind==="project") return data.projects.find(x=>x.id===id); const r=findTask(id); return r?r.t:null; }
 function moveItemToDate(kind,id,isoStr){ const o=itemObj(kind,id); if(!o) return; o.deadline=isoStr; o.deadlineWeek=false; save(); renderCalendar(); renderYear(); renderProjects(); renderTodo(); if(curTab==="project") renderProjectPage(); toast("Moved to "+fmtShort(isoStr)); }
@@ -1785,7 +1969,7 @@ function renderCreate(){
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn ghost" id="ctCancel">Cancel</button><button class="btn primary" id="ctCreate">Create</button></div>
   `;
   $("createType").querySelectorAll("button").forEach(b=>b.onclick=()=>{ createCtx.type=b.dataset.ct; renderCreate(); });
-  $("ctDeadline").onclick=()=>openPicker($("ctDeadline"),{deadline:createCtx.deadline,isWk:createCtx.isWk},sel=>{ createCtx.deadline=sel.deadline; createCtx.isWk=sel.isWk; renderCreate(); });
+  $("ctDeadline").onclick=()=>openPicker($("ctDeadline"),{deadline:createCtx.deadline,isWk:createCtx.isWk,required:createCtx.type==="task"},sel=>{ createCtx.deadline=sel.deadline; createCtx.isWk=sel.isWk; renderCreate(); });
   $("ctCancel").onclick=closeCreate;
   $("ctCreate").onclick=doCreate;
   const f=$("ctText")||$("ctName"); if(f) setTimeout(()=>f.focus(),60);
@@ -1793,7 +1977,7 @@ function renderCreate(){
 function doCreate(){
   if(createCtx.type==="task"){
     const text=($("ctText").value||"").trim(); const pid=$("ctProject").value;
-    const t={id:uid(),text,done:false,deadline:createCtx.deadline,deadlineWeek:createCtx.isWk,notes:""};
+    const t={id:uid(),text,done:false,deadline:createCtx.deadline||todayISO(),deadlineWeek:createCtx.isWk,notes:""};
     if(pid){ const p=data.projects.find(x=>x.id===pid); (p?p.tasks:data.tasks).push(t); } else data.tasks.push(t);
     save(); closeCreate(); renderAll(); toast("Task created");
   } else {
@@ -1807,7 +1991,9 @@ function openTaskModal(tid){ taskModalId=tid; renderTaskModal(); const m=$("task
 function closeTaskModal(){ const m=$("taskModal"); m.classList.remove("show"); setTimeout(()=>m.classList.add("hidden"),200); taskModalId=null; }
 function renderTaskModal(){
   const r=findTask(taskModalId); if(!r){ closeTaskModal(); return; } const t=r.t;
-  const projectsOpts=`<option value="">Standalone / ad-hoc</option>`+data.projects.map(p=>`<option value="${p.id}"${r.project&&r.project.id===p.id?' selected':''}>${esc(p.name)}</option>`).join("");
+  const isMeeting=r.project&&r.project._meeting;
+  const projectsOpts=(isMeeting?`<option value="__mtg" selected>📋 ${esc(r.project.name)} (meeting)</option>`:"")
+    +`<option value="">Standalone / ad-hoc</option>`+data.projects.map(p=>`<option value="${p.id}"${r.project&&r.project.id===p.id?' selected':''}>${esc(p.name)}</option>`).join("");
   $("taskBox").innerHTML=`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
       <div class="check-sm ${t.done?'on':''}" id="tmDone">${t.done?TICK:''}</div>
@@ -1822,8 +2008,8 @@ function renderTaskModal(){
   $("tmDone").onclick=()=>{ t.done=!t.done; save(); renderTaskModal(); refreshTaskViews(); };
   $("tmText").addEventListener("input",e=>{ t.text=e.target.value; save(); });
   $("tmNotes").addEventListener("input",e=>{ t.notes=e.target.value; save(); });
-  $("tmProject").addEventListener("change",e=>{ moveTaskTo(taskModalId,e.target.value); });
-  $("tmDeadline").onclick=()=>openPicker($("tmDeadline"),{deadline:t.deadline,isWk:t.deadlineWeek},sel=>{ t.deadline=sel.deadline; t.deadlineWeek=sel.isWk; save(); renderTaskModal(); refreshTaskViews(); });
+  $("tmProject").addEventListener("change",e=>{ if(e.target.value==="__mtg") return; moveTaskTo(taskModalId,e.target.value); });
+  $("tmDeadline").onclick=()=>openPicker($("tmDeadline"),{deadline:t.deadline,isWk:t.deadlineWeek,required:true},sel=>{ t.deadline=sel.deadline; t.deadlineWeek=sel.isWk; save(); renderTaskModal(); refreshTaskViews(); });
   $("tmDelete").onclick=()=>{ const idx=r.arr.indexOf(t); if(idx>-1) r.arr.splice(idx,1); save(); closeTaskModal(); refreshTaskViews(); };
   $("tmClose").onclick=closeTaskModal;
 }
@@ -1836,7 +2022,7 @@ function moveTaskTo(tid,pid){
 /* ---- Date / week picker popover ---- */
 function openPicker(anchor, cur, onPick){
   const base = cur.deadline?parseISO(cur.deadline):new Date();
-  pkState={ month:new Date(base.getFullYear(),base.getMonth(),1), mode:cur.isWk?"week":"day", cur:{deadline:cur.deadline||"",isWk:!!cur.isWk}, onPick };
+  pkState={ month:new Date(base.getFullYear(),base.getMonth(),1), mode:cur.isWk?"week":"day", cur:{deadline:cur.deadline||"",isWk:!!cur.isWk,required:!!cur.required}, onPick };
   renderPicker();
   const pop=$("pickerPop"); pop.classList.remove("hidden");
   const r=anchor.getBoundingClientRect();
@@ -1885,7 +2071,7 @@ function renderPicker(){
     </div>
     <div class="seg" style="margin-bottom:10px"><button data-mode="day" class="${st.mode==='day'?'active':''}" style="flex:1">Day</button><button data-mode="week" class="${st.mode==='week'?'active':''}" style="flex:1">Week</button></div>
     ${body}
-    <button class="btn ghost sm" id="pkClear" style="width:100%;justify-content:center;margin-top:10px">Clear (no deadline)</button>
+    ${st.cur.required?"":`<button class="btn ghost sm" id="pkClear" style="width:100%;justify-content:center;margin-top:10px">Clear (no deadline)</button>`}
   `;
   $("pickerPop").querySelectorAll("[data-qi]").forEach(b=>b.onclick=()=>{ const q=quick[+b.dataset.qi]; const cb=st.onPick; closePicker(); cb({deadline:q.v,isWk:q.wk}); });
   $("pkPrev").onclick=()=>{ st.month=new Date(y,m-1,1); renderPicker(); };
@@ -1893,7 +2079,7 @@ function renderPicker(){
   $("pickerPop").querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{ st.mode=b.dataset.mode; renderPicker(); });
   $("pickerPop").querySelectorAll("[data-day]").forEach(b=>b.onclick=()=>{ const v=b.dataset.day; const cb=st.onPick; closePicker(); cb({deadline:v,isWk:false}); });
   $("pickerPop").querySelectorAll("[data-week]").forEach(b=>b.onclick=()=>{ const v=b.dataset.week; const cb=st.onPick; closePicker(); cb({deadline:v,isWk:true}); });
-  $("pkClear").onclick=()=>{ const cb=st.onPick; closePicker(); cb({deadline:"",isWk:false}); };
+  const pc=$("pkClear"); if(pc) pc.onclick=()=>{ const cb=st.onPick; closePicker(); cb({deadline:"",isWk:false}); };
 }
 
 /* ---- Excel export (SheetJS from a whitelisted CDN) ---- */
@@ -1967,10 +2153,10 @@ function toggleTheme(){ data.settings.theme = (data.settings.theme==="dark")?"li
 /* ---- tabs ---- */
 function switchTab(t){
   curTab=t; $("page-project").classList.add("hidden");
-  ["projects","todo","calendar","year","weekprep","docs","glossary"].forEach(x=>$("page-"+x).classList.toggle("hidden",x!==t));
+  ["projects","todo","calendar","year","weekprep","docs","glossary","meetings"].forEach(x=>$("page-"+x).classList.toggle("hidden",x!==t));
   $("tabs").querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===t));
-  $("viewTitle").textContent = ({projects:"Projects",todo:"To-Do",calendar:"Calendar",year:"Year Plan",weekprep:"Week Prep",docs:"Working Documents",glossary:"Glossary"})[t] || "Projects";
-  if(t==="todo") renderTodo(); else if(t==="calendar") renderCalendar(); else if(t==="year") renderYear(); else if(t==="weekprep") renderWeekPrep(); else if(t==="docs") renderDocs(); else if(t==="glossary") renderGlossary(); else if(t==="projects") renderProjects();
+  $("viewTitle").textContent = ({projects:"Projects",todo:"To-Do",calendar:"Calendar",year:"Year Plan",weekprep:"Week Prep",docs:"Working Documents",glossary:"Glossary",meetings:"Recurring Meetings"})[t] || "Projects";
+  if(t==="todo") renderTodo(); else if(t==="calendar") renderCalendar(); else if(t==="year") renderYear(); else if(t==="weekprep") renderWeekPrep(); else if(t==="docs") renderDocs(); else if(t==="glossary") renderGlossary(); else if(t==="meetings") renderMeetings(); else if(t==="projects") renderProjects();
 }
 
 /* ============================================================
@@ -1983,10 +2169,11 @@ $("searchInput").addEventListener("input",renderProjects);
 $("filterPriority").addEventListener("change",renderProjects);
 $("filterCategory").addEventListener("change",renderProjects);
 $("newProjectBtn").onclick=newProject;
-$("newTaskBtn").onclick=()=>$("qaText").focus();
+$("todoNewProject").onclick=newProject;
+$("todoSearchInput").addEventListener("input",e=>{ todoSearch=e.target.value; renderTodo(); });
 $("qaAdd").onclick=qaAddTask;
 $("qaText").addEventListener("keydown",e=>{ if(e.key==="Enter") qaAddTask(); });
-$("qaDeadline").onclick=()=>openPicker($("qaDeadline"),{deadline:qaDL.deadline,isWk:qaDL.isWk},sel=>{ qaDL=sel; qaLabel(); $("qaText").focus(); });
+$("qaDeadline").onclick=()=>openPicker($("qaDeadline"),{deadline:qaDL.deadline,isWk:qaDL.isWk,required:true},sel=>{ qaDL=sel; qaLabel(); $("qaText").focus(); });
 $("todoShowDone").addEventListener("change",e=>{ todoShowDone=e.target.checked; renderTodo(); });
 $("exportBtn").onclick=exportExcel;
 $("detailClose").onclick=closeDetail;
