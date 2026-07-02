@@ -319,7 +319,19 @@
   .doc-item .dm{font-size:10.5px;color:var(--faint);margin-top:3px;}
   .doc-editor{background:var(--surface);border:1px solid var(--border);padding:18px 22px;}
   .doc-meta{font-size:11px;color:var(--faint);margin-top:5px;border-bottom:1px solid var(--border-soft);padding-bottom:10px;}
-  .doc-editor textarea{width:100%;border:none;background:transparent;outline:none;resize:vertical;min-height:52vh;line-height:1.65;font-size:13.5px;padding:0;margin-top:14px;color:var(--text);}
+  .doc-tools{display:flex;gap:4px;margin-top:10px;flex-wrap:wrap;align-items:stretch;}
+  .doc-tools button{border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:10.5px;font-weight:700;padding:5px 9px;letter-spacing:.3px;text-transform:uppercase;transition:.1s;display:inline-flex;align-items:center;gap:4px;}
+  .doc-tools button:hover{color:var(--text);border-color:#b9bdc9;background:var(--surface-2);}
+  .doc-tools .sep{width:1px;background:var(--border);margin:2px 3px;flex:none;}
+  .doc-body{min-height:52vh;outline:none;line-height:1.65;font-size:13.5px;margin-top:14px;color:var(--text);}
+  .doc-body:empty::before{content:attr(data-ph);color:var(--faint);pointer-events:none;}
+  .doc-body h1{font-size:21px;font-weight:800;margin:20px 0 8px;letter-spacing:-.02em;border-bottom:2px solid var(--text);padding-bottom:4px;}
+  .doc-body h1:first-child,.doc-body h2:first-child{margin-top:0;}
+  .doc-body h2{font-size:15px;font-weight:800;margin:16px 0 5px;text-transform:uppercase;letter-spacing:.5px;}
+  .doc-body p,.doc-body div{margin:0 0 4px;}
+  .doc-body ul,.doc-body ol{margin:6px 0;padding-left:24px;}
+  .doc-body blockquote{margin:4px 0;padding-left:16px;border-left:2px solid var(--border);}
+  .doc-body [style*="background-color"],.doc-body mark{color:#141519;padding:0 2px;}
 
   /* ===== glossary ===== */
   .gl-row{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--border);margin-bottom:8px;transition:.12s;}
@@ -333,8 +345,16 @@
   .gl-edit input,.gl-edit select,.gl-edit textarea{width:100%;padding:8px 11px;border:1px solid var(--border);background:var(--surface);outline:none;font-weight:500;}
   .gl-edit input:focus,.gl-edit select:focus,.gl-edit textarea:focus{border-color:var(--primary);}
   .gl-edit textarea{resize:vertical;min-height:64px;line-height:1.5;margin-top:8px;}
-  .gl-cat{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--faint);margin:12px 0 6px 2px;display:flex;align-items:center;gap:7px;}
-  .gl-cat::after{content:"";flex:1;height:1px;background:var(--border-soft);}
+  .gl-group{margin-bottom:4px;}
+  .gl-group.dragging{opacity:.45;}
+  .gl-group.drag-over{outline:2px dashed var(--primary);outline-offset:2px;background:var(--primary-soft);}
+  .gl-cat{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--faint);margin:12px 0 6px 2px;display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;padding:3px 0;}
+  .gl-cat:hover{color:var(--muted);}
+  .gl-cat .grip{color:var(--faint);cursor:grab;flex:none;}
+  .gl-cat .line{flex:1;height:1px;background:var(--border-soft);}
+  .gl-cat .cnt{font-weight:700;color:var(--muted);background:var(--surface-2);border:1px solid var(--border-soft);padding:0 7px;font-size:9.5px;}
+  .gl-cat .chev{transition:transform .15s var(--ease);flex:none;}
+  .gl-group.collapsed .gl-cat .chev{transform:rotate(-90deg);}
   .log-row{display:flex;gap:10px;font-size:11.5px;padding:7px 0;border-bottom:1px solid var(--border-soft);color:var(--muted);}
   .log-row .lt{color:var(--faint);white-space:nowrap;font-variant-numeric:tabular-nums;}
   .log-row .le{font-weight:700;color:var(--text);}
@@ -761,9 +781,11 @@ function normalize(d){
   d.weekPrep = Array.isArray(d.weekPrep) ? d.weekPrep : [];
   d.weekPrep.forEach(w=>{ w.id ||= uid(); w.weekStart ??= ""; w.notes ??= ""; if(!Array.isArray(w.items)) w.items=[]; w.items.forEach(it=>{ it.id ||= uid(); it.text ??= ""; it.done = !!it.done; }); w.updatedAt ??= 0; });
   d.docs = Array.isArray(d.docs) ? d.docs : [];
-  d.docs.forEach(doc=>{ doc.id ||= uid(); doc.title ??= ""; doc.body ??= ""; doc.createdAt ??= Date.now(); doc.updatedAt ??= doc.createdAt; });
+  d.docs.forEach(doc=>{ doc.id ||= uid(); doc.title ??= ""; doc.body ??= ""; doc.rich = !!doc.rich; doc.createdAt ??= Date.now(); doc.updatedAt ??= doc.createdAt; });
   d.glossary = Array.isArray(d.glossary) ? d.glossary : [];
   d.glossary.forEach(g=>{ g.id ||= uid(); g.term ??= ""; g.definition ??= ""; g.source ??= GLOSSARY_SOURCES[0]; g.category ??= ""; g.createdAt ??= Date.now(); g.updatedAt ??= g.createdAt; });
+  d.glossaryCollapsed = Array.isArray(d.glossaryCollapsed) ? d.glossaryCollapsed.filter(x=>typeof x==="string") : [];
+  d.glossaryCatOrder = (d.glossaryCatOrder && typeof d.glossaryCatOrder==="object" && !Array.isArray(d.glossaryCatOrder)) ? d.glossaryCatOrder : {};
   d.settings = d.settings || {}; d.settings.theme ??= "light";
   d.updatedAt ??= Date.now();
   return d;
@@ -1408,12 +1430,36 @@ function renderWeekPrep(){
 /* ---- Working documents (freeform notes on bigger topics) ---- */
 let curDocId=null, docSearch="";
 function wordsOf(s){ return (String(s||"").trim().match(/\S+/g)||[]).length; }
-function updateDocMeta(dd){ const m=$("docMeta"); if(m) m.textContent = "Created "+new Date(dd.createdAt).toLocaleDateString()+" · Last edited "+new Date(dd.updatedAt).toLocaleString()+" · "+wordsOf(dd.body)+" words"; }
+/* Sanitize document HTML: whitelist structural/format tags, drop scripts and
+   all attributes except a background-color-only style (used for highlights). */
+const DOC_TAGS=new Set(["H1","H2","H3","P","DIV","BR","B","STRONG","I","EM","U","S","STRIKE","MARK","UL","OL","LI","BLOCKQUOTE","SPAN","FONT"]);
+const DOC_DROP=new Set(["SCRIPT","STYLE","IFRAME","OBJECT","EMBED","LINK","META","FORM","INPUT","BUTTON","TEXTAREA","SELECT","SVG","IMG","VIDEO","AUDIO"]);
+function sanitizeDocHTML(html){
+  const root=new DOMParser().parseFromString("<div>"+String(html||"")+"</div>","text/html").body.firstChild;
+  (function walk(node){
+    [...node.childNodes].forEach(ch=>{
+      if(ch.nodeType===3) return;
+      if(ch.nodeType!==1){ ch.remove(); return; }
+      if(DOC_DROP.has(ch.tagName)){ ch.remove(); return; }
+      walk(ch);
+      if(!DOC_TAGS.has(ch.tagName)){ while(ch.firstChild) node.insertBefore(ch.firstChild,ch); ch.remove(); return; }
+      [...ch.attributes].forEach(a=>{
+        if(a.name==="style"){ const bg=ch.style.backgroundColor, ta=ch.style.textAlign; ch.removeAttribute("style"); if(bg) ch.style.backgroundColor=bg; if(ta) ch.style.textAlign=ta; }
+        else if(a.name==="align" && /^(left|center|right|justify)$/i.test(a.value)){ /* keep alignment */ }
+        else ch.removeAttribute(a.name);
+      });
+    });
+  })(root);
+  return root.innerHTML;
+}
+function docHTML(dd){ return dd.rich ? sanitizeDocHTML(dd.body) : esc(dd.body).replace(/\n/g,"<br>"); }
+function docText(dd){ if(!dd.rich) return dd.body||""; const t=document.createElement("div"); t.innerHTML=sanitizeDocHTML(dd.body); return t.textContent||""; }
+function updateDocMeta(dd){ const m=$("docMeta"); if(m) m.textContent = "Created "+new Date(dd.createdAt).toLocaleDateString()+" · Last edited "+new Date(dd.updatedAt).toLocaleString()+" · "+wordsOf(docText(dd))+" words"; }
 function renderDocs(){
   const host=$("docsBody"); if(!host) return;
   const q=docSearch.toLowerCase().trim();
   const sorted=[...data.docs].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
-  const list=q?sorted.filter(dd=>((dd.title||"")+" "+(dd.body||"")).toLowerCase().includes(q)):sorted;
+  const list=q?sorted.filter(dd=>((dd.title||"")+" "+docText(dd)).toLowerCase().includes(q)):sorted;
   let cur=data.docs.find(dd=>dd.id===curDocId);
   if(!cur && list.length){ cur=list[0]; curDocId=cur.id; }
   host.innerHTML=`
@@ -1428,7 +1474,7 @@ function renderDocs(){
       <div class="doc-list">${list.map(dd=>`
         <div class="doc-item ${cur&&dd.id===cur.id?'active':''}" data-doc="${dd.id}">
           <div class="dt">${esc(dd.title||"Untitled")}</div>
-          <div class="dm">${new Date(dd.updatedAt||dd.createdAt).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"})} · ${wordsOf(dd.body)} words</div>
+          <div class="dm">${new Date(dd.updatedAt||dd.createdAt).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"})} · ${wordsOf(docText(dd))} words</div>
         </div>`).join("")||`<div style="padding:14px;font-size:12px;color:var(--faint)">No documents match your search.</div>`}
       </div>
       ${cur?`
@@ -1438,7 +1484,31 @@ function renderDocs(){
           <button class="btn danger sm" id="docDelete" title="Delete document"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>
         </div>
         <div class="doc-meta" id="docMeta"></div>
-        <textarea id="docBody" placeholder="Start writing… How we do it today, what else we could try, learnings, links, open questions.">${esc(cur.body)}</textarea>
+        <div class="doc-tools">
+          <button data-cmd="h1" title="Turn the current line into a big header">Header</button>
+          <button data-cmd="h2" title="Turn the current line into a subheader">Sub</button>
+          <button data-cmd="p" title="Back to normal text">Text</button>
+          <span class="sep"></span>
+          <button data-cmd="bold" title="Bold (Ctrl+B)" style="font-weight:800">B</button>
+          <button data-cmd="i" title="Italic (Ctrl+I)" style="font-style:italic">I</button>
+          <button data-cmd="u" title="Underline (Ctrl+U)" style="text-decoration:underline">U</button>
+          <button data-cmd="s" title="Strikethrough" style="text-decoration:line-through">S</button>
+          <button data-cmd="hl" title="Highlight the selection" style="background:#ffe86b;color:#141519">HL</button>
+          <span class="sep"></span>
+          <button data-cmd="ul" title="Bullet list (or type “- ” at the start of a line)">•&nbsp;List</button>
+          <button data-cmd="ol" title="Numbered list (or type “1. ” at the start of a line)">1.&nbsp;List</button>
+          <button data-cmd="outdent" title="Decrease indent"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 6H3M21 12h-9M21 18H3M7 9l-4 3 4 3"/></svg></button>
+          <button data-cmd="indent" title="Increase indent"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 6H3M21 12h-9M21 18H3M3 9l4 3-4 3"/></svg></button>
+          <span class="sep"></span>
+          <button data-cmd="left" title="Align left"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3 6h18M3 12h10M3 18h14"/></svg></button>
+          <button data-cmd="center" title="Align centre"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3 6h18M7 12h10M5 18h14"/></svg></button>
+          <button data-cmd="right" title="Align right"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3 6h18M11 12h10M7 18h14"/></svg></button>
+          <span class="sep"></span>
+          <button data-cmd="undo" title="Undo (Ctrl+Z)">↺</button>
+          <button data-cmd="redo" title="Redo (Ctrl+Y)">↻</button>
+          <button data-cmd="clear" title="Remove formatting from the selection">Clear</button>
+        </div>
+        <div class="doc-body" id="docBody" contenteditable="true" data-ph="Start writing… How we do it today, what else we could try, learnings, links, open questions. Select text and use the buttons above for headers and highlights.">${docHTML(cur)}</div>
       </div>`:`<div class="empty" style="min-height:200px;display:grid;place-items:center">Select a document on the left.</div>`}
     </div>`
     :`<div class="empty"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/><path d="M9 13h6M9 17h6M9 9h1"/></svg><div>No working documents yet.<br><span style="color:var(--faint)">Create one to collect notes on a bigger topic — how you select stores for campaigns, new capabilities you're learning, anything worth keeping.</span></div></div>`}
@@ -1451,7 +1521,45 @@ function renderDocs(){
   if(cur2 && $("docTitle")){
     /* Typing updates data + the list entry in place — no full re-render, so focus is never lost. */
     $("docTitle").addEventListener("input",e=>{ cur2.title=e.target.value; cur2.updatedAt=Date.now(); save(); const li=host.querySelector(`.doc-item[data-doc="${cur2.id}"] .dt`); if(li) li.textContent=cur2.title||"Untitled"; updateDocMeta(cur2); });
-    $("docBody").addEventListener("input",e=>{ cur2.body=e.target.value; cur2.updatedAt=Date.now(); save(); updateDocMeta(cur2); });
+    const syncBody=()=>{ cur2.body=sanitizeDocHTML($("docBody").innerHTML); cur2.rich=true; cur2.updatedAt=Date.now(); save(); updateDocMeta(cur2); };
+    /* Word-style autoformat: typing "- ", "* " or "1. " at the start of a line turns it into a list */
+    const maybeAutoList=()=>{
+      const sel=window.getSelection(); if(!sel.rangeCount||!sel.isCollapsed) return;
+      const n=sel.anchorNode; if(!n||n.nodeType!==3||!$("docBody").contains(n)) return;
+      if(n.parentNode.closest && n.parentNode.closest("li")) return;
+      const t=n.textContent.replace(/ /g," "), off=sel.anchorOffset; /* Chrome puts nbsp at line end */
+      let kind=null;
+      if((t==="- "||t==="* ")&&off===2) kind="insertUnorderedList";
+      else if(/^1[.)] $/.test(t)&&off===3) kind="insertOrderedList";
+      if(!kind) return;
+      /* transform just after the input event settles: clear the prefix, put the
+         caret back on the emptied node, then convert the line into a list */
+      setTimeout(()=>{
+        n.textContent="";
+        const r=document.createRange(); r.setStart(n,0); r.collapse(true);
+        const s2=window.getSelection(); s2.removeAllRanges(); s2.addRange(r);
+        document.execCommand("styleWithCSS",false,false);
+        document.execCommand(kind);
+        syncBody();
+      },0);
+    };
+    $("docBody").addEventListener("input",()=>{ maybeAutoList(); syncBody(); });
+    /* paste as plain text so pasted content can't drag messy markup in */
+    $("docBody").addEventListener("paste",e=>{ e.preventDefault(); const txt=(e.clipboardData||window.clipboardData).getData("text/plain"); document.execCommand("insertText",false,txt); });
+    const CMD_MAP={bold:"bold",i:"italic",u:"underline",s:"strikeThrough",ul:"insertUnorderedList",ol:"insertOrderedList",indent:"indent",outdent:"outdent",left:"justifyLeft",center:"justifyCenter",right:"justifyRight",undo:"undo",redo:"redo"};
+    host.querySelectorAll(".doc-tools button").forEach(b=>{
+      b.addEventListener("mousedown",e=>e.preventDefault()); /* keep the text selection */
+      b.addEventListener("click",()=>{
+        const cmd=b.dataset.cmd; $("docBody").focus();
+        /* CSS-styling mode only for highlight — everything else emits plain tags the sanitizer keeps */
+        document.execCommand("styleWithCSS",false,cmd==="hl");
+        if(cmd==="h1"||cmd==="h2"||cmd==="p") document.execCommand("formatBlock",false,cmd.toUpperCase());
+        else if(cmd==="hl") document.execCommand("hiliteColor",false,"#ffe86b");
+        else if(cmd==="clear"){ document.execCommand("removeFormat"); document.execCommand("formatBlock",false,"P"); }
+        else if(CMD_MAP[cmd]) document.execCommand(CMD_MAP[cmd]);
+        syncBody();
+      });
+    });
     $("docDelete").onclick=()=>{ if(!confirm("Delete “"+(cur2.title||"Untitled")+"”? This can't be undone.")) return; data.docs=data.docs.filter(x=>x.id!==cur2.id); curDocId=null; save(); renderDocs(); };
     updateDocMeta(cur2);
   }
@@ -1505,11 +1613,31 @@ function renderGlossary(){
   const sections=(glFilter?[glFilter]:sources).map(s=>{
     const rows=bySrc(s);
     if(!rows.length && (q||glFilter)) return "";
-    /* group terms by subcategory within the source; uncategorized first */
+    /* group terms by subcategory within the source; uncategorized first,
+       then the user's saved drag order, then alphabetical for new ones */
     const groups={};
     rows.forEach(g=>{ const c=(g.category||"").trim(); (groups[c] ||= []).push(g); });
-    const cats=Object.keys(groups).sort((a,b)=> a===""?-1 : b===""?1 : a.localeCompare(b));
-    const body=cats.map(cn=>(cn?`<div class="gl-cat">${esc(cn)}</div>`:"")+groups[cn].map(rowHTML).join("")).join("");
+    const order=data.glossaryCatOrder[s]||[];
+    const cats=Object.keys(groups).sort((a,b)=>{
+      if(a==="") return -1; if(b==="") return 1;
+      const ia=order.indexOf(a), ib=order.indexOf(b);
+      if(ia>-1&&ib>-1) return ia-ib;
+      if(ia>-1) return -1; if(ib>-1) return 1;
+      return a.localeCompare(b);
+    });
+    const body=cats.map(cn=>{
+      if(!cn) return groups[cn].map(rowHTML).join("");
+      const key=s+"::"+cn;
+      const isCollapsed=data.glossaryCollapsed.includes(key) && !q; /* an active search always expands */
+      return `<div class="gl-group ${isCollapsed?'collapsed':''}" data-gsrc="${esc(s)}" data-gcat="${esc(cn)}">
+        <div class="gl-cat" draggable="true" title="Click to collapse or expand · drag to reorder">
+          <svg class="grip" width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="5" r="1.6"/><circle cx="16" cy="5" r="1.6"/><circle cx="8" cy="12" r="1.6"/><circle cx="16" cy="12" r="1.6"/><circle cx="8" cy="19" r="1.6"/><circle cx="16" cy="19" r="1.6"/></svg>
+          ${esc(cn)} <span class="line"></span><span class="cnt">${groups[cn].length}</span>
+          <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+        ${isCollapsed?"":groups[cn].map(rowHTML).join("")}
+      </div>`;
+    }).join("");
     return `<div class="todo-sec"><span class="d" style="width:8px;height:8px;background:${glColor(s)};display:inline-block"></span>${esc(s)} <span class="line"></span><span style="font-weight:700">${rows.length}</span></div>`
       + (body||`<div style="font-size:12px;color:var(--faint);padding:2px 0 8px">No ${esc(s)} terms yet.</div>`);
   }).join("");
@@ -1559,6 +1687,33 @@ function renderGlossary(){
       row.querySelector("[data-gdel]").addEventListener("click",()=>{ if(!confirm("Delete “"+(g.term||"this term")+"”?")) return; data.glossary=data.glossary.filter(x=>x.id!==g.id); glOpenId=null; save(); renderGlossary(); });
       row.querySelector("[data-gclose]").addEventListener("click",()=>{ glOpenId=null; renderGlossary(); });
     }
+  });
+  host.querySelectorAll(".gl-group").forEach(gr=>{
+    const src=gr.dataset.gsrc, cat=gr.dataset.gcat, key=src+"::"+cat;
+    const head=gr.querySelector(".gl-cat");
+    head.addEventListener("click",()=>{
+      const i=data.glossaryCollapsed.indexOf(key);
+      if(i>-1) data.glossaryCollapsed.splice(i,1); else data.glossaryCollapsed.push(key);
+      save(); renderGlossary();
+    });
+    head.addEventListener("dragstart",e=>{ e.stopPropagation(); e.dataTransfer.setData("text/plain","glcat|"+JSON.stringify([src,cat])); gr.classList.add("dragging"); });
+    head.addEventListener("dragend",()=>gr.classList.remove("dragging"));
+    gr.addEventListener("dragover",e=>{ e.preventDefault(); gr.classList.add("drag-over"); });
+    gr.addEventListener("dragleave",()=>gr.classList.remove("drag-over"));
+    gr.addEventListener("drop",e=>{
+      e.preventDefault(); gr.classList.remove("drag-over");
+      const raw=e.dataTransfer.getData("text/plain")||""; if(!raw.startsWith("glcat|")) return;
+      let fromSrc,fromCat; try{ [fromSrc,fromCat]=JSON.parse(raw.slice(6)); }catch(_e){ return; }
+      if(fromSrc!==src || fromCat===cat) return;
+      /* rebuild this source's order from the current visual order, dropping into place by cursor half */
+      const catsNow=[...host.querySelectorAll(".gl-group")].filter(x=>x.dataset.gsrc===src).map(x=>x.dataset.gcat);
+      const arr=catsNow.filter(c=>c!==fromCat);
+      const rect=gr.getBoundingClientRect();
+      let idx=arr.indexOf(cat); if(e.clientY>rect.top+rect.height/2) idx++;
+      arr.splice(idx,0,fromCat);
+      data.glossaryCatOrder[src]=arr;
+      save(); renderGlossary(); toast("Order updated");
+    });
   });
 }
 
