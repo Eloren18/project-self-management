@@ -518,7 +518,7 @@
     <button class="tab" data-ptab="today">Today</button>
     <button class="tab" data-ptab="tomorrow">Tomorrow</button>
     <button class="tab" data-ptab="week">Week</button>
-    <button class="tab" data-ptab="joy" id="joyTabBtn">The Good Stuff</button>
+    <button class="tab" data-ptab="pcal">Calendar</button>
     <button class="tab" data-ptab="resp">Need To</button>
     <button class="tab" data-ptab="bucket">Bucket List</button>
     <button class="tab" data-ptab="people">People</button>
@@ -640,7 +640,7 @@
   <section class="page hidden" id="ppage-today"><div id="pTodayBody"></div></section>
   <section class="page hidden" id="ppage-tomorrow"><div id="pTomorrowBody"></div></section>
   <section class="page hidden" id="ppage-week"><div id="pWeekBody"></div></section>
-  <section class="page hidden" id="ppage-joy"><div id="pJoyBody"></div></section>
+  <section class="page hidden" id="ppage-pcal"><div id="pCalBody"></div></section>
   <section class="page hidden" id="ppage-resp"><div id="pRespBody"></div></section>
   <section class="page hidden" id="ppage-bucket"><div id="pBucketBody"></div></section>
   <section class="page hidden" id="ppage-people"><div id="pPeopleBody"></div></section>
@@ -959,7 +959,7 @@ function normalizePersonal(p){
     it.recurringRule ??= null; it.intention ??= ""; it.isRest = !!it.isRest; it.personId ??= ""; it.bucketId ??= ""; it.stepId ??= ""; it.focusSessions ??= 0; });
   p.dayPlans = (p.dayPlans && typeof p.dayPlans==="object" && !Array.isArray(p.dayPlans)) ? p.dayPlans : {};
   Object.keys(p.dayPlans).forEach(k=>{ const d=p.dayPlans[k]; d.date=k;
-    d.entries = Array.isArray(d.entries)?d.entries:[]; d.entries.forEach(e=>{ e.id ||= uid(); e.itemId ??= ""; e.time ??= ""; e.dur = +e.dur||0; e.done = !!e.done; });
+    d.entries = Array.isArray(d.entries)?d.entries:[]; d.entries.forEach(e=>{ e.id ||= uid(); e.itemId ??= ""; e.time ??= ""; e.dur = +e.dur||0; e.done = !!e.done; e.label ??= ""; });
     d.firstThing ??= ""; d.committed = !!d.committed; d.committedAt ??= 0; d.bestMoment ??= ""; d.heavy = !!d.heavy;
     d.energy = ["low","medium","high"].includes(d.energy)?d.energy:"medium";
     if(!Array.isArray(d.dots)) d.dots = [false,false,false]; d.triaged = !!d.triaged; });
@@ -2319,7 +2319,7 @@ const MODE_KEY="psm_mode_v1";
 const ENERGY_ICON={low:"🌙",medium:"🌤",high:"⚡"};
 const WD_NAMES=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 let appMode=localStorage.getItem(MODE_KEY)==="personal"?"personal":"work";
-let pTab="today", nowItemId=null, pItemEditId=null, pNoteId=null, pNoteSearch="", pWeekStartIso=iso(weekStart(new Date())), pJoyFilter={size:"",tag:"",view:"all"}, pRespFilter="all", pBucketFilter="current", bucketOpenId=null, memoryBucketId=null, memoryPhotos=[], ptimeEntryCtx=null;
+let pTab="today", nowItemId=null, pItemEditId=null, pNoteId=null, pNoteSearch="", pWeekStartIso=iso(weekStart(new Date())), pCalDate=new Date(), pBucketFilter="current", bucketOpenId=null, memoryBucketId=null, memoryPhotos=[], ptimeEntryCtx=null;
 
 function P(){ return data.personal; }
 function pItem(id){ return P().items.find(x=>x.id===id); }
@@ -2402,10 +2402,10 @@ function switchPTab(t){
   $("page-project").classList.add("hidden");
   document.querySelectorAll("#mainArea > .page").forEach(s=>s.classList.toggle("hidden", s.id!=="ppage-"+t));
   $("personalTabs").querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.ptab===t));
-  $("viewTitle").textContent=({today:"Today",tomorrow:"Tomorrow",week:"Week",joy:P_LABEL_GOODSTUFF,resp:"Need To",bucket:"Bucket List",people:"People",pnotes:"Self Notes",reflect:"Reflect"})[t]||"Today";
+  $("viewTitle").textContent=({today:"Today",tomorrow:"Tomorrow",week:"Week",pcal:"Calendar",resp:"Need To",bucket:"Bucket List",people:"People",pnotes:"Self Notes",reflect:"Reflect"})[t]||"Today";
   pR(); window.scrollTo(0,0);
 }
-function pR(){ if(appMode!=="personal") return; ({today:renderPToday,tomorrow:renderPTomorrow,week:renderPWeek,joy:renderPJoy,resp:renderPResp,bucket:renderPBucket,people:renderPPeople,pnotes:renderPNotes,reflect:renderPReflect}[pTab]||renderPToday)(); }
+function pR(){ if(appMode!=="personal") return; ({today:renderPToday,tomorrow:renderPTomorrow,week:renderPWeek,pcal:renderPCal,resp:renderPResp,bucket:renderPBucket,people:renderPPeople,pnotes:renderPNotes,reflect:renderPReflect}[pTab]||renderPToday)(); }
 
 /* ---- shared dual-lane rendering (Today + Tomorrow) ---- */
 function laneHTML(plan,opts){
@@ -2415,7 +2415,7 @@ function laneHTML(plan,opts){
     return `<div class="pi-row ${it.type==="forMe"?"forme":""} ${e.done?"done":""}" draggable="true" data-entry="${e.id}">
       <div class="check-sm ${e.done?"on":""}" data-edone>${e.done?TICK:""}</div>
       <div style="flex:1;min-width:0">
-        <div class="pi-title">${esc(it.intention||it.title)}</div>
+        <div class="pi-title">${esc(it.intention||it.title)}${e.label?` <span style="color:var(--muted);font-weight:500">· ${esc(e.label)}</span>`:""}</div>
         <div class="pi-sub">
           ${e.time?`<span class="pi-badge">🕐 ${esc(e.time)}${e.dur?" · "+fmtMin(e.dur):""}</span>`:(e.dur?`<span class="pi-badge">${fmtMin(e.dur)}</span>`:"")}
           <span class="pi-badge" title="Energy">${ENERGY_ICON[it.energy]}</span>
@@ -2436,7 +2436,7 @@ function laneHTML(plan,opts){
 function bindLanes(host,plan){
   host.querySelectorAll(".pi-row[data-entry]").forEach(row=>{
     const e=plan.entries.find(x=>x.id===row.dataset.entry); if(!e) return; const it=pItem(e.itemId); if(!it) return;
-    row.querySelector("[data-edone]").addEventListener("click",()=>{ e.done=!e.done; if(e.done) completeItemEffects(it); else uncompleteItemEffects(it); save(); pR(); });
+    row.querySelector("[data-edone]").addEventListener("click",()=>{ e.done=!e.done; blockAwareComplete(e,it); save(); pR(); });
     row.querySelector("[data-etime]").addEventListener("click",()=>openPTime(plan,e));
     row.querySelector("[data-enow]").addEventListener("click",()=>openNow(it.id));
     row.querySelector("[data-eedit]").addEventListener("click",()=>openPItemModal(it.id));
@@ -2460,15 +2460,40 @@ function bindLanes(host,plan){
 }
 function openPTime(plan,e){
   ptimeEntryCtx={date:plan.date,entryId:e.id};
-  $("ptimeBox").innerHTML=`<h3>When & how long?</h3>
+  const it=pItem(e.itemId);
+  $("ptimeBox").innerHTML=`<h3>${esc(it?it.title:"This block")} · ${fmtShort(plan.date)}</h3>
     <div class="grid2">
       <div class="field"><label>Start time (optional)</label><input type="time" id="ptTime" value="${esc(e.time)}"></div>
       <div class="field"><label>Duration</label><select id="ptDur">${[0,15,30,45,60,90,120,180,240].map(m=>`<option value="${m}"${e.dur===m?" selected":""}>${m?fmtMin(m):"—"}</option>`).join("")}</select></div>
     </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" id="ptClear">Clear</button><button class="btn primary" id="ptSave">Save</button></div>`;
+    <div class="field"><label>This block means… (optional note)</label><input id="ptLabel" value="${esc(e.label||"")}" placeholder="e.g. Read pages 50–100"></div>
+    <div style="display:flex;gap:8px"><button class="btn danger sm" id="ptRemove">Remove from this day</button><span class="grow"></span><button class="btn ghost" id="ptClear">Clear time</button><button class="btn primary" id="ptSave">Save</button></div>`;
   const m=$("ptimeModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show"));
-  $("ptSave").onclick=()=>{ e.time=$("ptTime").value||""; e.dur=+$("ptDur").value||0; save(); closePM("ptimeModal"); pR(); };
+  $("ptSave").onclick=()=>{ e.time=$("ptTime").value||""; e.dur=+$("ptDur").value||0; e.label=($("ptLabel").value||"").trim(); save(); closePM("ptimeModal"); pR(); };
   $("ptClear").onclick=()=>{ e.time=""; e.dur=0; save(); closePM("ptimeModal"); pR(); };
+  $("ptRemove").onclick=()=>{ plan.entries=plan.entries.filter(x=>x.id!==e.id); if(it&&plan.firstThing===it.id) plan.firstThing=""; save(); closePM("ptimeModal"); pR(); };
+}
+/* completing one block of a spread task only completes the item when no other open blocks remain */
+function blockAwareComplete(e,it){
+  if(e.done){
+    const openElsewhere=Object.values(P().dayPlans).some(pl=>pl.entries.some(x=>x.itemId===it.id&&x.id!==e.id&&!x.done));
+    if(openElsewhere){ it.completedAt=Date.now(); toast("Block done — more blocks remain ⧉"); }
+    else completeItemEffects(it);
+  } else uncompleteItemEffects(it);
+}
+/* consecutive days (up to today, max 14 back) without a single for-me entry */
+function noMeStreak(){
+  const plans=P().dayPlans; const dates=Object.keys(plans).sort();
+  if(!dates.length) return 0;
+  if(dates[0]>iso(addDays(new Date(),-3))) return 0; /* too little history to judge */
+  let streak=0;
+  for(let k=0;k<14;k++){
+    const dt=iso(addDays(new Date(),-k)); if(dt<dates[0]) break;
+    const pl=plans[dt];
+    if(pl&&pl.entries.some(e=>{const it=pItem(e.itemId);return it&&it.type==="forMe";})) break;
+    streak++;
+  }
+  return streak;
 }
 function closePM(id){ const m=$(id); m.classList.remove("show"); setTimeout(()=>m.classList.add("hidden"),200); }
 function openMini(html){ $("qpBox").innerHTML=html; const m=$("qpModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show")); return $("qpBox"); }
@@ -2525,10 +2550,12 @@ function renderPToday(){
   const defs=P().dotDefs;
   const ft=plan.firstThing?pItem(plan.firstThing):null;
   const leftovers=(yplan&&yplan.committed&&!yplan.triaged)?yplan.entries.filter(e=>!e.done&&pItem(e.itemId)):[];
+  const meStreak=noMeStreak();
   host.innerHTML=`
     <div class="toolbar"><h1 class="page-title">Today</h1><span style="color:var(--faint);font-size:12.5px;font-weight:600">${parseISO(dt).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"})}</span><div class="grow"></div>
       <label style="font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;cursor:pointer" title="Marks today as draining — tomorrow will suggest rest"><input type="checkbox" id="pHeavy" ${plan.heavy?"checked":""} style="width:auto"> today feels heavy</label>
     </div>
+    ${meStreak>=3?`<div class="pinned-hint" style="cursor:default">🧡 <b>${meStreak} days in a row</b> without a single thing just for you. Today's the day to break that — even 15 minutes.</div>`:""}
     ${pinned?`<div class="pinned-hint" id="pinnedHint">🧭 Currently pursuing: <b>${esc(pinned.title)}</b><span class="grow"></span><span style="color:var(--muted)">${pinned.steps.filter(s=>s.done).length}/${pinned.steps.length} steps</span></div>`:""}
     <div class="dots-row">
       <span style="font-size:10px;font-weight:800;letter-spacing:.6px;color:var(--muted);text-transform:uppercase">Daily dots</span>
@@ -2574,108 +2601,73 @@ function openQuickPlan(dt){
   const rowB=i=>`<div class="pi-row ${i.type==="forMe"?"forme":""}" style="align-items:center"><div class="pi-title" style="flex:1">${esc(i.title)}</div><span class="pi-badge">${i.timeEstimate?fmtMin(i.timeEstimate):""} ${ENERGY_ICON[i.energy]}</span><button class="btn sm primary" data-qadd="${i.id}">+ Add</button></div>`;
   const box=openMini(`<h3>Quick plan — 60 seconds</h3>
     <p class="sub">Pick a couple of things. At least one just for you.</p>
-    <div class="section-h" style="margin-top:4px">For me <span class="line"></span></div>${suggJoy.map(rowB).join("")||`<div style="font-size:12px;color:var(--faint)">Your joy backlog is empty — add things in ${esc(P_LABEL_GOODSTUFF)}.</div>`}
+    <div class="section-h" style="margin-top:4px">For me <span class="line"></span></div>${suggJoy.map(rowB).join("")||`<div style="font-size:12px;color:var(--faint)">Nothing for-you yet — add your one thing in Tomorrow.</div>`}
     <div class="section-h">I need to <span class="line"></span></div>${suggResp.map(rowB).join("")||`<div style="font-size:12px;color:var(--faint)">Nothing pending. Lucky you.</div>`}
     <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn primary" id="qpDone">Done</button></div>`);
   box.querySelectorAll("[data-qadd]").forEach(b=>b.onclick=()=>{ addToPlan(dt,b.dataset.qadd); b.disabled=true; b.textContent="Added ✓"; });
   $("qpDone").onclick=()=>{ closePM("qpModal"); pR(); };
 }
 
-/* ---- Tomorrow (evening ritual) ---- */
+/* ---- Tomorrow (simple: tomorrow's to-dos + one thing for me) ---- */
+function recentForMeChips(){
+  const seen=new Set(); const out=[];
+  [...P().items].filter(i=>i.type==="forMe"&&!i.bucketId).sort((a,b)=>(b.completedAt||b.createdAt)-(a.completedAt||a.createdAt)).forEach(i=>{ const k=(i.title||"").trim().toLowerCase(); if(!k||seen.has(k)) return; seen.add(k); out.push(i); });
+  return out.slice(0,4).length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">${out.slice(0,4).map(i=>`<button class="chip trow-dl" data-otc="${i.id}">🧡 ${esc(i.title)}</button>`).join("")}</div>`:"";
+}
 function renderPTomorrow(){
   const host=$("pTomorrowBody"); if(!host) return;
   const dt=iso(addDays(new Date(),1)); const plan=planFor(dt,true);
-  const today=planFor(todayISO(),true);
-  const s=P().settings;
-  const avail=Math.max(0,(minsOf(s.freeEnd)??1380)-(minsOf(s.freeStart)??1080));
-  const planned=plan.entries.reduce((a,e)=>a+(e.dur||((pItem(e.itemId)||{}).timeEstimate)||30),0);
   const hasForMe=plan.entries.some(e=>{const it=pItem(e.itemId);return it&&it.type==="forMe";});
-  const segs=plan.entries.map(e=>{const it=pItem(e.itemId)||{};const d=e.dur||it.timeEstimate||30;return `<i style="width:${Math.min(100,d/avail*100)}%;background:${it.type==="forMe"?"var(--forme)":"var(--needto)"};border-right:1px solid var(--surface)" title="${esc(it.title)} · ${fmtMin(d)}"></i>`;}).join("");
-  const starved=starvedTags();
-  const lowEnergy=plan.energy==="low"||today.heavy;
-  const backlog=lane=>P().items.filter(i=>i.type===lane&&i.status!=="done"&&!plan.entries.some(e=>e.itemId===i.id))
-    .filter(i=>!pTmwFilter.max||((i.timeEstimate||0)<=pTmwFilter.max))
-    .filter(i=>!pTmwFilter.energy||i.energy===pTmwFilter.energy)
-    .sort((a,b)=>(lane==="forMe"&&lowEnergy)?((b.isRest?1:0)-(a.isRest?1:0)):(a.createdAt-b.createdAt));
-  const bRow=i=>`<div class="pi-row ${i.type==="forMe"?"forme":""}" style="align-items:center"><div class="pi-title" style="flex:1">${esc(i.title)}</div><span class="pi-badge">${i.timeEstimate?fmtMin(i.timeEstimate):"?"} ${ENERGY_ICON[i.energy]}${i.isRest?" 🌿":""}</span><button class="btn sm" data-badd="${i.id}">+</button></div>`;
+  const streak=noMeStreak();
+  const respOpen=P().items.filter(i=>i.type==="responsibility"&&i.status!=="done"&&!plan.entries.some(e=>e.itemId===i.id));
   host.innerHTML=`
-    <div class="toolbar"><h1 class="page-title">Tomorrow</h1><span style="color:var(--faint);font-size:12.5px;font-weight:600">${parseISO(dt).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"})} · your evening ritual</span><div class="grow"></div>
-      ${plan.committed?`<span class="badge this" style="font-size:11px">Committed ✓</span>`:""}
+    <div class="toolbar"><h1 class="page-title">Tomorrow</h1><span style="color:var(--faint);font-size:12.5px;font-weight:600">${parseISO(dt).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"})}</span><div class="grow"></div>${plan.committed?`<span class="badge this">Committed ✓</span>`:""}</div>
+    ${streak>=3?`<div class="pinned-hint" style="cursor:default">🧡 <b>${streak} days in a row</b> without a single thing just for you. Tomorrow, change that — even 15 minutes.</div>`:""}
+    ${laneHTML(plan)}
+    <div class="lane" style="margin-top:14px">
+      <h3>Add a to-do for tomorrow <span class="line"></span></h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select id="tmAddSel" style="flex:1;min-width:160px;padding:8px 10px;border:1px solid var(--border);background:var(--surface)">${respOpen.map(i=>`<option value="${i.id}">${esc(i.title)}</option>`).join("")||`<option value="">(nothing open in Need To)</option>`}</select>
+        <button class="btn sm" id="tmAddBtn">+ Add</button>
+      </div>
     </div>
-    ${starved.length?`<div class="pinned-hint" style="cursor:default">🌱 It's been a while since anything <b>${starved.map(esc).join(", ")}</b> — want to plan one? ${starved.map(t=>`<button class="btn sm" data-starve="${esc(t)}">+ ${esc(t)}</button>`).join(" ")}</div>`:""}
-    <div class="prep-grid">
-      <div>
-        <div class="section-h" style="margin-top:0">Tomorrow's plan <span class="line"></span></div>
-        ${laneHTML(plan)}
-        <div class="section-h">Your free hours <span class="line"></span></div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)">
-          Free from <input type="time" id="tbStart" value="${esc(s.freeStart)}" style="width:auto;padding:4px 6px;border:1px solid var(--border);background:var(--surface)"> to
-          <input type="time" id="tbEnd" value="${esc(s.freeEnd)}" style="width:auto;padding:4px 6px;border:1px solid var(--border);background:var(--surface)">
-          <span class="grow"></span><b style="color:${planned>avail?"#c0392b":"var(--text)"}">${fmtMin(planned)} planned / ${fmtMin(avail)} free${planned>avail?" — over by "+fmtMin(planned-avail):""}</b>
-        </div>
-        <div class="tbox">${segs}</div>
-        ${planned>avail?`<div style="font-size:11.5px;color:#c0392b;font-weight:600">That's more than fits — drop or shrink something, future-you will thank you.</div>`:""}
-        <div class="section-h">Tomorrow's first thing <span class="line"></span></div>
-        <select id="ftSelect" style="width:100%;padding:8px 10px;border:1px solid var(--border);background:var(--surface)"><option value="">— pick the single opening move —</option>${plan.entries.map(e=>{const it=pItem(e.itemId);return it?`<option value="${it.id}"${plan.firstThing===it.id?" selected":""}>${esc(it.title)}</option>`:"";}).join("")}</select>
-        <div style="display:flex;gap:8px;margin-top:16px;align-items:center">
-          <button class="btn primary" id="commitBtn" style="flex:1;justify-content:center" ${plan.committed?"":""}>${plan.committed?"Re-commit tomorrow":"Commit tomorrow"} 🌙</button>
-        </div>
-        ${hasForMe?"":`<div style="font-size:11.5px;color:var(--muted);margin-top:6px">Committing needs at least one thing that's just for you.</div>`}
-        <div class="section-h">Before you close the day <span class="line"></span></div>
-        <div class="field"><label>Best moment of today (one line, optional)</label><input id="bmToday" value="${esc(today.bestMoment)}" placeholder="What was quietly good about today?"></div>
-      </div>
-      <div>
-        <div class="section-h" style="margin-top:0">Day templates <span class="line"></span></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-          <select id="tplSelect" style="flex:1;padding:8px 10px;border:1px solid var(--border);background:var(--surface)"><option value="">— choose a template —</option>${P().templates.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join("")}</select>
-          <button class="btn sm" id="tplApply">Apply</button><button class="btn sm ghost" id="tplSave">Save plan as…</button>${P().templates.length?`<button class="btn sm ghost" id="tplDel" title="Delete selected template">🗑</button>`:""}
-        </div>
-        <div class="section-h">How's tomorrow's energy? <span class="line"></span></div>
-        <div class="seg" style="margin-bottom:10px">${["low","medium","high"].map(x=>`<button data-energy="${x}" class="${plan.energy===x?"active":""}" style="flex:1">${ENERGY_ICON[x]} ${x}</button>`).join("")}</div>
-        ${lowEnergy?`<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">🌿 Low-energy evening — restful things first.</div>`:""}
-        <div class="section-h">Pick from your backlogs <span class="line"></span></div>
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <select id="fMax" style="flex:1;padding:6px 8px;border:1px solid var(--border);background:var(--surface)"><option value="0">Any length</option><option value="15"${pTmwFilter.max===15?" selected":""}>≤ 15m</option><option value="60"${pTmwFilter.max===60?" selected":""}>≤ 1h</option><option value="120"${pTmwFilter.max===120?" selected":""}>≤ 2h</option></select>
-          <select id="fEnergy" style="flex:1;padding:6px 8px;border:1px solid var(--border);background:var(--surface)"><option value="">Any energy</option>${["low","medium","high"].map(x=>`<option${pTmwFilter.energy===x?" selected":""}>${x}</option>`).join("")}</select>
-        </div>
-        <div class="section-h" style="color:var(--forme)">For me <span class="line"></span></div>${backlog("forMe").slice(0,8).map(bRow).join("")||`<div style="font-size:12px;color:var(--faint)">Nothing matching — loosen the filters or add to ${esc(P_LABEL_GOODSTUFF)}.</div>`}
-        <div class="section-h" style="color:var(--needto)">I need to <span class="line"></span></div>${backlog("responsibility").slice(0,8).map(bRow).join("")||`<div style="font-size:12px;color:var(--faint)">All clear.</div>`}
-      </div>
-    </div>`;
+    <div class="lane forme" style="margin-top:14px">
+      <h3>One thing for me 🧡 <span class="line"></span></h3>
+      ${hasForMe?`<div style="font-size:12.5px;color:var(--muted)">Locked in above. That's the whole secret.</div>`:`
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="oneThing" placeholder="Tomorrow, just for me, I will…" style="flex:1;min-width:180px;padding:8px 11px;border:1px solid var(--border);background:var(--surface);outline:none;font-weight:600" autocomplete="off">
+        <button class="btn primary sm" id="oneThingAdd">Add</button>
+      </div>${recentForMeChips()}`}
+    </div>
+    <div style="display:flex;margin-top:16px"><button class="btn primary" id="commitBtn" style="flex:1;justify-content:center">${plan.committed?"Re-commit":"Commit"} tomorrow 🌙</button></div>
+    ${hasForMe?"":`<div style="font-size:11.5px;color:var(--muted);margin-top:6px">Committing needs your one thing first.</div>`}`;
   bindLanes(host,plan);
-  host.querySelectorAll("[data-badd]").forEach(b=>b.onclick=()=>{ addToPlan(dt,b.dataset.badd); renderPTomorrow(); });
-  host.querySelectorAll("[data-energy]").forEach(b=>b.onclick=()=>{ plan.energy=b.dataset.energy; save(); renderPTomorrow(); });
-  host.querySelectorAll("[data-starve]").forEach(b=>b.onclick=()=>{
-    const t=b.dataset.starve; const cand=P().items.find(i=>i.type==="forMe"&&i.status!=="done"&&i.tags.some(x=>x.trim().toLowerCase()===t)&&!plan.entries.some(e=>e.itemId===i.id));
-    if(cand){ addToPlan(dt,cand.id); toast("Planned: "+cand.title+" 🌱"); renderPTomorrow(); } else toast("No open item with that tag");
+  $("tmAddBtn").onclick=()=>{ const v=$("tmAddSel").value; if(!v) return; addToPlan(dt,v); renderPTomorrow(); };
+  const ot=$("oneThing");
+  if(ot){
+    const addOne=()=>{ const t=(ot.value||"").trim(); if(!t){ ot.focus(); return; }
+      const it={id:uid(),title:t,notes:"",type:"forMe",timeEstimate:0,energy:"medium",tags:[],status:"open",createdAt:Date.now(),completedAt:0,recurringRule:null,intention:"",isRest:false,personId:"",bucketId:"",stepId:"",focusSessions:0};
+      P().items.push(it); plan.entries.push({id:uid(),itemId:it.id,time:"",dur:0,done:false,label:""});
+      save(); renderPTomorrow(); toast("That's the spirit 🧡"); };
+    $("oneThingAdd").onclick=addOne;
+    ot.addEventListener("keydown",e=>{ if(e.key==="Enter") addOne(); });
+  }
+  host.querySelectorAll("[data-otc]").forEach(b=>b.onclick=()=>{
+    const src=pItem(b.dataset.otc); if(!src) return;
+    if(src.status==="open"){ addToPlan(dt,src.id); }
+    else{ const copy=Object.assign({},src,{id:uid(),status:"open",createdAt:Date.now(),completedAt:0,recurringRule:null,bucketId:"",stepId:"",focusSessions:0});
+      P().items.push(copy); plan.entries.push({id:uid(),itemId:copy.id,time:"",dur:0,done:false,label:""}); save(); }
+    renderPTomorrow();
   });
-  $("tbStart").onchange=e=>{ s.freeStart=e.target.value; save(); renderPTomorrow(); };
-  $("tbEnd").onchange=e=>{ s.freeEnd=e.target.value; save(); renderPTomorrow(); };
-  $("fMax").onchange=e=>{ pTmwFilter.max=+e.target.value||0; renderPTomorrow(); };
-  $("fEnergy").onchange=e=>{ pTmwFilter.energy=e.target.value; renderPTomorrow(); };
-  $("ftSelect").onchange=e=>{ plan.firstThing=e.target.value; save(); };
-  $("bmToday").addEventListener("input",e=>{ today.bestMoment=e.target.value; save(); });
-  $("tplApply").onclick=()=>{ const t=P().templates.find(x=>x.id===$("tplSelect").value); if(!t){ toast("Pick a template first"); return; }
-    t.entries.forEach(te=>{ if(pItem(te.itemId)&&!plan.entries.some(e=>e.itemId===te.itemId)) plan.entries.push({id:uid(),itemId:te.itemId,time:te.time||"",dur:te.dur||0,done:false}); });
-    save(); renderPTomorrow(); toast("Template applied"); };
-  $("tplSave").onclick=()=>{ const n=(prompt("Template name (e.g. normal weekday, gym day):")||"").trim(); if(!n) return;
-    P().templates.push({id:uid(),name:n,entries:plan.entries.map(e=>({itemId:e.itemId,time:e.time,dur:e.dur}))}); save(); renderPTomorrow(); toast("Template saved"); };
-  const tdl=$("tplDel"); if(tdl) tdl.onclick=()=>{ const t=P().templates.find(x=>x.id===$("tplSelect").value); if(!t) return; if(!confirm("Delete template “"+t.name+"”?")) return; P().templates=P().templates.filter(x=>x.id!==t.id); save(); renderPTomorrow(); };
   $("commitBtn").onclick=()=>{
     if(!plan.entries.some(e=>{const it=pItem(e.itemId);return it&&it.type==="forMe";})){
-      const joy=P().items.filter(i=>i.type==="forMe"&&i.status!=="done"&&!plan.entries.some(e=>e.itemId===i.id));
-      const sugg=(lowEnergy?joy.filter(j=>j.isRest).concat(joy.filter(j=>!j.isRest)):joy).slice(0,3);
-      const box=openMini(`<h3>One thing for you first 🧡</h3><p class="sub">Pick one thing that's just for you — even 15 minutes counts.</p>
-        ${sugg.map(i=>`<div class="pi-row forme" style="align-items:center"><div class="pi-title" style="flex:1">${esc(i.title)}</div><span class="pi-badge">${i.timeEstimate?fmtMin(i.timeEstimate):""} ${ENERGY_ICON[i.energy]}</span><button class="btn sm primary" data-qadd="${i.id}">+ Add</button></div>`).join("")||`<div style="font-size:12.5px;color:var(--muted)">Your joy backlog is empty — add a few things you love in ${esc(P_LABEL_GOODSTUFF)} first.</div>`}
-        <div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="btn ghost" id="qpClose">Close</button></div>`);
-      box.querySelectorAll("[data-qadd]").forEach(b=>b.onclick=()=>{ addToPlan(dt,b.dataset.qadd); closePM("qpModal"); renderPTomorrow(); });
-      $("qpClose").onclick=()=>closePM("qpModal");
-      return;
+      toast("Pick one thing that's just for you first — even 15 minutes 🧡");
+      const o=$("oneThing"); if(o) o.focus(); return;
     }
-    plan.committed=true; plan.committedAt=Date.now(); save(); renderPTomorrow(); toast("Tomorrow is ready. Sleep easy 🌙");
+    plan.committed=true; plan.committedAt=Date.now(); save(); renderPTomorrow(); toast("Tomorrow is ready 🌙");
   };
 }
-let pTmwFilter={max:0,energy:""};
+
 
 /* ---- Week ---- */
 function renderPWeek(){
@@ -2709,7 +2701,7 @@ function renderPWeek(){
       const evs=(pl?pl.entries:[]).map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it).sort((a,b)=>(a.e.time||"99").localeCompare(b.e.time||"99"));
       return `<div class="pwday ${dt===tISO?"today":""}" data-day="${dt}">
         <div style="font-size:10px;font-weight:800;color:${dt===tISO?"var(--primary)":"var(--faint)"};text-transform:uppercase;letter-spacing:.5px">${WD_NAMES[(d.getDay()+6)%7]} ${d.getDate()}</div>
-        ${evs.map(x=>`<div class="pw-ev ${x.it.type==="forMe"?"forme":""} ${x.e.done?"done":""}" draggable="true" data-wentry="${x.e.id}" data-wday="${dt}">${x.e.time?esc(x.e.time)+" · ":""}${esc(x.it.title)}${x.e.dur?" ("+fmtMin(x.e.dur)+")":""}</div>`).join("")}
+        ${evs.map(x=>`<div class="pw-ev ${x.it.type==="forMe"?"forme":""} ${x.e.done?"done":""}" draggable="true" data-wentry="${x.e.id}" data-wday="${dt}">${x.e.time?esc(x.e.time)+" · ":""}${esc(x.it.title)}${x.e.label?" · "+esc(x.e.label):""}${x.e.dur?" ("+fmtMin(x.e.dur)+")":""}</div>`).join("")}
         <div style="font-size:14px;color:var(--faint);opacity:.5;text-align:center;margin-top:6px">+</div>
       </div>`;}).join("")}</div>
     <div style="font-size:11.5px;color:var(--faint);margin-top:10px">Click a day to place something · drag items between days · you choose when and how long — nothing here has a deadline.</div>`;
@@ -2750,89 +2742,132 @@ function openDayAdd(dt){
     <div class="field"><label>Duration</label><select id="daDur">${[0,15,30,45,60,90,120,180,240].map(m=>`<option value="${m}">${m?fmtMin(m):"—"}</option>`).join("")}</select></div></div>
     <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn ghost" id="daCancel">Cancel</button><button class="btn primary" id="daAdd">Place it</button></div>`);
   $("daCancel").onclick=()=>closePM("qpModal");
-  $("daAdd").onclick=()=>{ const idv=$("daSel").value; if(!idv) return; addToPlan(dt,idv,{time:$("daTime").value||"",dur:+$("daDur").value||0}); closePM("qpModal"); renderPWeek(); toast("Placed on "+fmtShort(dt)); };
+  $("daAdd").onclick=()=>{ const idv=$("daSel").value; if(!idv) return; addToPlan(dt,idv,{time:$("daTime").value||"",dur:+$("daDur").value||0}); closePM("qpModal"); pR(); toast("Placed on "+fmtShort(dt)); };
 }
 
-/* ---- The Good Stuff (joy backlog) + Need To (responsibilities) ---- */
-function joyCardHTML(i){
-  const per=i.personId?P().people.find(p=>p.id===i.personId):null;
-  return `<div class="joycard ${i.isRest?"rest":""}" data-joy="${i.id}">
-    <h4>${esc(i.title)}</h4>
-    <div class="pi-sub">${i.timeEstimate?`<span class="pi-badge">${fmtMin(i.timeEstimate)}</span>`:""}<span class="pi-badge">${ENERGY_ICON[i.energy]}</span>${i.isRest?`<span class="pi-badge">🌿 rest</span>`:""}${i.recurringRule?`<span class="pi-badge">↻ ${i.recurringRule.type==="daily"?"daily":WD_NAMES[i.recurringRule.weekday]}</span>`:""}${i.tags.map(t=>`<span class="pi-badge">${esc(t)}</span>`).join("")}${per?`<span class="pi-badge">👤 ${esc(per.name)}</span>`:""}</div>
-    ${i.intention?`<div style="font-size:11.5px;color:var(--muted);font-style:italic">${esc(i.intention)}</div>`:""}
-    <div style="display:flex;gap:2px;margin-top:auto;flex-wrap:wrap">
-      <button class="pi-act" data-jplan title="Plan for tomorrow">🌙</button>
-      <button class="pi-act" data-jnow title="Do it right now">▶</button>
-      <button class="pi-act" data-jrit title="Make it a ritual (recurring)">↻</button>
-      <button class="pi-act" data-jedit title="Edit">✎</button>
-      <span class="grow"></span>
-      <button class="pi-act" data-jdone title="I did this!">✓</button>
-    </div>
-  </div>`;
+/* ---- Personal Calendar (monthly) + spread-over-days + Need To ---- */
+function pCalEntryHTML(x,ci){
+  return `<div class="pw-ev ${x.it.type==="forMe"?"forme":""} ${x.e.done?"done":""}" draggable="true" data-wentry="${x.e.id}" data-wday="${ci}" title="${esc(x.it.title)}${x.e.label?" — "+esc(x.e.label):""}">${x.e.time?esc(x.e.time)+" · ":""}${esc(x.it.title)}${x.e.label?" · "+esc(x.e.label):""}${x.e.dur?" ("+fmtMin(x.e.dur)+")":""}</div>`;
 }
-function renderPJoy(){
-  const host=$("pJoyBody"); if(!host) return;
-  const f=pJoyFilter;
-  const all=P().items.filter(i=>i.type==="forMe"&&i.status!=="done");
-  const tags=[...new Set(all.flatMap(i=>i.tags.map(t=>t.trim())).filter(Boolean))].sort();
-  let list=all.filter(i=>f.view!=="rest"||i.isRest).filter(i=>!f.tag||i.tags.some(t=>t.trim()===f.tag));
-  if(f.size==="15") list=list.filter(i=>i.timeEstimate&&i.timeEstimate<=15);
-  else if(f.size==="evening") list=list.filter(i=>i.timeEstimate&&i.timeEstimate<=120);
-  else if(f.size==="half") list=list.filter(i=>i.timeEstimate>120&&i.timeEstimate<=300);
-  else if(f.size==="weekend") list=list.filter(i=>i.timeEstimate>300||!i.timeEstimate);
-  host.innerHTML=`
-    <div class="toolbar"><h1 class="page-title">${esc(P_LABEL_GOODSTUFF)}</h1><div class="grow"></div>
-      <div class="seg"><button data-jv="all" class="${f.view!=="rest"?"active":""}">Everything</button><button data-jv="rest" class="${f.view==="rest"?"active":""}">🌿 Rest menu</button></div>
-      <select class="filter" id="jTag"><option value="">All tags</option>${tags.map(t=>`<option${t===f.tag?" selected":""}>${esc(t)}</option>`).join("")}</select>
-      <div class="seg">${[["","Any size"],["15","≤15m"],["evening","Evening"],["half","Half-day"],["weekend","Weekend"]].map(x=>`<button data-jsize="${x[0]}" class="${f.size===x[0]?"active":""}">${x[1]}</button>`).join("")}</div>
-    </div>
-    <div class="qadd"><input id="joyCapture" placeholder="Something you'd love to do… press Enter" autocomplete="off" style="flex:1;min-width:180px;border:none;background:transparent;outline:none;font-weight:600;padding:4px 2px"><button class="btn primary sm" id="joyAdd">Add joy</button><button class="btn sm ghost" id="joyAddFull">+ with details</button></div>
-    ${list.length?`<div class="joygrid">${list.map(joyCardHTML).join("")}</div>`
-      :`<div class="empty"><div>${f.view==="rest"?"No rest items yet — mark gentle things with 🌿 when you add them.":"An empty menu means evenings default to the phone.<br><span style='color:var(--faint)'>Capture a few things you genuinely enjoy — tiny ones count double.</span>"}</div></div>`}`;
-  host.querySelectorAll("[data-jv]").forEach(b=>b.onclick=()=>{ f.view=b.dataset.jv; renderPJoy(); });
-  host.querySelectorAll("[data-jsize]").forEach(b=>b.onclick=()=>{ f.size=b.dataset.jsize; renderPJoy(); });
-  $("jTag").onchange=e=>{ f.tag=e.target.value; renderPJoy(); };
-  const add=()=>{ const t=($("joyCapture").value||"").trim(); if(!t){ $("joyCapture").focus(); return; }
-    P().items.push({id:uid(),title:t,notes:"",type:"forMe",timeEstimate:0,energy:"medium",tags:[],status:"open",createdAt:Date.now(),completedAt:0,recurringRule:null,intention:"",isRest:false,personId:"",bucketId:"",stepId:"",focusSessions:0});
-    save(); renderPJoy(); toast("Added ✨"); const i2=$("joyCapture"); if(i2) i2.focus(); };
-  $("joyAdd").onclick=add;
-  $("joyCapture").addEventListener("keydown",e=>{ if(e.key==="Enter") add(); });
-  $("joyAddFull").onclick=()=>openPItemModal(null,{type:"forMe"});
-  host.querySelectorAll("[data-joy]").forEach(card=>{
-    const i=pItem(card.dataset.joy); if(!i) return;
-    card.querySelector("[data-jplan]").onclick=()=>{ addToPlan(iso(addDays(new Date(),1)),i.id); toast("On tomorrow's plan 🌙"); };
-    card.querySelector("[data-jnow]").onclick=()=>openNow(i.id);
-    card.querySelector("[data-jedit]").onclick=()=>openPItemModal(i.id);
-    card.querySelector("[data-jdone]").onclick=()=>{ completeItemEffects(i); save(); renderPJoy(); toast("Lovely. 🧡"); };
-    card.querySelector("[data-jrit]").onclick=()=>{
-      const box=openMini(`<h3>Make “${esc(i.title)}” a ritual</h3><p class="sub">It'll be pre-planned automatically on that day.</p>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">${WD_NAMES.map((w,ix)=>`<button class="btn sm" data-rw="${ix}">${w}</button>`).join("")}<button class="btn sm" data-rw="daily">Daily</button><button class="btn sm ghost" data-rw="off">Stop repeating</button></div>`);
-      box.querySelectorAll("[data-rw]").forEach(b=>b.onclick=()=>{ const v=b.dataset.rw;
-        i.recurringRule=v==="off"?null:(v==="daily"?{type:"daily"}:{type:"weekly",weekday:+v});
-        save(); closePM("qpModal"); renderPJoy(); toast(v==="off"?"No longer repeats":"It's a ritual now ↻"); });
-    };
+function bindPCalDrag(host,rerender){
+  host.querySelectorAll(".pw-ev").forEach(ev=>{
+    ev.addEventListener("dragstart",e=>{ e.dataTransfer.setData("application/x-psm-pweek",JSON.stringify([ev.dataset.wday,ev.dataset.wentry])); });
+    ev.addEventListener("click",e=>{ e.stopPropagation(); const pl=P().dayPlans[ev.dataset.wday]; const en=pl&&pl.entries.find(x=>x.id===ev.dataset.wentry); if(en) openPTime(pl,en); });
   });
+  host.querySelectorAll("[data-pday]").forEach(cell=>{
+    cell.addEventListener("click",e=>{ if(e.target.closest(".pw-ev")) return; openDayAdd(cell.dataset.pday); });
+    cell.addEventListener("dragover",e=>{ if(![...e.dataTransfer.types].includes("application/x-psm-pweek")) return; e.preventDefault(); cell.classList.add("drag-over"); });
+    cell.addEventListener("dragleave",()=>cell.classList.remove("drag-over"));
+    cell.addEventListener("drop",e=>{
+      const raw=e.dataTransfer.getData("application/x-psm-pweek"); if(!raw) return;
+      e.preventDefault(); cell.classList.remove("drag-over");
+      let fd,fe; try{ [fd,fe]=JSON.parse(raw); }catch(_x){ return; }
+      const to=cell.dataset.pday; if(fd===to) return;
+      const fromPlan=P().dayPlans[fd]; if(!fromPlan) return;
+      const idx=fromPlan.entries.findIndex(x=>x.id===fe); if(idx<0) return;
+      const entry=fromPlan.entries.splice(idx,1)[0];
+      planFor(to,true).entries.push(entry);
+      if(fromPlan.firstThing===entry.itemId) fromPlan.firstThing="";
+      save(); rerender(); toast("Moved to "+fmtShort(to));
+    });
+  });
+}
+function renderPCal(){
+  const host=$("pCalBody"); if(!host) return;
+  const y=pCalDate.getFullYear(), m=pCalDate.getMonth();
+  const first=new Date(y,m,1); const start=(first.getDay()+6)%7;
+  const dim=new Date(y,m+1,0).getDate(); const prevDays=new Date(y,m,0).getDate();
+  const cells=[];
+  for(let i=0;i<start;i++) cells.push({d:prevDays-start+1+i,other:true,date:new Date(y,m-1,prevDays-start+1+i)});
+  for(let d2=1;d2<=dim;d2++) cells.push({d:d2,other:false,date:new Date(y,m,d2)});
+  while(cells.length%7!==0){ const nd=cells.length-(start+dim)+1; cells.push({d:nd,other:true,date:new Date(y,m+1,nd)}); }
+  const tISO=todayISO();
+  host.innerHTML=`
+    <div class="cal-head">
+      <button class="icon-btn" id="pcPrev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button>
+      <h2>${pCalDate.toLocaleDateString(undefined,{month:"long",year:"numeric"})}</h2>
+      <button class="icon-btn" id="pcNext"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg></button>
+      <button class="btn ghost sm" id="pcToday">Today</button>
+      <div class="grow"></div>
+      <button class="btn primary sm" id="pcSpread">⧉ Spread a task over days</button>
+    </div>
+    <div class="cal-grid">${WD_NAMES.map(d2=>`<div class="cal-dow">${d2}</div>`).join("")}${cells.map(c=>{
+      const ci=iso(c.date); const pl=P().dayPlans[ci];
+      const evs=(pl?pl.entries:[]).map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it).sort((a,b)=>(a.e.time||"99").localeCompare(b.e.time||"99"));
+      return `<div class="cal-cell ${c.other?"other":""} ${ci===tISO?"today":""}" data-pday="${ci}"><span class="addhint">+</span><div class="cal-num">${c.d}</div>${evs.map(x=>pCalEntryHTML(x,ci)).join("")}</div>`;
+    }).join("")}</div>
+    <div style="font-size:11.5px;color:var(--faint);margin-top:10px">Click a day to place something · drag blocks between days · click a block to set its time, length or note. You choose when — nothing here has a deadline.</div>`;
+  $("pcPrev").onclick=()=>{ pCalDate=new Date(y,m-1,1); renderPCal(); };
+  $("pcNext").onclick=()=>{ pCalDate=new Date(y,m+1,1); renderPCal(); };
+  $("pcToday").onclick=()=>{ pCalDate=new Date(); renderPCal(); };
+  $("pcSpread").onclick=()=>openSpreadModal();
+  bindPCalDrag(host,renderPCal);
+}
+function openSpreadModal(pref){
+  const items=P().items.filter(i=>i.status!=="done");
+  if(!items.length){ toast("Add a task in Need To first"); return; }
+  openMini(`<h3>⧉ Spread over multiple days</h3>
+    <p class="sub">Break something big into calendar blocks you can move around — a book becomes “read 50 pages” days.</p>
+    <div class="field"><label>Task / project</label><select id="spSel">${items.map(i=>`<option value="${i.id}"${pref===i.id?" selected":""}>${esc(i.title)}</option>`).join("")}</select></div>
+    <div class="grid2">
+      <div class="field"><label>Number of blocks</label><input type="number" id="spN" min="2" max="60" value="5"></div>
+      <div class="field"><label>Every … days</label><input type="number" id="spEvery" min="1" max="14" value="1"></div>
+      <div class="field"><label>Starting</label><input type="date" id="spStart" value="${iso(addDays(new Date(),1))}"></div>
+      <div class="field"><label>Time (optional)</label><input type="time" id="spTime"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>Length per block</label><select id="spDur">${[0,15,30,45,60,90,120].map(mm=>`<option value="${mm}"${mm===30?" selected":""}>${mm?fmtMin(mm):"—"}</option>`).join("")}</select></div>
+      <div class="field"><label>Each block means… (shared note)</label><input id="spLabel" placeholder="Read 50 pages"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn ghost" id="spCancel">Cancel</button><button class="btn primary" id="spGo">Create blocks</button></div>`);
+  $("spCancel").onclick=()=>closePM("qpModal");
+  $("spGo").onclick=()=>{
+    const it=pItem($("spSel").value); if(!it) return;
+    const n=Math.max(2,Math.min(60,+$("spN").value||2)), ev=Math.max(1,+$("spEvery").value||1);
+    const st=parseISO($("spStart").value)||addDays(new Date(),1);
+    const time=$("spTime").value||"", dur=+$("spDur").value||0, label=($("spLabel").value||"").trim();
+    let placed=0;
+    for(let k=0;k<n;k++){ const dt=iso(addDays(st,k*ev)); const plan=planFor(dt,true);
+      if(plan.entries.some(x=>x.itemId===it.id)) continue;
+      plan.entries.push({id:uid(),itemId:it.id,time,dur,done:false,label}); placed++; }
+    save(); closePM("qpModal"); pR(); toast(placed+" blocks placed ⧉ — drag them around as you like");
+  };
+}
+function openScheduleModal(it){
+  openMini(`<h3>Schedule “${esc(it.title)}”</h3>
+    <div class="grid2"><div class="field"><label>Day</label><input type="date" id="scDate" value="${iso(addDays(new Date(),1))}"></div>
+    <div class="field"><label>Time (optional)</label><input type="time" id="scTime"></div></div>
+    <div class="field"><label>Length</label><select id="scDur">${[0,15,30,45,60,90,120,180].map(mm=>`<option value="${mm}">${mm?fmtMin(mm):"—"}</option>`).join("")}</select></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn ghost" id="scCancel">Cancel</button><button class="btn primary" id="scGo">Put it on the calendar</button></div>`);
+  $("scCancel").onclick=()=>closePM("qpModal");
+  $("scGo").onclick=()=>{ const dt=$("scDate").value; if(!dt) return; addToPlan(dt,it.id,{time:$("scTime").value||"",dur:+$("scDur").value||0}); closePM("qpModal"); pR(); toast("Scheduled for "+fmtShort(dt)); };
 }
 function renderPResp(){
   const host=$("pRespBody"); if(!host) return;
-  const all=P().items.filter(i=>i.type==="responsibility"&&i.status!=="done");
-  let list=all;
-  if(pRespFilter==="quick") list=all.filter(i=>i.timeEstimate&&i.timeEstimate<=15);
-  else if(pRespFilter==="rec") list=all.filter(i=>i.recurringRule);
-  const groups={}; list.forEach(i=>{ const g=(i.tags[0]||"general").trim()||"general"; (groups[g] ||= []).push(i); });
+  const list=P().items.filter(i=>i.type==="responsibility"&&i.status!=="done").sort((a,b)=>a.createdAt-b.createdAt);
+  const tI=todayISO();
+  const schedOf=id=>{ const out=[]; Object.keys(P().dayPlans).sort().forEach(k=>{ const pl=P().dayPlans[k]; if(k<tI) return; pl.entries.forEach(e=>{ if(e.itemId===id&&!e.done) out.push({pl,e}); }); }); return out; };
   host.innerHTML=`
-    <div class="toolbar"><h1 class="page-title">Need To</h1><div class="grow"></div>
-      <div class="seg">${[["all","All"],["quick","⚡ Quick wins ≤15m"],["rec","↻ Recurring"]].map(x=>`<button data-rf="${x[0]}" class="${pRespFilter===x[0]?"active":""}">${x[1]}</button>`).join("")}</div>
-    </div>
+    <div class="toolbar"><h1 class="page-title">Need To</h1><div class="grow"></div><button class="btn sm" id="respSpreadTop">⧉ Spread a task over days</button></div>
     <div class="qadd"><input id="respCapture" placeholder="A chore, errand, admin thing… press Enter" autocomplete="off" style="flex:1;min-width:180px;border:none;background:transparent;outline:none;font-weight:600;padding:4px 2px"><button class="btn primary sm" id="respAdd">Add</button><button class="btn sm ghost" id="respAddFull">+ with details</button></div>
-    ${Object.keys(groups).sort().map(g=>`<div class="todo-sec">${esc(g)} <span class="line"></span><span style="font-weight:700">${groups[g].length}</span></div>`+groups[g].map(i=>`
-      <div class="pi-row" data-resp="${i.id}" style="align-items:center">
+    ${list.map(i=>{ const sch=schedOf(i.id);
+      return `<div class="pi-row" data-resp="${i.id}" style="align-items:flex-start">
         <div class="check-sm" data-rdone title="Done"></div>
-        <div style="flex:1;min-width:0"><div class="pi-title">${esc(i.intention||i.title)}</div>
-        <div class="pi-sub">${i.timeEstimate?`<span class="pi-badge">${fmtMin(i.timeEstimate)}</span>`:""}<span class="pi-badge">${ENERGY_ICON[i.energy]}</span>${i.recurringRule?`<span class="pi-badge">↻</span>`:""}</div></div>
-        <button class="pi-act" data-rplan title="Plan for tomorrow">🌙</button><button class="pi-act" data-rnow title="Do it now">▶</button><button class="pi-act" data-redit title="Edit">✎</button>
-      </div>`).join("")).join("")||`<div class="empty"><div>Nothing you need to do. Enjoy that feeling.</div></div>`}`;
-  host.querySelectorAll("[data-rf]").forEach(b=>b.onclick=()=>{ pRespFilter=b.dataset.rf; renderPResp(); });
+        <div style="flex:1;min-width:0">
+          <input data-rtitle value="${esc(i.title)}" placeholder="What needs doing" style="width:100%;border:none;background:transparent;outline:none;font-weight:600;font-size:13px;padding:1px 0">
+          <div class="pi-sub">
+            ${sch.map(s2=>`<button class="chip trow-dl" data-schedday="${s2.pl.date}" data-schede="${s2.e.id}" title="Click to adjust or move">📅 ${esc(fmtShort(s2.pl.date))}${s2.e.time?" · "+esc(s2.e.time):""}${s2.e.label?" · "+esc(s2.e.label):""}</button>`).join("")}
+            <button class="chip trow-dl" data-rsched>+ schedule</button>
+            ${i.timeEstimate?`<span class="pi-badge">${fmtMin(i.timeEstimate)}</span>`:""}
+            ${i.recurringRule?`<span class="pi-badge">↻</span>`:""}
+            <button class="pi-act" data-rspread title="Spread over multiple days">⧉</button>
+            <button class="pi-act" data-rnow title="Do it now">▶</button>
+            <button class="pi-act" data-redit title="Edit details">✎</button>
+            <button class="pi-act" data-rdel title="Delete">✕</button>
+          </div>
+        </div>
+      </div>`;}).join("")||`<div class="empty"><div>Nothing you need to do. Enjoy that feeling.</div></div>`}`;
+  $("respSpreadTop").onclick=()=>openSpreadModal();
   const add=()=>{ const t=($("respCapture").value||"").trim(); if(!t){ $("respCapture").focus(); return; }
     P().items.push({id:uid(),title:t,notes:"",type:"responsibility",timeEstimate:0,energy:"medium",tags:[],status:"open",createdAt:Date.now(),completedAt:0,recurringRule:null,intention:"",isRest:false,personId:"",bucketId:"",stepId:"",focusSessions:0});
     save(); renderPResp(); const i2=$("respCapture"); if(i2) i2.focus(); };
@@ -2842,9 +2877,16 @@ function renderPResp(){
   host.querySelectorAll("[data-resp]").forEach(row=>{
     const i=pItem(row.dataset.resp); if(!i) return;
     row.querySelector("[data-rdone]").onclick=()=>{ completeItemEffects(i); save(); renderPResp(); toast("Done ✓"); };
-    row.querySelector("[data-rplan]").onclick=()=>{ addToPlan(iso(addDays(new Date(),1)),i.id); toast("On tomorrow's plan 🌙"); };
+    row.querySelector("[data-rtitle]").addEventListener("input",e=>{ i.title=e.target.value; save(); });
+    row.querySelector("[data-rsched]").onclick=()=>openScheduleModal(i);
+    row.querySelector("[data-rspread]").onclick=()=>openSpreadModal(i.id);
     row.querySelector("[data-rnow]").onclick=()=>openNow(i.id);
     row.querySelector("[data-redit]").onclick=()=>openPItemModal(i.id);
+    row.querySelector("[data-rdel]").onclick=()=>{ if(!confirm("Delete “"+i.title+"” and its calendar blocks?")) return;
+      P().items=P().items.filter(x=>x.id!==i.id);
+      Object.values(P().dayPlans).forEach(pl=>{ pl.entries=pl.entries.filter(e=>e.itemId!==i.id); if(pl.firstThing===i.id) pl.firstThing=""; });
+      save(); renderPResp(); };
+    row.querySelectorAll("[data-schedday]").forEach(b=>b.onclick=()=>{ const pl=P().dayPlans[b.dataset.schedday]; const en=pl&&pl.entries.find(x=>x.id===b.dataset.schede); if(en) openPTime(pl,en); });
   });
 }
 
@@ -3097,14 +3139,13 @@ function closeNow(){ $("nowView").classList.add("hidden"); pR(); }
 
 /* ---- personal boot ---- */
 function initPersonalUI(){
-  $("joyTabBtn").textContent=P_LABEL_GOODSTUFF;
   $("modePill").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b&&b.dataset.mode!==appMode) applyMode(b.dataset.mode); });
   $("personalTabs").addEventListener("click",e=>{ const b=e.target.closest(".tab"); if(b) switchPTab(b.dataset.ptab); });
   $("nowClose").onclick=closeNow;
   $("nowStart").onclick=()=>{ pomoRunning?pomoPause():pomoStart(); };
   $("nowSkip").onclick=pomoSkip;
   $("nowReset").onclick=pomoReset;
-  $("nowDone").onclick=()=>{ const it=nowItemId?pItem(nowItemId):null; if(it){ const plan=P().dayPlans[todayISO()]; const e=plan&&plan.entries.find(x=>x.itemId===it.id); if(e){ e.done=true; } completeItemEffects(it); save(); toast("Done. That counted. 🧡"); } closeNow(); };
+  $("nowDone").onclick=()=>{ const it=nowItemId?pItem(nowItemId):null; if(it){ const plan=P().dayPlans[todayISO()]; const e=plan&&plan.entries.find(x=>x.itemId===it.id&&!x.done); if(e){ e.done=true; blockAwareComplete(e,it); } else completeItemEffects(it); save(); toast("Done. That counted. 🧡"); } closeNow(); };
   ["pItemModal","bucketModal","memoryModal","qpModal","ptimeModal"].forEach(idm=>$(idm).addEventListener("click",e=>{ if(e.target.id===idm) closePM(idm); }));
   if(appMode==="personal") applyMode("personal");
 }
