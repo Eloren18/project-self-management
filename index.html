@@ -408,6 +408,76 @@
     .sidefoot{display:none;}
     .board{grid-template-columns:repeat(2,minmax(0,1fr));} .year-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .pp-grid{grid-template-columns:1fr;} .prep-grid{grid-template-columns:1fr;} .docs-grid{grid-template-columns:1fr;} .doc-list{max-height:34vh;}
   }
+  /* ============ PERSONAL LIFE PLATFORM ============ */
+  html[data-mode="personal"]{
+    --bg:#f7f2ea; --surface:#fffdf8; --surface-2:#f6efe4; --elevated:#fffdf8;
+    --text:#332a21; --muted:#6f5f4d; --faint:#a5937d;
+    --border:#e6dac6; --border-soft:#efe7d7;
+    --primary:#d97742; --primary-ink:#fff; --primary-soft:#f9e9db;
+    --side:#2c251c; --side2:#352c21; --side-ink:#b7a68f; --side-active:#403527;
+    --forme:#d97742; --needto:#63886f;
+    --shadow:0 1px 2px rgba(60,45,20,.08); --shadow-lg:0 12px 30px rgba(60,45,20,.18);
+  }
+  html[data-mode="personal"] .brand .logo,html[data-mode="personal"] .sidefoot .av{background:var(--primary);}
+  html[data-mode="personal"] .tab.active{box-shadow:inset 3px 0 0 var(--primary);}
+  body.modeswap main,body.modeswap .sidebar{animation:fade .28s var(--ease);}
+  .modepill{display:flex;border:1px solid var(--border);background:var(--surface);}
+  .modepill button{border:none;background:transparent;color:var(--muted);font-weight:700;font-size:10.5px;padding:8px 11px;display:flex;align-items:center;gap:5px;letter-spacing:.4px;text-transform:uppercase;}
+  .modepill button.active{background:var(--side);color:#fff;}
+  .lanes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;}
+  .lane{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--needto);padding:12px;}
+  .lane.forme{border-top-color:var(--forme);}
+  .lane h3{margin:0 0 10px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--needto);display:flex;align-items:center;gap:8px;}
+  .lane.forme h3{color:var(--forme);}
+  .pi-row{display:flex;align-items:flex-start;gap:9px;padding:9px 10px;border:1px solid var(--border-soft);border-left:3px solid var(--needto);margin-bottom:7px;background:var(--surface);}
+  .pi-row.forme{border-left-color:var(--forme);}
+  .pi-row.done{opacity:.55;} .pi-row.done .pi-title{text-decoration:line-through;color:var(--faint);}
+  .pi-row.dragging{opacity:.45;} .pi-row.drag-over{outline:2px dashed var(--primary);outline-offset:-2px;}
+  .pi-title{font-weight:650;font-size:13px;line-height:1.4;overflow-wrap:break-word;}
+  .pi-sub{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;align-items:center;}
+  .pi-badge{font-size:9.5px;font-weight:700;padding:2px 7px;background:var(--surface-2);border:1px solid var(--border-soft);color:var(--muted);letter-spacing:.3px;white-space:nowrap;}
+  .pi-act{border:none;background:transparent;color:var(--faint);padding:1px 3px;cursor:pointer;font-size:12px;}
+  .pi-act:hover{color:var(--primary);}
+  .dots-row{display:flex;align-items:center;gap:16px;background:var(--surface);border:1px solid var(--border);padding:12px 16px;margin-bottom:14px;flex-wrap:wrap;}
+  .dot-big{width:34px;height:34px;border-radius:50%;border:2px solid var(--border);background:var(--surface-2);cursor:pointer;display:grid;place-items:center;font-size:14px;color:#fff;transition:.15s;}
+  .dot-big.on{background:var(--primary);border-color:var(--primary);}
+  .dot-big.missed{box-shadow:0 0 0 3px #f0b429aa;}
+  .dot-lbl{font-size:10px;color:var(--muted);text-align:center;margin-top:4px;max-width:70px;font-weight:600;}
+  .tbox{height:26px;background:var(--surface-2);border:1px solid var(--border);display:flex;overflow:hidden;margin:8px 0 4px;}
+  .tbox i{display:block;height:100%;flex:none;}
+  .joygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px;}
+  .joycard{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--forme);padding:12px 13px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:7px;}
+  .joycard.rest{border-top-color:var(--needto);}
+  .joycard h4{margin:0;font-size:13.5px;font-weight:750;line-height:1.35;overflow-wrap:break-word;}
+  #nowView{position:fixed;inset:0;z-index:150;background:var(--bg);display:grid;place-items:center;padding:24px;overflow-y:auto;}
+  #nowView.hidden{display:none;}
+  .now-card{text-align:center;max-width:600px;width:100%;}
+  .now-title{font-size:clamp(20px,3.4vw,30px);font-weight:800;letter-spacing:-.02em;line-height:1.3;margin:14px 0 6px;overflow-wrap:break-word;}
+  .now-timer{font-size:clamp(52px,10vw,88px);font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;margin:6px 0;}
+  .now-phase{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--primary);margin-top:18px;}
+  .now-dots{display:flex;gap:7px;justify-content:center;margin:10px 0;}
+  .now-dots span{width:9px;height:9px;border-radius:50%;background:var(--border);}
+  .now-dots span.done{background:var(--primary);}
+  .seasonbar{height:6px;background:var(--surface-2);border:1px solid var(--border);position:relative;flex:1;min-width:110px;}
+  .seasonbar i{position:absolute;top:0;bottom:0;left:0;background:linear-gradient(90deg,var(--primary),#e9b44c);}
+  .bucketcard{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--primary);padding:13px 14px;margin-bottom:10px;cursor:pointer;transition:.12s;}
+  .bucketcard:hover{border-color:var(--text);}
+  .bucketcard.pinned{box-shadow:0 0 0 2px var(--primary);}
+  .pweek{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));background:var(--surface);border:1px solid var(--border);border-left:0;}
+  .pwday{border-left:1px solid var(--border-soft);min-height:150px;padding:8px;cursor:pointer;}
+  .pwday.today{box-shadow:inset 0 3px 0 var(--primary);}
+  .pwday.drag-over{outline:2px dashed var(--primary);outline-offset:-3px;background:var(--primary-soft);}
+  .pw-ev{font-size:10.5px;font-weight:600;padding:3px 6px;margin-top:5px;background:var(--surface-2);border:1px solid var(--border-soft);border-left:3px solid var(--needto);cursor:grab;overflow-wrap:anywhere;}
+  .pw-ev.forme{border-left-color:var(--forme);}
+  .pw-ev.done{opacity:.5;text-decoration:line-through;}
+  .pinned-hint{display:flex;align-items:center;gap:9px;background:var(--primary-soft);border:1px solid var(--primary);padding:9px 13px;margin-bottom:14px;font-size:12.5px;font-weight:600;cursor:pointer;flex-wrap:wrap;}
+  .burst{position:fixed;z-index:220;pointer-events:none;font-size:22px;animation:burstfly 1.15s ease-out forwards;}
+  @keyframes burstfly{from{transform:translate(0,0) rotate(0);opacity:1;}to{transform:translate(var(--dx),var(--dy)) rotate(340deg);opacity:0;}}
+  @media(max-width:900px){
+    .lanes{grid-template-columns:1fr;}
+    html[data-mode="personal"] .tab.active{box-shadow:inset 0 -3px 0 var(--primary);}
+  }
+
   @media(max-width:680px){
     #topbar{flex-wrap:wrap;padding:10px 14px;gap:8px;height:auto;}
     .weekpill{display:none;}
@@ -443,6 +513,18 @@
     <button class="tab" data-tab="docs">Documents</button>
     <button class="tab" data-tab="glossary">Glossary</button>
   </nav>
+  <nav class="nav" id="personalTabs" style="display:none">
+    <div class="lbl">Personal Life</div>
+    <button class="tab" data-ptab="today">Today</button>
+    <button class="tab" data-ptab="tomorrow">Tomorrow</button>
+    <button class="tab" data-ptab="week">Week</button>
+    <button class="tab" data-ptab="joy" id="joyTabBtn">The Good Stuff</button>
+    <button class="tab" data-ptab="resp">Need To</button>
+    <button class="tab" data-ptab="bucket">Bucket List</button>
+    <button class="tab" data-ptab="people">People</button>
+    <button class="tab" data-ptab="pnotes">Self Notes</button>
+    <button class="tab" data-ptab="reflect">Reflect</button>
+  </nav>
   <div class="sidefoot"><span class="av" id="sideAvatar">?</span><div><div class="nm" id="sideName">Local workspace</div><div class="ro">Workspace owner</div></div></div>
 </aside>
 <div class="maincol">
@@ -452,7 +534,10 @@
   <div class="weekpill"><i></i><span id="weekPillTxt">W—</span></div>
   <div id="syncPill"><span class="dot"></span><span id="syncText">Offline</span></div>
   <button class="icon-btn" id="exportBtn" title="Export to Excel"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg></button>
-  <button class="icon-btn" id="themeBtn" title="Toggle theme"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="themeIco"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  <div class="modepill" id="modePill" title="Switch platform">
+    <button data-mode="work" class="active">💼 Work</button>
+    <button data-mode="personal">🌞 Personal</button>
+  </div>
   <button class="icon-btn" id="secBtn" title="Security & devices"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span id="secDot" style="display:none;position:absolute;top:6px;right:6px;width:8px;height:8px;background:var(--p-asap);border-radius:99px;border:2px solid var(--surface)"></span></button>
   <button class="acct" id="acctBtn" title="Account"><span class="avatar" id="acctAvatar">?</span><span class="email" id="acctEmail"></span></button>
 </header>
@@ -550,6 +635,17 @@
   <section class="page hidden" id="page-project">
     <div class="pp-wrap" id="projectPageBody"></div>
   </section>
+
+  <!-- ============ PERSONAL LIFE PAGES ============ -->
+  <section class="page hidden" id="ppage-today"><div id="pTodayBody"></div></section>
+  <section class="page hidden" id="ppage-tomorrow"><div id="pTomorrowBody"></div></section>
+  <section class="page hidden" id="ppage-week"><div id="pWeekBody"></div></section>
+  <section class="page hidden" id="ppage-joy"><div id="pJoyBody"></div></section>
+  <section class="page hidden" id="ppage-resp"><div id="pRespBody"></div></section>
+  <section class="page hidden" id="ppage-bucket"><div id="pBucketBody"></div></section>
+  <section class="page hidden" id="ppage-people"><div id="pPeopleBody"></div></section>
+  <section class="page hidden" id="ppage-pnotes"><div id="pNotesBody"></div></section>
+  <section class="page hidden" id="ppage-reflect"><div id="pReflectBody"></div></section>
 </main>
 </div><!-- /maincol -->
 </div><!-- /app -->
@@ -580,6 +676,7 @@
     <div style="display:flex;gap:8px;margin:14px 0 4px;flex-wrap:wrap">
       <button class="btn sm danger" id="signOutOthers">Sign out all other devices</button>
       <button class="btn sm" id="signOutBtn">Sign out this device</button>
+      <button class="btn sm" id="themeBtn" title="Toggle light/dark theme"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="themeIco"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>Theme</button>
     </div>
     <div class="section-h">Activity log <span class="line"></span></div>
     <div id="secLog" style="max-height:220px;overflow-y:auto"></div>
@@ -649,6 +746,29 @@
 <div id="pickerPop" class="pickerpop hidden"></div>
 <div class="modal-back hidden" id="createModal"><div class="modal" id="createBox" style="width:min(460px,100%)"></div></div>
 <div class="modal-back hidden" id="taskModal"><div class="modal" id="taskBox" style="width:min(480px,100%)"></div></div>
+
+<!-- ============ PERSONAL: NOW VIEW + MODALS ============ -->
+<div id="nowView" class="hidden">
+  <div class="now-card">
+    <button class="btn ghost sm" id="nowClose">← Back to my day</button>
+    <div class="now-phase" id="nowPhase">Focus</div>
+    <div class="now-title" id="nowTitle"></div>
+    <div class="now-timer" id="nowClock">25:00</div>
+    <div class="now-dots" id="nowDots"></div>
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+      <button class="btn primary" id="nowStart">Start</button>
+      <button class="btn" id="nowSkip">Skip phase</button>
+      <button class="btn ghost" id="nowReset">Reset</button>
+    </div>
+    <div style="margin-top:16px"><button class="btn sm" id="nowDone">✓ Done with this</button></div>
+    <div id="nowCount" style="font-size:11.5px;color:var(--faint);margin-top:10px"></div>
+  </div>
+</div>
+<div class="modal-back hidden" id="pItemModal"><div class="modal" id="pItemBox" style="width:min(500px,100%)"></div></div>
+<div class="modal-back hidden" id="bucketModal"><div class="modal" id="bucketBox" style="width:min(560px,100%)"></div></div>
+<div class="modal-back hidden" id="memoryModal"><div class="modal" id="memoryBox" style="width:min(520px,100%)"></div></div>
+<div class="modal-back hidden" id="qpModal"><div class="modal" id="qpBox" style="width:min(520px,100%)"></div></div>
+<div class="modal-back hidden" id="ptimeModal"><div class="modal" id="ptimeBox" style="width:min(380px,100%)"></div></div>
 
 <div class="toast" id="toast"></div>
 
@@ -825,8 +945,40 @@ function normalize(d){
     m.tasks = Array.isArray(m.tasks) ? m.tasks : []; m.tasks.forEach(normTask);
   });
   d.settings = d.settings || {}; d.settings.theme ??= "light";
+  d.personal = normalizePersonal(d.personal); /* additive namespace — Work code never reads it */
   d.updatedAt ??= Date.now();
   return d;
+}
+/* ============ PERSONAL LIFE: data layer (fully separate namespace) ============ */
+function normalizePersonal(p){
+  p = (p && typeof p==="object") ? p : {};
+  p.items = Array.isArray(p.items) ? p.items : [];
+  p.items.forEach(it=>{ it.id ||= uid(); it.title ??= ""; it.notes ??= ""; it.type = it.type==="forMe"?"forMe":"responsibility";
+    it.timeEstimate = +it.timeEstimate||0; it.energy = ["low","medium","high"].includes(it.energy)?it.energy:"medium";
+    if(!Array.isArray(it.tags)) it.tags = []; it.status = it.status==="done"?"done":"open"; it.createdAt ??= Date.now(); it.completedAt ??= 0;
+    it.recurringRule ??= null; it.intention ??= ""; it.isRest = !!it.isRest; it.personId ??= ""; it.bucketId ??= ""; it.stepId ??= ""; it.focusSessions ??= 0; });
+  p.dayPlans = (p.dayPlans && typeof p.dayPlans==="object" && !Array.isArray(p.dayPlans)) ? p.dayPlans : {};
+  Object.keys(p.dayPlans).forEach(k=>{ const d=p.dayPlans[k]; d.date=k;
+    d.entries = Array.isArray(d.entries)?d.entries:[]; d.entries.forEach(e=>{ e.id ||= uid(); e.itemId ??= ""; e.time ??= ""; e.dur = +e.dur||0; e.done = !!e.done; });
+    d.firstThing ??= ""; d.committed = !!d.committed; d.committedAt ??= 0; d.bestMoment ??= ""; d.heavy = !!d.heavy;
+    d.energy = ["low","medium","high"].includes(d.energy)?d.energy:"medium";
+    if(!Array.isArray(d.dots)) d.dots = [false,false,false]; d.triaged = !!d.triaged; });
+  p.bucket = Array.isArray(p.bucket) ? p.bucket : [];
+  p.bucket.forEach(b=>{ b.id ||= uid(); b.title ??= ""; b.why ??= "";
+    if(!Array.isArray(b.steps)) b.steps = []; b.steps.forEach(s=>{ s.id ||= uid(); s.text ??= ""; s.done = !!s.done; });
+    b.status = ["dream","active","done"].includes(b.status)?b.status:"dream"; b.pinned = !!b.pinned; b.memory ??= null;
+    if(!Array.isArray(b.tags)) b.tags = []; b.createdAt ??= Date.now(); b.completedAt ??= 0; });
+  p.notes = Array.isArray(p.notes) ? p.notes : [];
+  p.notes.forEach(n=>{ n.id ||= uid(); n.title ??= ""; n.body ??= ""; n.rich = !!n.rich; n.createdAt ??= Date.now(); n.updatedAt ??= n.createdAt; });
+  p.people = Array.isArray(p.people) ? p.people : [];
+  p.people.forEach(x=>{ x.id ||= uid(); x.name ??= ""; x.lastSeen ??= ""; x.freqWeeks = +x.freqWeeks||0; x.notes ??= ""; });
+  p.dotDefs = Array.isArray(p.dotDefs) ? p.dotDefs.slice(0,3) : [];
+  p.dotDefs.forEach(dd=>{ dd.id ||= uid(); dd.label ??= ""; });
+  p.templates = Array.isArray(p.templates) ? p.templates : [];
+  p.templates.forEach(t=>{ t.id ||= uid(); t.name ??= ""; if(!Array.isArray(t.entries)) t.entries = []; });
+  p.weekAnchors = (p.weekAnchors && typeof p.weekAnchors==="object") ? p.weekAnchors : {};
+  p.settings = p.settings || {}; p.settings.freeStart ??= "18:00"; p.settings.freeEnd ??= "23:00";
+  return p;
 }
 function load(){ try{ const r=localStorage.getItem(STORAGE_KEY); if(r) return normalize(JSON.parse(r)); }catch(e){} return normalize(seed()); }
 
