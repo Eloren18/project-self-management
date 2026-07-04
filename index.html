@@ -520,6 +520,7 @@
     <button class="tab" data-tab="weekprep">Week Prep</button>
     <button class="tab" data-tab="docs">Documents</button>
     <button class="tab" data-tab="glossary">Glossary</button>
+    <button class="tab" data-tab="archive">Archive</button>
   </nav>
   <nav class="nav" id="personalTabs" style="display:none">
     <div class="lbl">Personal Life</div>
@@ -637,6 +638,11 @@
   <!-- RECURRING MEETINGS -->
   <section class="page hidden" id="page-meetings">
     <div id="meetingsBody"></div>
+  </section>
+
+  <!-- ARCHIVE -->
+  <section class="page hidden" id="page-archive">
+    <div id="archiveBody"></div>
   </section>
 
   <!-- PROJECT PAGE -->
@@ -919,7 +925,7 @@ function seed(){
       order:idx, createdAt:now+idx })),
     tasks: [], settings:{ theme:"light" }, updatedAt: now };
 }
-function normTask(t){ t.id ||= uid(); t.text ??= ""; t.done=!!t.done; if(t.deadline===undefined) t.deadline = t.due || ""; delete t.due; t.deadline ??= ""; t.deadlineWeek = !!t.deadlineWeek; t.notes ??= ""; return t; }
+function normTask(t){ t.id ||= uid(); t.text ??= ""; t.done=!!t.done; if(t.deadline===undefined) t.deadline = t.due || ""; delete t.due; t.deadline ??= ""; t.deadlineWeek = !!t.deadlineWeek; t.notes ??= ""; t.completedAt ??= 0; return t; }
 function normalize(d){
   d = d || {};
   d.projects = Array.isArray(d.projects) ? d.projects : [];
@@ -937,6 +943,7 @@ function normalize(d){
     if(!PROGRESS.includes(p.prevProgress)) p.prevProgress = (p.progress==="Done")?"In Progress":p.progress;
     p.tasks = Array.isArray(p.tasks)?p.tasks:[]; p.tasks.forEach(normTask);
     if(typeof p.order!=="number") p.order=idx;
+    p.completedAt ??= 0;
   });
   d.tasks = Array.isArray(d.tasks) ? d.tasks : []; d.tasks.forEach(normTask);
   d.weekPrep = Array.isArray(d.weekPrep) ? d.weekPrep : [];
@@ -1174,7 +1181,7 @@ async function signOutOthers(){
    RENDER: dispatch
    ============================================================ */
 function renderAll(){
-  renderProjects(); renderTodo(); renderCalendar(); renderYear(); renderWeekPrep(); renderDocs(); renderGlossary(); renderMeetings(); populateCategoryFilter(); pR();
+  renderProjects(); renderTodo(); renderCalendar(); renderYear(); renderWeekPrep(); renderDocs(); renderGlossary(); renderMeetings(); renderArchive(); populateCategoryFilter(); pR();
   if(curTab==="project" && openProjectId) renderProjectPage();
   else if(openProjectId && !$("detailOverlay").classList.contains("hidden")) renderDetail();
 }
@@ -1291,9 +1298,10 @@ function renderList(host,list){
 }
 function toggleProjectDone(p){
   if(!p) return;
-  if(p.progress==="Done"){ p.progress=(PROGRESS.includes(p.prevProgress)&&p.prevProgress!=="Done")?p.prevProgress:"In Progress"; }
-  else { p.prevProgress=p.progress; p.progress="Done"; }
+  if(p.progress==="Done"){ p.progress=(PROGRESS.includes(p.prevProgress)&&p.prevProgress!=="Done")?p.prevProgress:"In Progress"; p.completedAt=0; }
+  else { p.prevProgress=p.progress; p.progress="Done"; p.completedAt=Date.now(); }
   save(); renderProjects(); renderCalendar(); renderYear(); renderTodo();
+  if(curTab==="archive") renderArchive();
   if(openProjectId===p.id){ if(curTab==="project") renderProjectPage(); else if(!$("detailOverlay").classList.contains("hidden")) renderDetail(); }
 }
 
@@ -1337,7 +1345,7 @@ function renderDetailTasks(p){
 /* ---- Full project page ---- */
 function showProjectPage(id){
   openProjectId=id; curTab="project";
-  ["projects","todo","calendar","year","weekprep","docs","glossary","meetings"].forEach(x=>$("page-"+x).classList.add("hidden"));
+  ["projects","todo","calendar","year","weekprep","docs","glossary","meetings","archive"].forEach(x=>$("page-"+x).classList.add("hidden"));
   $("page-project").classList.remove("hidden");
   $("tabs").querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));
   $("viewTitle").textContent = "Project";
@@ -1444,7 +1452,7 @@ function taskRowHTML(t, project, opts){
 function bindTaskRows(host){
   host.querySelectorAll(".trow").forEach(row=>{
     const tid=row.dataset.tid; const ref=findTask(tid); if(!ref) return; const t=ref.t;
-    row.querySelector("[data-tdone]").addEventListener("click",()=>{ t.done=!t.done; save(); refreshTaskViews(); });
+    row.querySelector("[data-tdone]").addEventListener("click",()=>{ t.done=!t.done; t.completedAt=t.done?Date.now():0; save(); refreshTaskViews(); });
     row.querySelector("[data-ttext]").addEventListener("input",e=>{ t.text=e.target.value; save(); });
     const noteBox=row.querySelector(".postit"), noteTa=row.querySelector("[data-tnotes]"), noteBtn=row.querySelector("[data-tnotebtn]");
     const fitNote=()=>{ noteTa.style.height="auto"; noteTa.style.height=(noteTa.scrollHeight+2)+"px"; };
@@ -1461,7 +1469,7 @@ function bindTaskRows(host){
     const gp=row.querySelector("[data-goproj]"); if(gp) gp.addEventListener("click",()=>{ const pid=gp.dataset.goproj; if(data.projects.find(x=>x.id===pid)) showProjectPage(pid); else if(data.meetings.find(x=>x.id===pid)) openMeetingPage(pid); });
   });
 }
-function refreshTaskViews(){ if(curTab==="project"&&openProjectId){ renderProjectPage(); } else if(openProjectId && !$("detailOverlay").classList.contains("hidden")){ renderDetail(); } renderMeetings(); renderTodo(); renderProjects(); renderCalendar(); renderYear(); }
+function refreshTaskViews(){ if(curTab==="project"&&openProjectId){ renderProjectPage(); } else if(openProjectId && !$("detailOverlay").classList.contains("hidden")){ renderDetail(); } renderMeetings(); renderTodo(); renderProjects(); renderCalendar(); renderYear(); if(curTab==="archive") renderArchive(); }
 
 /* ---- To-Do ---- */
 function renderTodo(){
@@ -1498,7 +1506,14 @@ function renderTodo(){
     <div class="check-sm" data-pjdone="${p.id}" title="Mark project complete"></div>
     <div class="trow-main">
       <div style="font-weight:700;font-size:13px;padding:2px 0">🚩 ${esc(p.name)}</div>
-      <div class="trow-sub"><span class="chip" style="background:color-mix(in srgb,${projColor(p)} 14%,transparent);color:${projColor(p)}">Project</span><span class="chip trow-dl over" style="cursor:default">${esc(fmtDL(p.deadline,p.deadlineWeek))} · overdue</span></div>
+      <div class="trow-sub"><span class="chip" style="background:color-mix(in srgb,${projColor(p)} 14%,transparent);color:${projColor(p)}">Project</span><button class="chip trow-dl over" data-pjdl="${p.id}" title="Pick a new deadline">${esc(fmtDL(p.deadline,p.deadlineWeek))} · overdue</button></div>
+    </div>
+  </div>`;
+  const doneProjRowHTML=p=>`<div class="trow done" data-goprojrow="${p.id}" style="cursor:pointer">
+    <div class="check-sm on" data-pjdone="${p.id}" title="Restore project">${TICK}</div>
+    <div class="trow-main">
+      <div style="font-weight:700;font-size:13px;padding:2px 0;text-decoration:line-through;color:var(--faint)">🚩 ${esc(p.name)}</div>
+      <div class="trow-sub"><span class="chip" style="background:color-mix(in srgb,${projColor(p)} 14%,transparent);color:${projColor(p)}">Project</span>${p.completedAt?`<span class="chip soft">done ${fmtShort(iso(new Date(p.completedAt)))}</span>`:""}</div>
     </div>
   </div>`;
   let html="";
@@ -1511,12 +1526,76 @@ function renderTodo(){
   html+=sec("This week",thisWk);
   html+=sec("Upcoming",later);
   html+=sec("No date",noDate);
-  if(todoShowDone) html+=sec("Completed",doneItems.sort(byDL));
+  if(todoShowDone){
+    const doneProjects=data.projects.filter(p=>p.progress==="Done" && (!q||((p.name||"")+" "+(p.description||"")).toLowerCase().includes(q))).sort((a,b)=>(b.completedAt||0)-(a.completedAt||0));
+    if(doneItems.length||doneProjects.length){
+      html+=`<div class="todo-sec">Completed <span class="line"></span><span style="font-weight:700">${doneItems.length+doneProjects.length}</span></div>`;
+      html+=doneProjects.map(doneProjRowHTML).join("");
+      html+=doneItems.sort((a,b)=>(b.t.completedAt||0)-(a.t.completedAt||0)).map(x=>taskRowHTML(x.t,x.project,{showProject:true})).join("");
+    } else html+=`<div class="todo-sec">Completed <span class="line"></span><span style="font-weight:700">0</span></div><div style="font-size:12.5px;color:var(--faint);padding:2px 0 8px">Nothing completed yet.</div>`;
+  }
   host.innerHTML=html||`<div class="empty"><div>All caught up! 🎉 <span style="color:var(--faint)">(tick “Show completed” to see finished tasks)</span></div></div>`;
   bindTaskRows(host);
-  host.querySelectorAll("[data-goprojrow]").forEach(r=>r.addEventListener("click",e=>{ if(e.target.closest("[data-pjdone]")) return; showProjectPage(r.dataset.goprojrow); }));
+  host.querySelectorAll("[data-goprojrow]").forEach(r=>r.addEventListener("click",e=>{ if(e.target.closest("[data-pjdone],[data-pjdl]")) return; showProjectPage(r.dataset.goprojrow); }));
   host.querySelectorAll("[data-pjdone]").forEach(b=>b.addEventListener("click",e=>{ e.stopPropagation(); toggleProjectDone(data.projects.find(p=>p.id===b.dataset.pjdone)); }));
+  host.querySelectorAll("[data-pjdl]").forEach(b=>b.addEventListener("click",e=>{ e.stopPropagation();
+    const p=data.projects.find(x=>x.id===b.dataset.pjdl); if(!p) return;
+    openPicker(e.currentTarget,{deadline:p.deadline,isWk:p.deadlineWeek},sel=>{ p.deadline=sel.deadline; p.deadlineWeek=sel.isWk; save(); renderTodo(); renderProjects(); renderCalendar(); renderYear(); toast(sel.deadline?"Rescheduled to "+fmtDL(sel.deadline,sel.isWk):"Deadline cleared"); });
+  }));
 }
+/* ---- Archive (everything completed: projects + tasks) ---- */
+let archSearch="";
+function renderArchive(){
+  const host=$("archiveBody"); if(!host) return;
+  const q=archSearch.toLowerCase().trim();
+  const projs=data.projects.filter(p=>p.progress==="Done")
+    .filter(p=>!q||((p.name||"")+" "+(p.description||"")+" "+(p.category||"")).toLowerCase().includes(q))
+    .sort((a,b)=>(b.completedAt||0)-(a.completedAt||0));
+  const tasks=allTasks().filter(x=>x.t.done)
+    .filter(x=>!q||((x.t.text||"")+" "+(x.t.notes||"")+" "+(x.project?x.project.name:"")).toLowerCase().includes(q))
+    .sort((a,b)=>(b.t.completedAt||0)-(a.t.completedAt||0));
+  const when=ts=>ts?fmtShort(iso(new Date(ts))):"earlier";
+  host.innerHTML=`
+    <div class="toolbar">
+      <h1 class="page-title">Archive</h1>
+      <span style="color:var(--faint);font-size:12px;font-weight:600">${projs.length+tasks.length} completed thing${projs.length+tasks.length===1?"":"s"}</span>
+      <div class="grow"></div>
+      <div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="archSearchInput" placeholder="Search the archive…" value="${esc(archSearch)}"></div>
+    </div>
+    ${(projs.length||tasks.length)?`
+    ${projs.length?`<div class="todo-sec">Completed projects <span class="line"></span><span style="font-weight:700">${projs.length}</span></div>`+projs.map(p=>`
+      <div class="trow" data-aproj="${p.id}" style="cursor:pointer;align-items:center">
+        <div class="check-sm on" data-aprestore title="Restore — mark as not done">${TICK}</div>
+        <div class="trow-main"><div style="font-weight:700;font-size:13px;padding:2px 0">🚩 ${esc(p.name)}</div>
+          <div class="trow-sub"><span class="chip soft">${esc(p.category)}</span><span class="chip" style="background:color-mix(in srgb,var(--s-done) 14%,transparent);color:var(--s-done)">✓ ${when(p.completedAt)}</span></div>
+        </div>
+      </div>`).join(""):""}
+    ${tasks.length?`<div class="todo-sec">Completed tasks <span class="line"></span><span style="font-weight:700">${tasks.length}</span></div>`+tasks.map(x=>`
+      <div class="trow" data-atask="${x.t.id}" style="align-items:center">
+        <div class="check-sm on" data-atrestore title="Restore — mark as not done">${TICK}</div>
+        <div class="trow-main"><div style="font-weight:600;font-size:13px;padding:2px 0;color:var(--muted)">${esc(x.t.text)||"(untitled task)"}</div>
+          <div class="trow-sub">
+            ${x.project?`<span class="trow-proj" style="color:${projColor(x.project)};background:color-mix(in srgb,${projColor(x.project)} 12%,transparent)">${esc(x.project.name)}</span>`:`<span class="trow-proj adhoc">Ad-hoc</span>`}
+            <span class="chip" style="background:color-mix(in srgb,var(--s-done) 14%,transparent);color:var(--s-done)">✓ ${when(x.t.completedAt)}</span>
+          </div>
+        </div>
+        <button class="tk-del" data-adel title="Delete forever"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>`).join(""):""}`
+    :`<div class="empty"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg><div>${q?"Nothing in the archive matches “"+esc(archSearch)+"”.":"Nothing completed yet — everything you finish lands here."}</div></div>`}`;
+  const si=$("archSearchInput");
+  si.addEventListener("input",e=>{ archSearch=e.target.value; renderArchive(); const s2=$("archSearchInput"); if(s2){ s2.focus(); s2.setSelectionRange(s2.value.length,s2.value.length); } });
+  host.querySelectorAll("[data-aproj]").forEach(row=>{
+    row.addEventListener("click",e=>{ if(e.target.closest("[data-aprestore]")) return; showProjectPage(row.dataset.aproj); });
+    row.querySelector("[data-aprestore]").addEventListener("click",e=>{ e.stopPropagation(); toggleProjectDone(data.projects.find(p=>p.id===row.dataset.aproj)); renderArchive(); });
+  });
+  host.querySelectorAll("[data-atask]").forEach(row=>{
+    const ref=findTask(row.dataset.atask); if(!ref) return;
+    row.querySelector("[data-atrestore]").addEventListener("click",()=>{ ref.t.done=false; ref.t.completedAt=0; save(); refreshTaskViews(); renderArchive(); toast("Restored to To-Do"); });
+    row.querySelector("[data-adel]").addEventListener("click",async()=>{ if(!await uiConfirm("Delete “"+(ref.t.text||"this task")+"” forever?",{title:"Delete from archive?"})) return;
+      const idx=ref.arr.indexOf(ref.t); if(idx>-1) ref.arr.splice(idx,1); save(); refreshTaskViews(); renderArchive(); });
+  });
+}
+
 /* ---- quick-add bar ---- */
 let qaDL={deadline:todayISO(),isWk:false}; /* tasks always carry a deadline — default today */
 function qaLabel(){ const b=$("qaDeadline"); b.textContent = qaDL.deadline ? "📅 "+fmtDL(qaDL.deadline,qaDL.isWk) : "📅 No deadline"; b.style.borderColor = qaDL.deadline ? "var(--primary)" : ""; b.style.color = qaDL.deadline ? "var(--primary)" : ""; }
@@ -2176,7 +2255,7 @@ function renderTaskModal(){
     <div class="field"><label>Notes</label><textarea id="tmNotes" rows="3">${esc(t.notes)}</textarea></div>
     <div style="display:flex;justify-content:flex-end;margin-top:2px"><button class="btn primary" id="tmClose">Done</button></div>
   `;
-  $("tmDone").onclick=()=>{ t.done=!t.done; save(); renderTaskModal(); refreshTaskViews(); };
+  $("tmDone").onclick=()=>{ t.done=!t.done; t.completedAt=t.done?Date.now():0; save(); renderTaskModal(); refreshTaskViews(); };
   $("tmText").addEventListener("input",e=>{ t.text=e.target.value; save(); });
   $("tmNotes").addEventListener("input",e=>{ t.notes=e.target.value; save(); });
   $("tmProject").addEventListener("change",e=>{ if(e.target.value==="__mtg") return; moveTaskTo(taskModalId,e.target.value); });
@@ -2324,10 +2403,10 @@ function toggleTheme(){ data.settings.theme = (data.settings.theme==="dark")?"li
 /* ---- tabs ---- */
 function switchTab(t){
   curTab=t; $("page-project").classList.add("hidden");
-  ["projects","todo","calendar","year","weekprep","docs","glossary","meetings"].forEach(x=>$("page-"+x).classList.toggle("hidden",x!==t));
+  ["projects","todo","calendar","year","weekprep","docs","glossary","meetings","archive"].forEach(x=>$("page-"+x).classList.toggle("hidden",x!==t));
   $("tabs").querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===t));
-  $("viewTitle").textContent = ({projects:"Projects",todo:"To-Do",calendar:"Calendar",year:"Year Plan",weekprep:"Week Prep",docs:"Working Documents",glossary:"Glossary",meetings:"Recurring Meetings"})[t] || "Projects";
-  if(t==="todo") renderTodo(); else if(t==="calendar") renderCalendar(); else if(t==="year") renderYear(); else if(t==="weekprep") renderWeekPrep(); else if(t==="docs") renderDocs(); else if(t==="glossary") renderGlossary(); else if(t==="meetings") renderMeetings(); else if(t==="projects") renderProjects();
+  $("viewTitle").textContent = ({projects:"Projects",todo:"To-Do",calendar:"Calendar",year:"Year Plan",weekprep:"Week Prep",docs:"Working Documents",glossary:"Glossary",meetings:"Recurring Meetings",archive:"Archive"})[t] || "Projects";
+  if(t==="todo") renderTodo(); else if(t==="calendar") renderCalendar(); else if(t==="year") renderYear(); else if(t==="weekprep") renderWeekPrep(); else if(t==="docs") renderDocs(); else if(t==="glossary") renderGlossary(); else if(t==="meetings") renderMeetings(); else if(t==="archive") renderArchive(); else if(t==="projects") renderProjects();
 }
 
 /* ============================================================
@@ -2479,7 +2558,7 @@ function applyMode(m){
   if(per){ document.querySelectorAll("#mainArea > .page").forEach(s=>s.classList.add("hidden")); switchPTab(pTab); }
   else{
     document.querySelectorAll('#mainArea [id^="ppage-"]').forEach(s=>s.classList.add("hidden"));
-    const wt=["projects","todo","calendar","year","weekprep","docs","glossary","meetings"].includes(curTab)?curTab:"projects";
+    const wt=["projects","todo","calendar","year","weekprep","docs","glossary","meetings","archive"].includes(curTab)?curTab:"projects";
     switchTab(wt);
   }
 }
