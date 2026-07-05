@@ -470,6 +470,10 @@
   .mood{width:34px;height:34px;border:1px solid var(--border);background:var(--surface-2);font-size:17px;cursor:pointer;display:grid;place-items:center;transition:.12s;padding:0;}
   .mood:hover{transform:scale(1.12);}
   .mood.sel{border-color:var(--primary);background:var(--primary-soft);box-shadow:0 0 0 2px var(--primary);}
+  .gymrow{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap;}
+  .gymtoggle{border:1px solid var(--border);border-left:3px solid #2f6fed;background:var(--surface);color:var(--muted);font-weight:700;font-size:12.5px;padding:10px 15px;cursor:pointer;transition:.12s;}
+  .gymtoggle.on{background:color-mix(in srgb,#2f6fed 14%,var(--surface));border-color:#2f6fed;color:#2f6fed;}
+  .gymcount{font-size:11.5px;color:var(--faint);font-weight:600;}
   .tbox{height:26px;background:var(--surface-2);border:1px solid var(--border);display:flex;overflow:hidden;margin:8px 0 4px;}
   .tbox i{display:block;height:100%;flex:none;}
   .joygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px;}
@@ -994,7 +998,7 @@ function normalizePersonal(p){
     d.happened.forEach(h=>{ h.id ||= uid(); h.text ??= ""; h.kind = h.kind==="forMe"?"forMe":"task"; h.createdAt ??= Date.now(); });
     d.meetups = Array.isArray(d.meetups)?d.meetups:[];
     d.meetups.forEach(mu=>{ mu.id ||= uid(); mu.personId ??= ""; mu.note ??= ""; mu.status = ["met","planned","missed"].includes(mu.status)?mu.status:"met"; mu.createdAt ??= Date.now(); });
-    d.feeling ??= ""; d.mood = (+d.mood>=1&&+d.mood<=7)?+d.mood:0; });
+    d.feeling ??= ""; d.mood = (+d.mood>=1&&+d.mood<=7)?+d.mood:0; d.gym = !!d.gym; });
   p.bucket = Array.isArray(p.bucket) ? p.bucket : [];
   p.bucket.forEach(b=>{ b.id ||= uid(); b.title ??= ""; b.why ??= "";
     if(!Array.isArray(b.steps)) b.steps = []; b.steps.forEach(s=>{ s.id ||= uid(); s.text ??= ""; s.done = !!s.done; });
@@ -2425,7 +2429,8 @@ function switchTab(t){
 const MODE_KEY="psm_mode_v1";
 const WD_NAMES=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const MOODS=["😖","😞","🙁","😐","🙂","😊","🤩"];
-const CAL_COLORS={taskDone:"#1d4fb8",forMe:"#2e8b57",meet:"#6b3fb8",refl:"#b89b00"};
+const CAL_COLORS={taskDone:"#1d4fb8",forMe:"#2e8b57",meet:"#6b3fb8",refl:"#b89b00",gym:"#2f6fed"};
+function gymCount(fromIso,toIso){ let n=0; Object.keys(P().dayPlans).forEach(k=>{ if(k>=fromIso&&k<=toIso&&P().dayPlans[k].gym) n++; }); return n; }
 const PPROJ_PALETTE=["#d97742","#63886f","#1d4fb8","#6b3fb8","#b83f8e","#0e8f8f","#caa500","#5b6472"];
 /* time-of-day buckets (with an exact-time escape hatch). entry.time stores a slot token, an "HH:MM", or "" */
 const TIME_SLOTS=[["morning","🌅 Morning","09:00"],["midday","🌞 Midday","12:00"],["afternoon","🌤 Afternoon","15:00"],["evening","🌆 Evening","19:00"],["night","🌙 Night","21:30"]];
@@ -2555,18 +2560,19 @@ function pStats(){
   const days=(from,to,fn)=>{ let n=0; for(let dt=from; dt<=to; dt=iso(addDays(parseISO(dt),1))) if(fn(dt)) n++; return n; };
   const tISO=todayISO(); const ws=curWeekIso();
   const plans=P().dayPlans;
-  let meets=0, refl=0, habit=0;
+  let meets=0, refl=0, habit=0, gymMonth=0, gymWeek=0;
   Object.keys(plans).forEach(k=>{ if(k<monthStart||k>tISO) return; const pl=plans[k];
     meets+=(pl.meetups||[]).filter(m=>m.status==="met").length;
     if((pl.feeling||"").trim()||pl.mood>0) refl++;
     if(P().dotDefs.length&&pl.dots&&P().dotDefs.every((_,i)=>pl.dots[i])) habit++;
+    if(pl.gym){ gymMonth++; if(k>=ws) gymWeek++; }
   });
   return {
     meWeek:days(ws,tISO,dayHasForMe),
     weekLen:Math.round((d0(new Date())-d0(parseISO(ws)))/864e5)+1,
     meMonth:days(monthStart,tISO,dayHasForMe),
     monthLen:Math.round((d0(new Date())-d0(parseISO(monthStart)))/864e5)+1,
-    meets,refl,habit
+    meets,refl,habit,gymWeek,gymMonth
   };
 }
 
@@ -2627,6 +2633,7 @@ function dayPageHTML(dt){
     </div>`; };
   return `
     <div class="lanes">${lane("responsibility","Tasks","")}${lane("forMe","For me 🧡","forme")}</div>
+    <div class="gymrow"><button class="gymtoggle ${plan.gym?"on":""}" data-gym>🏋 ${plan.gym?"Went to the gym ✓":"Gym today?"}</button><span class="gymcount">${(()=>{const ws=iso(weekStart(parseISO(dt)));return gymCount(ws,iso(addDays(parseISO(ws),6)));})()}× this week</span></div>
     <div style="margin-top:14px"><div class="section-h" style="margin:0 0 8px">What happened <span class="line"></span><span style="text-transform:none;letter-spacing:0;font-weight:600;color:var(--faint)">a record, not a plan</span></div>
     <div class="lanes">
       ${["task","forMe"].map(kind=>{ const rows=(plan.happened||[]).filter(h=>(h.kind==="forMe"?"forMe":"task")===kind);
@@ -2719,6 +2726,7 @@ function bindDayPage(host,dt,rerender){
   const ms=host.querySelector("[data-meetsel]");
   if(ms) ms.onchange=()=>{ if(!ms.value) return; plan.meetups.push({id:uid(),personId:ms.value,note:"",status:"met",createdAt:Date.now()}); syncLastSeen(ms.value); save(); rerender(); };
   host.querySelectorAll("[data-mood]").forEach(b=>b.onclick=()=>{ plan.mood=(plan.mood===+b.dataset.mood)?0:+b.dataset.mood; save(); rerender(); });
+  const gy=host.querySelector("[data-gym]"); if(gy) gy.onclick=()=>{ plan.gym=!plan.gym; save(); rerender(); };
   const fe=host.querySelector("[data-feel]"); if(fe) fe.addEventListener("input",ev=>{ plan.feeling=ev.target.value; save(); });
   bindAutoGrow(host);
 }
@@ -2843,12 +2851,14 @@ function renderPCal(){
       const meets=(pl?(pl.meetups||[]).filter(mu=>mu.status==="met"):[]).map(mu=>{ const per=P().people.find(p=>p.id===mu.personId);
         return `<div class="pw-ev" style="border-left-color:${CAL_COLORS.meet};color:${CAL_COLORS.meet};font-weight:700">👥 ${esc(per?per.name:"someone")}</div>`; }).join("");
       const refl=(pl&&((pl.feeling||"").trim()||pl.mood>0))?`<div class="pw-ev" style="border-left-color:#e9c400;color:${CAL_COLORS.refl};font-weight:700">☀ reflection${pl.mood?" "+MOODS[pl.mood-1]:""}</div>`:"";
-      return `<div class="cal-cell ${c.other?"other":""} ${ci===tISO?"today":""}" data-pday="${ci}"><span class="addhint">+</span><div class="cal-num">${c.d}</div>${evHtml}${meets}${refl}</div>`;
+      const gym=(pl&&pl.gym)?`<div class="pw-ev" style="border-left-color:${CAL_COLORS.gym};color:${CAL_COLORS.gym};font-weight:700">🏋 gym</div>`:"";
+      return `<div class="cal-cell ${c.other?"other":""} ${ci===tISO?"today":""}" data-pday="${ci}"><span class="addhint">+</span><div class="cal-num">${c.d}</div>${evHtml}${meets}${gym}${refl}</div>`;
     }).join("")}</div>
     <div class="legend">
       <span><span class="d" style="background:${CAL_COLORS.taskDone}"></span>done task</span>
       <span><span class="d" style="background:${CAL_COLORS.forMe}"></span>for me</span>
       <span><span class="d" style="background:${CAL_COLORS.meet}"></span>met someone</span>
+      <span><span class="d" style="background:${CAL_COLORS.gym}"></span>gym</span>
       <span><span class="d" style="background:#e9c400"></span>reflection</span>
       <span style="color:var(--faint)">click a day to open it · drag blocks between days</span>
     </div>`;
@@ -2966,6 +2976,8 @@ function renderPOverview(){
     <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
       <div class="kpi"><div class="lab">For-me days · this week</div><div class="val">${st.meWeek}<em> / ${st.weekLen}</em></div></div>
       <div class="kpi"><div class="lab">For-me days · this month</div><div class="val">${st.meMonth}<em> / ${st.monthLen}</em></div></div>
+      <div class="kpi"><div class="lab" style="color:${CAL_COLORS.gym}">🏋 Gym · this week</div><div class="val" style="color:${CAL_COLORS.gym}">${st.gymWeek}</div></div>
+      <div class="kpi"><div class="lab" style="color:${CAL_COLORS.gym}">🏋 Gym · this month</div><div class="val" style="color:${CAL_COLORS.gym}">${st.gymMonth}</div></div>
       <div class="kpi"><div class="lab">Meetups · this month</div><div class="val">${st.meets}</div></div>
       <div class="kpi"><div class="lab">Reflections · this month</div><div class="val">${st.refl}</div></div>
       <div class="kpi"><div class="lab">Full habit days · this month</div><div class="val">${st.habit}</div></div>
