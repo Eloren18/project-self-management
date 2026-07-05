@@ -444,6 +444,25 @@
   .dot-big.missed{box-shadow:0 0 0 2px #f0b429aa;}
   .dot-lbl{font-size:9.5px;color:var(--muted);text-align:center;max-width:76px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .dp-title{width:100%;border:none;background:transparent;outline:none;font-weight:600;font-size:13px;padding:1px 0;color:var(--text);}
+  .dp-ta{width:100%;border:none;background:transparent;outline:none;font-weight:600;font-size:13px;line-height:1.5;padding:1px 0;color:var(--text);resize:none;overflow:hidden;font-family:inherit;white-space:pre-wrap;overflow-wrap:anywhere;}
+  .dp-ta::placeholder{color:var(--faint);font-weight:500;}
+  .pi-row.done .dp-ta{text-decoration:line-through;color:var(--faint);}
+  .slotseg button{font-size:11px;padding:6px 9px;}
+  .pproj-chip{font-size:9.5px;font-weight:700;padding:2px 7px;color:#fff;cursor:pointer;white-space:nowrap;}
+  .pcolorrow{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0;}
+  .pcolorrow button{width:22px;height:22px;border:1px solid var(--border);cursor:pointer;padding:0;}
+  .pcolorrow button.sel{outline:2px solid var(--text);outline-offset:1px;}
+  .pprojcard{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--primary);padding:13px 14px;margin-bottom:10px;cursor:pointer;transition:.12s;}
+  .pprojcard:hover{border-color:var(--text);}
+  .focuswrap{max-width:640px;margin:0 auto;text-align:center;}
+  .focus-clock{font-size:clamp(56px,12vw,104px);font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1;margin:6px 0;}
+  .focus-phase{font-size:11px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:var(--primary);}
+  .focus-dots{display:flex;gap:7px;justify-content:center;margin:12px 0;}
+  .focus-dots span{width:10px;height:10px;border-radius:50%;background:var(--border);}
+  .focus-dots span.done{background:var(--primary);}
+  .focus-pick{display:flex;flex-direction:column;gap:6px;text-align:left;max-width:420px;margin:16px auto 0;}
+  .focus-pick .pi-row{cursor:pointer;margin:0;}
+  .focus-pick .pi-row.sel{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary);}
   .dp-add{margin-top:4px;}
   .dp-add input{width:100%;padding:7px 10px;border:1px dashed var(--border);background:var(--surface-2);outline:none;font-size:12px;font-weight:500;}
   .dp-add input:focus{border-color:var(--primary);border-style:solid;background:var(--surface);}
@@ -527,8 +546,10 @@
     <button class="tab" data-ptab="today">Today</button>
     <button class="tab" data-ptab="tomorrow">Tomorrow</button>
     <button class="tab" data-ptab="pcal">Calendar</button>
+    <button class="tab" data-ptab="focus">Focus</button>
     <button class="tab" data-ptab="overview">Overview</button>
     <button class="tab" data-ptab="resp">Need To</button>
+    <button class="tab" data-ptab="pprojects">Projects</button>
     <button class="tab" data-ptab="bucket">Bucket List</button>
     <button class="tab" data-ptab="people">People</button>
     <button class="tab" data-ptab="log">Log</button>
@@ -654,7 +675,9 @@
   <section class="page hidden" id="ppage-today"><div id="pTodayBody"></div></section>
   <section class="page hidden" id="ppage-tomorrow"><div id="pTomorrowBody"></div></section>
   <section class="page hidden" id="ppage-pcal"><div id="pCalBody"></div></section>
+  <section class="page hidden" id="ppage-focus"><div id="pFocusBody"></div></section>
   <section class="page hidden" id="ppage-overview"><div id="pOverviewBody"></div></section>
+  <section class="page hidden" id="ppage-pprojects"><div id="pProjectsBody"></div></section>
   <section class="page hidden" id="ppage-resp"><div id="pRespBody"></div></section>
   <section class="page hidden" id="ppage-bucket"><div id="pBucketBody"></div></section>
   <section class="page hidden" id="ppage-people"><div id="pPeopleBody"></div></section>
@@ -761,24 +784,9 @@
 <div class="modal-back hidden" id="createModal"><div class="modal" id="createBox" style="width:min(460px,100%)"></div></div>
 <div class="modal-back hidden" id="taskModal"><div class="modal" id="taskBox" style="width:min(480px,100%)"></div></div>
 
-<!-- ============ PERSONAL: NOW VIEW + MODALS ============ -->
-<div id="nowView" class="hidden">
-  <div class="now-card">
-    <button class="btn ghost sm" id="nowClose">← Back to my day</button>
-    <div class="now-phase" id="nowPhase">Focus</div>
-    <div class="now-title" id="nowTitle"></div>
-    <div class="now-timer" id="nowClock">25:00</div>
-    <div class="now-dots" id="nowDots"></div>
-    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-      <button class="btn primary" id="nowStart">Start</button>
-      <button class="btn" id="nowSkip">Skip phase</button>
-      <button class="btn ghost" id="nowReset">Reset</button>
-    </div>
-    <div style="margin-top:16px"><button class="btn sm" id="nowDone">✓ Done with this</button></div>
-    <div id="nowCount" style="font-size:11.5px;color:var(--faint);margin-top:10px"></div>
-  </div>
-</div>
+<!-- ============ PERSONAL: MODALS ============ -->
 <div class="modal-back hidden" id="pItemModal"><div class="modal" id="pItemBox" style="width:min(500px,100%)"></div></div>
+<div class="modal-back hidden" id="pprojModal"><div class="modal" id="pprojBox" style="width:min(620px,100%)"></div></div>
 <div class="modal-back hidden" id="bucketModal"><div class="modal" id="bucketBox" style="width:min(560px,100%)"></div></div>
 <div class="modal-back hidden" id="memoryModal"><div class="modal" id="memoryBox" style="width:min(520px,100%)"></div></div>
 <div class="modal-back hidden" id="qpModal"><div class="modal" id="qpBox" style="width:min(520px,100%)"></div></div>
@@ -973,7 +981,9 @@ function normalizePersonal(p){
   p.items.forEach(it=>{ it.id ||= uid(); it.title ??= ""; it.notes ??= ""; it.type = it.type==="forMe"?"forMe":"responsibility";
     it.timeEstimate = +it.timeEstimate||0; it.energy = ["low","medium","high"].includes(it.energy)?it.energy:"medium";
     if(!Array.isArray(it.tags)) it.tags = []; it.status = it.status==="done"?"done":"open"; it.createdAt ??= Date.now(); it.completedAt ??= 0;
-    it.recurringRule ??= null; it.intention ??= ""; it.isRest = !!it.isRest; it.personId ??= ""; it.bucketId ??= ""; it.stepId ??= ""; it.focusSessions ??= 0; });
+    it.recurringRule ??= null; it.intention ??= ""; it.isRest = !!it.isRest; it.personId ??= ""; it.bucketId ??= ""; it.stepId ??= ""; it.projId ??= ""; it.focusSessions ??= 0; });
+  p.projects = Array.isArray(p.projects) ? p.projects : [];
+  p.projects.forEach(pr=>{ pr.id ||= uid(); pr.title ??= ""; pr.notes ??= ""; pr.color ??= PPROJ_PALETTE[0]; pr.status = pr.status==="done"?"done":"active"; pr.createdAt ??= Date.now(); pr.completedAt ??= 0; });
   p.dayPlans = (p.dayPlans && typeof p.dayPlans==="object" && !Array.isArray(p.dayPlans)) ? p.dayPlans : {};
   Object.keys(p.dayPlans).forEach(k=>{ const d=p.dayPlans[k]; d.date=k;
     d.entries = Array.isArray(d.entries)?d.entries:[]; d.entries.forEach(e=>{ e.id ||= uid(); e.itemId ??= ""; e.time ??= ""; e.dur = +e.dur||0; e.done = !!e.done; e.label ??= ""; });
@@ -1001,7 +1011,7 @@ function normalizePersonal(p){
   p.weekAnchors = (p.weekAnchors && typeof p.weekAnchors==="object") ? p.weekAnchors : {};
   p.weekly = (p.weekly && typeof p.weekly==="object" && !Array.isArray(p.weekly)) ? p.weekly : {};
   Object.keys(p.weekly).forEach(k=>{ const w=p.weekly[k]; if(!Array.isArray(w.me)) w.me=[]; if(!Array.isArray(w.tasks)) w.tasks=[];
-    [...w.me,...w.tasks].forEach(x=>{ x.id ||= uid(); x.text ??= ""; x.done = !!x.done; x.createdAt ??= Date.now(); }); });
+    [...w.me,...w.tasks].forEach(x=>{ x.id ||= uid(); x.text ??= ""; x.done = !!x.done; x.projId ??= ""; x.createdAt ??= Date.now(); }); });
   p.flagAck = (p.flagAck && typeof p.flagAck==="object" && !Array.isArray(p.flagAck)) ? p.flagAck : {};
   p.settings = p.settings || {}; p.settings.freeStart ??= "18:00"; p.settings.freeEnd ??= "23:00";
   return p;
@@ -2416,8 +2426,23 @@ const MODE_KEY="psm_mode_v1";
 const WD_NAMES=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const MOODS=["😖","😞","🙁","😐","🙂","😊","🤩"];
 const CAL_COLORS={taskDone:"#1d4fb8",forMe:"#2e8b57",meet:"#6b3fb8",refl:"#b89b00"};
+const PPROJ_PALETTE=["#d97742","#63886f","#1d4fb8","#6b3fb8","#b83f8e","#0e8f8f","#caa500","#5b6472"];
+/* time-of-day buckets (with an exact-time escape hatch). entry.time stores a slot token, an "HH:MM", or "" */
+const TIME_SLOTS=[["morning","🌅 Morning","09:00"],["midday","🌞 Midday","12:00"],["afternoon","🌤 Afternoon","15:00"],["evening","🌆 Evening","19:00"],["night","🌙 Night","21:30"]];
+function slotOf(t){ return TIME_SLOTS.find(s=>s[0]===t); }
+function slotLabel(t){ if(!t) return ""; const s=slotOf(t); return s?s[1]:("🕐 "+t); }
+function slotSharp(t){ if(!t) return ""; const s=slotOf(t); return s?s[1].replace(/^\S+\s/,""):t; }
+function slotMinutes(t){ if(!t) return 9999; const s=slotOf(t); const hh=s?s[2]:t; const m=/^(\d{1,2}):(\d{2})$/.exec(hh); return m?(+m[1])*60+(+m[2]):9999; }
+function slotSelectHTML(cur){ const exact=cur&&!slotOf(cur);
+  return `<div class="seg slotseg" style="flex-wrap:wrap">${[["","Anytime"],...TIME_SLOTS.map(s=>[s[0],s[1]])].map(o=>`<button type="button" data-slot="${o[0]}" class="${cur===o[0]?"active":""}">${o[1]}</button>`).join("")}<button type="button" data-slot="__exact" class="${exact?"active":""}">🕐 Exact</button></div>
+    <input type="time" class="slotexact" value="${exact?esc(cur):""}" style="margin-top:6px;${exact?"":"display:none"}">`; }
+function bindSlotSelect(host){ const seg=host.querySelector(".slotseg"), ex=host.querySelector(".slotexact"); if(!seg) return;
+  seg.querySelectorAll("[data-slot]").forEach(b=>b.onclick=()=>{ seg.querySelectorAll("button").forEach(x=>x.classList.remove("active")); b.classList.add("active"); ex.style.display=b.dataset.slot==="__exact"?"":"none"; if(b.dataset.slot==="__exact") ex.focus(); }); }
+function readSlot(host){ const seg=host.querySelector(".slotseg"), ex=host.querySelector(".slotexact"); if(!seg) return ""; const a=seg.querySelector("button.active"); if(!a) return ""; if(a.dataset.slot==="__exact") return ex.value||""; return a.dataset.slot; }
+function autoGrow(el){ if(!el) return; el.style.height="auto"; el.style.height=(el.scrollHeight+2)+"px"; }
+function bindAutoGrow(host){ host.querySelectorAll(".dp-ta").forEach(t=>{ autoGrow(t); t.addEventListener("input",()=>autoGrow(t)); }); }
 let appMode=localStorage.getItem(MODE_KEY)==="personal"?"personal":"work";
-let pTab="today", pDayIso=todayISO(), pCalDate=new Date(), nowItemId=null, pNoteId=null, pNoteSearch="", pBucketFilter="current", memoryPhotos=[], pLogPerson="", flagShownSession=false, dotsEditing=false, ptimeEntryCtx=null;
+let pTab="today", pDayIso=todayISO(), pCalDate=new Date(), nowItemId=null, pNoteId=null, pNoteSearch="", pBucketFilter="current", memoryPhotos=[], pLogPerson="", flagShownSession=false, dotsEditing=false, ptimeEntryCtx=null, pProjOpenId=null, pipWin=null;
 
 function P(){ return data.personal; }
 function pItem(id){ return P().items.find(x=>x.id===id); }
@@ -2567,24 +2592,25 @@ function switchPTab(t){
   $("page-project").classList.add("hidden");
   document.querySelectorAll("#mainArea > .page").forEach(s=>s.classList.toggle("hidden", s.id!=="ppage-"+t));
   $("personalTabs").querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.ptab===t));
-  $("viewTitle").textContent=({today:"Today",tomorrow:"Tomorrow",pcal:"Calendar",overview:"Overview",resp:"Need To",bucket:"Bucket List",people:"People",log:"Log",pnotes:"Self Notes"})[t]||"Today";
+  $("viewTitle").textContent=({today:"Today",tomorrow:"Tomorrow",pcal:"Calendar",focus:"Focus",overview:"Overview",resp:"Need To",pprojects:"Projects",bucket:"Bucket List",people:"People",log:"Log",pnotes:"Self Notes"})[t]||"Today";
   pR(); window.scrollTo(0,0);
 }
-function pR(){ if(appMode!=="personal") return; ({today:renderPToday,tomorrow:renderPTomorrow,pcal:renderPCal,overview:renderPOverview,resp:renderPResp,bucket:renderPBucket,people:renderPPeople,log:renderPLog,pnotes:renderPNotes}[pTab]||renderPToday)(); }
+function pR(){ if(appMode!=="personal") return; ({today:renderPToday,tomorrow:renderPTomorrow,pcal:renderPCal,focus:renderPFocus,overview:renderPOverview,resp:renderPResp,pprojects:renderPProjects,bucket:renderPBucket,people:renderPPeople,log:renderPLog,pnotes:renderPNotes}[pTab]||renderPToday)(); }
 
 /* ---- the day page (shared by Today, Tomorrow, and the calendar's day view) ---- */
+function projChipHTML(it){ if(!it.projId) return ""; const pr=P().projects.find(p=>p.id===it.projId); if(!pr) return ""; return `<span class="pproj-chip" data-goproj="${pr.id}" style="background:${pr.color}" title="Project: ${esc(pr.title)}">◆ ${esc(pr.title)}</span>`; }
 function dpRowHTML(plan,e){
   const it=pItem(e.itemId); if(!it) return "";
   return `<div class="pi-row ${it.type==="forMe"?"forme":""} ${e.done?"done":""}" draggable="true" data-entry="${e.id}">
     <div class="check-sm ${e.done?"on":""}" data-edone title="Did it">${e.done?TICK:""}</div>
     <div style="flex:1;min-width:0">
-      <input class="dp-title" data-etitle value="${esc(it.title)}" placeholder="…">
+      <textarea class="dp-ta" data-etitle rows="1" placeholder="…">${esc(it.title)}</textarea>
       <div class="pi-sub">
+        ${projChipHTML(it)}
         ${e.label?`<span class="pi-badge">${esc(e.label)}</span>`:""}
-        ${e.time?`<span class="pi-badge">🕐 ${esc(e.time)}${e.dur?" · "+fmtMin(e.dur):""}</span>`:(e.dur?`<span class="pi-badge">${fmtMin(e.dur)}</span>`:"")}
+        ${e.time?`<span class="pi-badge">${esc(slotLabel(e.time))}${e.dur?" · "+fmtMin(e.dur):""}</span>`:(e.dur?`<span class="pi-badge">${fmtMin(e.dur)}</span>`:"")}
         ${it.recurringRule?`<span class="pi-badge">↻</span>`:""}
         <button class="pi-act" data-etime title="Time, length & note">🕐</button>
-        <button class="pi-act" data-enow title="Focus on this now">▶</button>
         <button class="pi-act" data-edel title="Remove from this day">✕</button>
       </div>
     </div>
@@ -2601,15 +2627,19 @@ function dayPageHTML(dt){
     </div>`; };
   return `
     <div class="lanes">${lane("responsibility","Tasks","")}${lane("forMe","For me 🧡","forme")}</div>
-    <div class="lane" style="margin-top:14px;border-top-color:#98917f">
-      <h3 style="color:var(--muted)">What happened <span class="line"></span><span style="text-transform:none;letter-spacing:0;font-weight:600">a record, not a plan</span></h3>
-      ${(plan.happened||[]).map(h=>`<div class="pi-row ${h.kind==="forMe"?"forme":""}" data-hap="${h.id}" style="align-items:center">
-        <button class="pi-badge" data-hkind title="Toggle: task / for me" style="cursor:pointer;${h.kind==="forMe"?`color:${CAL_COLORS.forMe};border-color:${CAL_COLORS.forMe}`:`color:${CAL_COLORS.taskDone};border-color:${CAL_COLORS.taskDone}`}">${h.kind==="forMe"?"🧡 for me":"✔ task"}</button>
-        <input class="dp-title" data-htext value="${esc(h.text)}" style="flex:1">
-        <button class="pi-act" data-hdel>✕</button>
-      </div>`).join("")}
-      <div class="dp-add"><input data-hapadd placeholder="+ log something that already happened… Enter" autocomplete="off"></div>
-    </div>
+    <div style="margin-top:14px"><div class="section-h" style="margin:0 0 8px">What happened <span class="line"></span><span style="text-transform:none;letter-spacing:0;font-weight:600;color:var(--faint)">a record, not a plan</span></div>
+    <div class="lanes">
+      ${["task","forMe"].map(kind=>{ const rows=(plan.happened||[]).filter(h=>(h.kind==="forMe"?"forMe":"task")===kind);
+        return `<div class="lane ${kind==="forMe"?"forme":""}" style="border-top-color:${kind==="forMe"?CAL_COLORS.forMe:CAL_COLORS.taskDone}">
+        <h3 style="color:${kind==="forMe"?CAL_COLORS.forMe:CAL_COLORS.taskDone}">${kind==="forMe"?"For me — done 🧡":"Tasks — done ✔"}</h3>
+        ${rows.map(h=>`<div class="pi-row ${kind==="forMe"?"forme":""}" data-hap="${h.id}" style="align-items:flex-start">
+          <textarea class="dp-ta" data-htext rows="1" style="flex:1">${esc(h.text)}</textarea>
+          <button class="pi-act" data-hswap title="Move to the other side">⇄</button>
+          <button class="pi-act" data-hdel>✕</button>
+        </div>`).join("")}
+        <div class="dp-add"><input data-hapadd="${kind}" placeholder="${kind==="forMe"?"+ something you did for you… Enter":"+ a task you got done… Enter"}" autocomplete="off"></div>
+      </div>`; }).join("")}
+    </div></div>
     <div class="lane" style="margin-top:14px;border-top-color:${CAL_COLORS.meet}">
       <h3 style="color:${CAL_COLORS.meet}">People <span class="line"></span></h3>
       ${(plan.meetups||[]).map(mu=>{ const per=P().people.find(p=>p.id===mu.personId);
@@ -2625,7 +2655,7 @@ function dayPageHTML(dt){
     <div class="lane" style="margin-top:14px;border-top-color:#e9c400">
       <h3 style="color:${CAL_COLORS.refl}">How I felt <span class="line"></span></h3>
       <div class="moodrow">${MOODS.map((m,i)=>`<button class="mood ${plan.mood===i+1?"sel":""}" data-mood="${i+1}">${m}</button>`).join("")}</div>
-      <textarea data-feel rows="3" placeholder="How was this day, really? Not what you did — how you felt." style="width:100%;padding:9px 11px;border:1px solid var(--border);background:var(--surface);outline:none;resize:vertical;margin-top:9px;line-height:1.5">${esc(plan.feeling||"")}</textarea>
+      <textarea class="dp-ta" data-feel placeholder="How was this day, really? Not what you did — how you felt. Press Enter for new lines." style="min-height:56px;padding:9px 11px;border:1px solid var(--border);background:var(--surface);margin-top:9px">${esc(plan.feeling||"")}</textarea>
     </div>`;
 }
 function bindDayPage(host,dt,rerender){
@@ -2633,9 +2663,12 @@ function bindDayPage(host,dt,rerender){
   host.querySelectorAll(".pi-row[data-entry]").forEach(row=>{
     const e=plan.entries.find(x=>x.id===row.dataset.entry); if(!e) return; const it=pItem(e.itemId); if(!it) return;
     row.querySelector("[data-edone]").onclick=()=>{ e.done=!e.done; blockAwareComplete(e,it); save(); rerender(); };
-    row.querySelector("[data-etitle]").addEventListener("input",ev=>{ it.title=ev.target.value; save(); });
+    const et=row.querySelector("[data-etitle]");
+    et.addEventListener("input",ev=>{ it.title=ev.target.value; save(); });
+    et.addEventListener("focus",()=>{ row.draggable=false; }); /* let me select long text without starting a drag */
+    et.addEventListener("blur",()=>{ row.draggable=true; });
     row.querySelector("[data-etime]").onclick=()=>openPTime(plan,e);
-    row.querySelector("[data-enow]").onclick=()=>openNow(it.id);
+    const pc=row.querySelector("[data-goproj]"); if(pc) pc.onclick=ev=>{ ev.stopPropagation(); openPProjModal(pc.dataset.goproj); };
     row.querySelector("[data-edel]").onclick=()=>{
       plan.entries=plan.entries.filter(x=>x.id!==e.id);
       const elsewhere=Object.values(P().dayPlans).some(pl=>pl.entries.some(x=>x.itemId===it.id));
@@ -2667,16 +2700,16 @@ function bindDayPage(host,dt,rerender){
   }));
   host.querySelectorAll("[data-hap]").forEach(row=>{
     const h=plan.happened.find(x=>x.id===row.dataset.hap); if(!h) return;
-    row.querySelector("[data-hkind]").onclick=()=>{ h.kind=h.kind==="forMe"?"task":"forMe"; save(); rerender(); };
+    row.querySelector("[data-hswap]").onclick=()=>{ h.kind=h.kind==="forMe"?"task":"forMe"; save(); rerender(); };
     row.querySelector("[data-htext]").addEventListener("input",ev=>{ h.text=ev.target.value; save(); });
     row.querySelector("[data-hdel]").onclick=()=>{ plan.happened=plan.happened.filter(x=>x.id!==h.id); save(); rerender(); };
   });
-  const ha=host.querySelector("[data-hapadd]");
-  if(ha) ha.addEventListener("keydown",ev=>{
+  host.querySelectorAll("[data-hapadd]").forEach(ha=>ha.addEventListener("keydown",ev=>{
     if(ev.key!=="Enter") return; const t=(ha.value||"").trim(); if(!t) return;
-    plan.happened.push({id:uid(),text:t,kind:"task",createdAt:Date.now()});
-    save(); rerender(); const again=host.querySelector("[data-hapadd]"); if(again) again.focus();
-  });
+    const kind=ha.dataset.hapadd==="forMe"?"forMe":"task";
+    plan.happened.push({id:uid(),text:t,kind,createdAt:Date.now()});
+    save(); rerender(); const again=host.querySelector(`[data-hapadd="${kind}"]`); if(again) again.focus();
+  }));
   host.querySelectorAll("[data-meet]").forEach(row=>{
     const mu=plan.meetups.find(x=>x.id===row.dataset.meet); if(!mu) return;
     row.querySelector("[data-mstatus]").onchange=ev=>{ mu.status=ev.target.value; syncLastSeen(mu.personId); save(); rerender(); };
@@ -2687,6 +2720,7 @@ function bindDayPage(host,dt,rerender){
   if(ms) ms.onchange=()=>{ if(!ms.value) return; plan.meetups.push({id:uid(),personId:ms.value,note:"",status:"met",createdAt:Date.now()}); syncLastSeen(ms.value); save(); rerender(); };
   host.querySelectorAll("[data-mood]").forEach(b=>b.onclick=()=>{ plan.mood=(plan.mood===+b.dataset.mood)?0:+b.dataset.mood; save(); rerender(); });
   const fe=host.querySelector("[data-feel]"); if(fe) fe.addEventListener("input",ev=>{ plan.feeling=ev.target.value; save(); });
+  bindAutoGrow(host);
 }
 function syncLastSeen(personId){
   const per=P().people.find(p=>p.id===personId); if(!per) return;
@@ -2697,15 +2731,13 @@ function openPTime(plan,e){
   ptimeEntryCtx={date:plan.date,entryId:e.id};
   const it=pItem(e.itemId);
   $("ptimeBox").innerHTML=`<h3>${esc(it?it.title:"This block")} · ${fmtShort(plan.date)}</h3>
-    <div class="grid2">
-      <div class="field"><label>Start time (optional)</label><input type="time" id="ptTime" value="${esc(e.time)}"></div>
-      <div class="field"><label>Duration</label><select id="ptDur">${[0,15,30,45,60,90,120,180,240].map(m=>`<option value="${m}"${e.dur===m?" selected":""}>${m?fmtMin(m):"—"}</option>`).join("")}</select></div>
-    </div>
+    <div class="field"><label>When in the day</label><div id="ptSlot">${slotSelectHTML(e.time)}</div></div>
+    <div class="field"><label>Duration</label><select id="ptDur">${[0,15,30,45,60,90,120,180,240].map(m=>`<option value="${m}"${e.dur===m?" selected":""}>${m?fmtMin(m):"—"}</option>`).join("")}</select></div>
     <div class="field"><label>This block means… (optional note)</label><input id="ptLabel" value="${esc(e.label||"")}" placeholder="e.g. Read pages 50–100"></div>
-    <div style="display:flex;gap:8px"><button class="btn danger sm" id="ptRemove">Remove from this day</button><span class="grow"></span><button class="btn ghost" id="ptClear">Clear time</button><button class="btn primary" id="ptSave">Save</button></div>`;
+    <div style="display:flex;gap:8px"><button class="btn danger sm" id="ptRemove">Remove from this day</button><span class="grow"></span><button class="btn primary" id="ptSave">Save</button></div>`;
   const m=$("ptimeModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show"));
-  $("ptSave").onclick=()=>{ e.time=$("ptTime").value||""; e.dur=+$("ptDur").value||0; e.label=($("ptLabel").value||"").trim(); save(); closePM("ptimeModal"); pR(); };
-  $("ptClear").onclick=()=>{ e.time=""; e.dur=0; save(); closePM("ptimeModal"); pR(); };
+  bindSlotSelect($("ptSlot"));
+  $("ptSave").onclick=()=>{ e.time=readSlot($("ptSlot")); e.dur=+$("ptDur").value||0; e.label=($("ptLabel").value||"").trim(); save(); closePM("ptimeModal"); pR(); };
   $("ptRemove").onclick=()=>{ plan.entries=plan.entries.filter(x=>x.id!==e.id); save(); closePM("ptimeModal"); pR(); };
 }
 
@@ -2802,11 +2834,11 @@ function renderPCal(){
     </div>
     <div class="cal-grid">${WD_NAMES.map(d2=>`<div class="cal-dow">${d2}</div>`).join("")}${cells.map(c=>{
       const ci=iso(c.date); const pl=P().dayPlans[ci];
-      const evs=(pl?pl.entries:[]).map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it).sort((a,b)=>(a.e.time||"99").localeCompare(b.e.time||"99"));
+      const evs=(pl?pl.entries:[]).map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it).sort((a,b)=>slotMinutes(a.e.time)-slotMinutes(b.e.time));
       const evHtml=evs.map(x=>{
         const isMe=x.it.type==="forMe";
         const col=isMe?CAL_COLORS.forMe:(x.e.done?CAL_COLORS.taskDone:"");
-        return `<div class="pw-ev ${x.e.done&&!isMe?"":""}" draggable="true" data-wentry="${x.e.id}" data-wday="${ci}" style="${col?`border-left-color:${col};color:${col};font-weight:700;`:""}${x.e.done?"opacity:.75;":""}" title="${esc(x.it.title)}${x.e.label?" — "+esc(x.e.label):""}">${x.e.done?"✓ ":""}${x.e.time?esc(x.e.time)+" · ":""}${esc(x.it.title)}${x.e.label?" · "+esc(x.e.label):""}</div>`;
+        return `<div class="pw-ev ${x.e.done&&!isMe?"":""}" draggable="true" data-wentry="${x.e.id}" data-wday="${ci}" style="${col?`border-left-color:${col};color:${col};font-weight:700;`:""}${x.e.done?"opacity:.75;":""}" title="${esc(x.it.title)}${x.e.label?" — "+esc(x.e.label):""}">${x.e.done?"✓ ":""}${x.e.time?esc(slotSharp(x.e.time))+" · ":""}${esc(x.it.title)}${x.e.label?" · "+esc(x.e.label):""}</div>`;
       }).join("");
       const meets=(pl?(pl.meetups||[]).filter(mu=>mu.status==="met"):[]).map(mu=>{ const per=P().people.find(p=>p.id===mu.personId);
         return `<div class="pw-ev" style="border-left-color:${CAL_COLORS.meet};color:${CAL_COLORS.meet};font-weight:700">👥 ${esc(per?per.name:"someone")}</div>`; }).join("");
@@ -2885,13 +2917,16 @@ function openSpreadModal(pref){
   };
 }
 function openScheduleModal(it){
+  let schedDay=iso(addDays(new Date(),1));
   openMini(`<h3>Schedule “${esc(it.title)}”</h3>
-    <div class="grid2"><div class="field"><label>Day</label><input type="date" id="scDate" value="${iso(addDays(new Date(),1))}"></div>
-    <div class="field"><label>Time (optional)</label><input type="time" id="scTime"></div></div>
+    <div class="field"><label>Day</label><button class="btn dl-btn set" id="scDayBtn">📅 ${esc(fmtDL(schedDay,false))}</button></div>
+    <div class="field"><label>When in the day</label><div id="scSlot">${slotSelectHTML("")}</div></div>
     <div class="field"><label>Length</label><select id="scDur">${[0,15,30,45,60,90,120,180].map(mm=>`<option value="${mm}">${mm?fmtMin(mm):"—"}</option>`).join("")}</select></div>
     <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn ghost" id="scCancel">Cancel</button><button class="btn primary" id="scGo">Put it on the calendar</button></div>`);
+  bindSlotSelect($("scSlot"));
+  $("scDayBtn").onclick=()=>openPicker($("scDayBtn"),{deadline:schedDay,isWk:false},sel=>{ if(!sel.deadline) return; schedDay=sel.isWk?sel.deadline:sel.deadline; $("scDayBtn").textContent="📅 "+fmtDL(schedDay,false); });
   $("scCancel").onclick=()=>closePM("qpModal");
-  $("scGo").onclick=()=>{ const dt=$("scDate").value; if(!dt) return; addToPlan(dt,it.id,{time:$("scTime").value||"",dur:+$("scDur").value||0}); closePM("qpModal"); pR(); toast("Scheduled for "+fmtShort(dt)); };
+  $("scGo").onclick=()=>{ addToPlan(schedDay,it.id,{time:readSlot($("scSlot")),dur:+$("scDur").value||0}); closePM("qpModal"); pR(); toast("Scheduled for "+fmtShort(schedDay)); };
 }
 
 /* ---- Overview (weekly priorities + catch-ups + flag + gentle stats) ---- */
@@ -2901,15 +2936,20 @@ function renderPOverview(){
   const ws=curWeekIso(); const wk=weeklyFor(ws);
   const od=overduePeople(); const fm=forMeMissThisWeek(); const st=pStats();
   const wi=weekInfo(ws);
-  const prioLane=(arr,key,label,cls)=>`<div class="lane ${cls}" style="flex:1;min-width:240px">
-    <h3>${label} <span class="grow"></span><span>${arr.filter(x=>x.done).length}/${arr.length}</span></h3>
-    ${arr.map(x=>`<div class="pi-row ${cls} ${x.done?"done":""}" data-prio="${x.id}" data-pkey="${key}" style="align-items:center">
+  const prioRow=(x,key,cls)=>{ const pr=x.projId?P().projects.find(p=>p.id===x.projId):null; const pg=pr?projProgress(pr):null;
+    return `<div class="pi-row ${cls} ${x.done?"done":""}" data-prio="${x.id}" data-pkey="${key}" style="align-items:center">
       <div class="check-sm ${x.done?"on":""}" data-pridone>${x.done?TICK:""}</div>
-      <input class="dp-title" data-pritext value="${esc(x.text)}" style="flex:1">
+      ${pr?`<div style="flex:1;min-width:0"><span class="pproj-chip" data-prioproj="${pr.id}" style="background:${pr.color}">◆ ${esc(pr.title)}</span> <span style="font-size:11px;color:var(--faint)">${pg.done}/${pg.total} tasks</span></div>`
+        :`<input class="dp-title" data-pritext value="${esc(x.text)}" style="flex:1">`}
       ${x.done?"":`<button class="pi-act" data-pricarry title="Carry to next week">→</button>`}
       <button class="pi-act" data-pridel>✕</button>
-    </div>`).join("")}
+    </div>`; };
+  const openProjs=P().projects.filter(p=>p.status!=="done");
+  const prioLane=(arr,key,label,cls)=>`<div class="lane ${cls}" style="flex:1;min-width:240px">
+    <h3>${label} <span class="grow"></span><span>${arr.filter(x=>x.done).length}/${arr.length}</span></h3>
+    ${arr.map(x=>prioRow(x,key,cls)).join("")}
     <div class="dp-add"><input data-prioadd="${key}" placeholder="+ a main thing this week… Enter" autocomplete="off"></div>
+    ${openProjs.length?`<select data-priolink="${key}" style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--border);background:var(--surface);font-size:11.5px"><option value="">🔗 link a project as a main thing…</option>${openProjs.map(p=>`<option value="${p.id}">${esc(p.title)}</option>`).join("")}</select>`:""}
   </div>`;
   host.innerHTML=`
     <div class="toolbar"><h1 class="page-title">Overview</h1><span style="color:var(--faint);font-size:12.5px;font-weight:600">Week ${wi?wi.week:"?"}</span><div class="grow"></div><button class="btn sm ghost" id="pExport" title="Download all personal data as JSON">⤓ Export</button></div>
@@ -2937,13 +2977,17 @@ function renderPOverview(){
     weeklyFor(ws)[inp.dataset.prioadd].push({id:uid(),text:t,done:false,createdAt:Date.now()});
     save(); renderPOverview(); const again=host.querySelector(`[data-prioadd="${inp.dataset.prioadd}"]`); if(again) again.focus();
   }));
+  host.querySelectorAll("[data-priolink]").forEach(sel=>sel.onchange=()=>{ if(!sel.value) return; const pr=P().projects.find(p=>p.id===sel.value); if(!pr) return;
+    const key=sel.dataset.priolink; if(weeklyFor(ws)[key].some(x=>x.projId===pr.id)){ toast("Already a main thing"); return; }
+    weeklyFor(ws)[key].push({id:uid(),text:pr.title,done:false,projId:pr.id,createdAt:Date.now()}); save(); renderPOverview(); });
   host.querySelectorAll("[data-prio]").forEach(row=>{
     const key=row.dataset.pkey; const arr=weeklyFor(ws)[key]; const x=arr.find(z=>z.id===row.dataset.prio); if(!x) return;
     row.querySelector("[data-pridone]").onclick=()=>{ x.done=!x.done; save(); renderPOverview(); };
-    row.querySelector("[data-pritext]").addEventListener("input",e=>{ x.text=e.target.value; save(); });
+    const tx=row.querySelector("[data-pritext]"); if(tx) tx.addEventListener("input",e=>{ x.text=e.target.value; save(); });
+    const pp=row.querySelector("[data-prioproj]"); if(pp) pp.onclick=()=>openPProjModal(pp.dataset.prioproj);
     row.querySelector("[data-pridel]").onclick=()=>{ weeklyFor(ws)[key]=arr.filter(z=>z.id!==x.id); save(); renderPOverview(); };
     const c=row.querySelector("[data-pricarry]");
-    if(c) c.onclick=()=>{ const nxt=iso(addDays(parseISO(ws),7)); weeklyFor(nxt)[key].push({id:uid(),text:x.text,done:false,createdAt:Date.now()});
+    if(c) c.onclick=()=>{ const nxt=iso(addDays(parseISO(ws),7)); weeklyFor(nxt)[key].push({id:uid(),text:x.text,done:false,projId:x.projId||"",createdAt:Date.now()});
       weeklyFor(ws)[key]=arr.filter(z=>z.id!==x.id); save(); renderPOverview(); toast("Carried to next week →"); };
   });
 }
@@ -2963,11 +3007,11 @@ function renderPResp(){
         <div style="flex:1;min-width:0">
           <input class="dp-title" data-rtitle value="${esc(i.title)}" placeholder="What needs doing">
           <div class="pi-sub">
-            ${sch.map(s2=>`<button class="chip trow-dl" data-schedday="${s2.date}" data-schede="${s2.e.id}" title="Click to adjust or move">📅 ${esc(fmtShort(s2.date))}${s2.e.time?" · "+esc(s2.e.time):""}${s2.e.label?" · "+esc(s2.e.label):""}</button>`).join("")}
+            ${projChipHTML(i)}
+            ${sch.map(s2=>`<button class="chip trow-dl" data-schedday="${s2.date}" data-schede="${s2.e.id}" title="Click to adjust or move">📅 ${esc(fmtShort(s2.date))}${s2.e.time?" · "+esc(slotSharp(s2.e.time)):""}${s2.e.label?" · "+esc(s2.e.label):""}</button>`).join("")}
             <button class="chip trow-dl" data-rsched>+ schedule</button>
             ${i.recurringRule?`<span class="pi-badge">↻</span>`:""}
             <button class="pi-act" data-rspread title="Spread over multiple days">⧉</button>
-            <button class="pi-act" data-rnow title="Do it now">▶</button>
             <button class="pi-act" data-redit title="Edit details">✎</button>
             <button class="pi-act" data-rdel title="Delete">✕</button>
           </div>
@@ -2986,7 +3030,7 @@ function renderPResp(){
     row.querySelector("[data-rtitle]").addEventListener("input",e=>{ i.title=e.target.value; save(); });
     row.querySelector("[data-rsched]").onclick=()=>openScheduleModal(i);
     row.querySelector("[data-rspread]").onclick=()=>openSpreadModal(i.id);
-    row.querySelector("[data-rnow]").onclick=()=>openNow(i.id);
+    const pc=row.querySelector("[data-goproj]"); if(pc) pc.onclick=()=>openPProjModal(pc.dataset.goproj);
     row.querySelector("[data-redit]").onclick=()=>openPItemModal(i.id);
     row.querySelector("[data-rdel]").onclick=async()=>{ if(!await uiConfirm("Delete “"+i.title+"” and its calendar blocks?")) return;
       P().items=P().items.filter(x=>x.id!==i.id);
@@ -3007,7 +3051,10 @@ function openPItemModal(id,defaults){
       <div class="field"><label>Kind</label><select id="piType"><option value="responsibility"${it.type!=="forMe"?" selected":""}>Task</option><option value="forMe"${it.type==="forMe"?" selected":""}>For me</option></select></div>
       <div class="field"><label>Repeats</label><select id="piRec"><option value=""${!it.recurringRule?" selected":""}>Never</option><option value="daily"${rr.type==="daily"?" selected":""}>Daily</option>${WD_NAMES.map((w,i)=>`<option value="w${i}"${rr.type==="weekly"&&rr.weekday===i?" selected":""}>Every ${w}</option>`).join("")}</select></div>
     </div>
-    <div class="field"><label>Linked person (optional)</label><select id="piPerson"><option value="">—</option>${P().people.map(p=>`<option value="${p.id}"${p.id===it.personId?" selected":""}>${esc(p.name)}</option>`).join("")}</select></div>
+    <div class="grid2">
+      <div class="field"><label>Part of a project (optional)</label><select id="piProj"><option value="">—</option>${P().projects.filter(p=>p.status!=="done").map(p=>`<option value="${p.id}"${p.id===it.projId?" selected":""}>${esc(p.title)}</option>`).join("")}</select></div>
+      <div class="field"><label>Linked person (optional)</label><select id="piPerson"><option value="">—</option>${P().people.map(p=>`<option value="${p.id}"${p.id===it.personId?" selected":""}>${esc(p.name)}</option>`).join("")}</select></div>
+    </div>
     <div class="field"><label>Notes</label><textarea id="piNotes" rows="2">${esc(it.notes)}</textarea></div>
     <div style="display:flex;gap:8px">
       ${id?`<button class="btn danger sm" id="piDelete">Delete</button>`:""}
@@ -3023,7 +3070,7 @@ function openPItemModal(id,defaults){
   $("piSave").onclick=()=>{
     const title=($("piTitle").value||"").trim(); if(!title){ $("piTitle").focus(); return; }
     const rec=$("piRec").value; const rule=rec===""?null:(rec==="daily"?{type:"daily"}:{type:"weekly",weekday:+rec.slice(1)});
-    const vals={title,type:$("piType").value,personId:$("piPerson").value,notes:$("piNotes").value,recurringRule:rule};
+    const vals={title,type:$("piType").value,personId:$("piPerson").value,projId:$("piProj").value,notes:$("piNotes").value,recurringRule:rule};
     if(id) Object.assign(pItem(id),vals);
     else P().items.push(Object.assign({id:uid(),timeEstimate:0,energy:"medium",tags:[],intention:"",isRest:false,status:"open",createdAt:Date.now(),completedAt:0,bucketId:"",stepId:"",focusSessions:0},vals));
     save(); closePM("pItemModal"); pR(); toast(id?"Saved":"Added ✨");
@@ -3266,15 +3313,88 @@ function renderPNotes(){
   }
 }
 
-/* ---- Now view + focus timer (engine 1:1 from the Pomodoro app) ---- */
+/* ---- Personal Projects (bigger things: notes + linked tasks + progress) ---- */
+function projProgress(pr){ const its=P().items.filter(i=>i.projId===pr.id); const done=its.filter(i=>i.status==="done").length; return {done,total:its.length,pct:its.length?Math.round(done/its.length*100):0}; }
+function renderPProjects(){
+  const host=$("pProjectsBody"); if(!host) return;
+  const active=P().projects.filter(p=>p.status!=="done"), done=P().projects.filter(p=>p.status==="done");
+  const card=pr=>{ const pg=projProgress(pr);
+    return `<div class="pprojcard" data-pproj="${pr.id}" style="border-left-color:${pr.color}">
+      <div style="display:flex;align-items:center;gap:9px"><span style="width:12px;height:12px;background:${pr.color};flex:none"></span><b style="flex:1;font-size:14px;overflow-wrap:break-word">${pr.status==="done"?"✓ ":""}${esc(pr.title)}</b><span class="pi-badge">${pg.done}/${pg.total}</span></div>
+      ${pr.notes?`<div style="font-size:12px;color:var(--muted);margin-top:5px;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(pr.notes)}</div>`:""}
+      ${pg.total?`<div class="progbar" style="margin-top:8px"><i style="width:${pg.pct}%;background:${pr.color}"></i></div>`:""}
+    </div>`; };
+  host.innerHTML=`
+    <div class="toolbar"><h1 class="page-title">Projects</h1><span style="color:var(--faint);font-size:12px;font-weight:600">bigger things, broken into tasks</span><div class="grow"></div></div>
+    <div class="qadd"><input id="pprojCapture" placeholder="A bigger project — a trip, a course, a home thing… press Enter" autocomplete="off" style="flex:1;min-width:180px;border:none;background:transparent;outline:none;font-weight:600;padding:4px 2px"><button class="btn primary sm" id="pprojAdd">Add project</button></div>
+    ${active.map(card).join("")||`<div class="empty"><div>No projects yet.<br><span style="color:var(--faint)">Group related tasks under a bigger goal — then link it to your week in Overview.</span></div></div>`}
+    ${done.length?`<div class="todo-sec">Completed <span class="line"></span><span style="font-weight:700">${done.length}</span></div>`+done.map(card).join(""):""}`;
+  const add=()=>{ const t=($("pprojCapture").value||"").trim(); if(!t){ $("pprojCapture").focus(); return; }
+    P().projects.push({id:uid(),title:t,notes:"",color:PPROJ_PALETTE[P().projects.length%PPROJ_PALETTE.length],status:"active",createdAt:Date.now(),completedAt:0});
+    save(); renderPProjects(); const i2=$("pprojCapture"); if(i2) i2.focus(); };
+  $("pprojAdd").onclick=add;
+  $("pprojCapture").addEventListener("keydown",e=>{ if(e.key==="Enter") add(); });
+  host.querySelectorAll("[data-pproj]").forEach(c=>c.onclick=()=>openPProjModal(c.dataset.pproj));
+}
+function openPProjModal(id){
+  pProjOpenId=id; const pr=P().projects.find(x=>x.id===id); if(!pr) return;
+  const tasks=P().items.filter(i=>i.projId===pr.id);
+  const free=P().items.filter(i=>!i.projId&&i.status!=="done");
+  $("pprojBox").innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <input class="title-input" id="prjTitle" value="${esc(pr.title)}" placeholder="Project name">
+      <button class="btn danger sm" id="prjDel" title="Delete">🗑</button>
+    </div>
+    <div class="pcolorrow">${PPROJ_PALETTE.map(c=>`<button data-prjcol="${c}" class="${pr.color===c?"sel":""}" style="background:${c}"></button>`).join("")}</div>
+    <div class="field"><label>Notes</label><textarea id="prjNotes" rows="3" placeholder="What is this project, and what does done look like?">${esc(pr.notes)}</textarea></div>
+    <div class="section-h">Tasks ${tasks.length?`· ${tasks.filter(t=>t.status==="done").length}/${tasks.length}`:""} <span class="line"></span></div>
+    <div id="prjTasks">${tasks.map(t=>`<div class="pi-row ${t.status==="done"?"done":""}" data-prjt="${t.id}" style="align-items:center">
+      <div class="check-sm ${t.status==="done"?"on":""}" data-prjtdone>${t.status==="done"?TICK:""}</div>
+      <input class="dp-title" data-prjttext value="${esc(t.title)}" style="flex:1">
+      <button class="pi-act" data-prjtsched title="Schedule on a day">📅</button>
+      <button class="pi-act" data-prjtunlink title="Unlink from project">⊘</button>
+    </div>`).join("")||`<div style="font-size:12.5px;color:var(--faint);padding:2px 0 6px">No tasks yet — add the pieces below.</div>`}</div>
+    <div style="display:flex;gap:8px;margin:6px 0 12px"><input id="prjNewTask" placeholder="Add a task to this project… Enter" style="flex:1;padding:8px 11px;border:1px solid var(--border);background:var(--surface);outline:none" autocomplete="off"><button class="btn sm" id="prjTaskAdd">Add</button></div>
+    ${free.length?`<div style="display:flex;gap:8px;align-items:center"><select id="prjLink" style="flex:1;padding:7px 9px;border:1px solid var(--border);background:var(--surface)"><option value="">Link an existing task…</option>${free.map(i=>`<option value="${i.id}">${esc(i.title)}</option>`).join("")}</select><button class="btn sm" id="prjLinkBtn">Link</button></div>`:""}
+    <div style="display:flex;gap:8px;margin-top:14px">
+      ${pr.status==="done"?`<span class="badge this">Completed ${pr.completedAt?new Date(pr.completedAt).toLocaleDateString():""}</span>`:`<button class="btn" id="prjComplete" style="background:var(--s-done);border-color:var(--s-done);color:#fff">✓ Mark project done</button>`}
+      <span class="grow"></span><button class="btn ghost" id="prjClose">Done</button>
+    </div>`;
+  const m=$("pprojModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show"));
+  $("prjTitle").addEventListener("input",e=>{ pr.title=e.target.value; save(); });
+  $("prjNotes").addEventListener("input",e=>{ pr.notes=e.target.value; save(); });
+  $("pprojBox").querySelectorAll("[data-prjcol]").forEach(b=>b.onclick=()=>{ pr.color=b.dataset.prjcol; save(); openPProjModal(id); });
+  $("prjDel").onclick=async()=>{ if(!await uiConfirm("Delete this project? Its tasks stay but get unlinked.",{title:"Delete project?"})) return;
+    P().items.forEach(i=>{ if(i.projId===pr.id) i.projId=""; });
+    P().projects=P().projects.filter(x=>x.id!==pr.id);
+    Object.values(P().weekly).forEach(w=>{ [w.me,w.tasks].forEach(arr=>arr.forEach(x=>{ if(x.projId===pr.id) x.projId=""; })); });
+    save(); closePM("pprojModal"); renderPProjects(); };
+  const addT=()=>{ const t=($("prjNewTask").value||"").trim(); if(!t) return;
+    P().items.push({id:uid(),title:t,notes:"",type:"responsibility",timeEstimate:0,energy:"medium",tags:[],status:"open",createdAt:Date.now(),completedAt:0,recurringRule:null,intention:"",isRest:false,personId:"",bucketId:"",stepId:"",projId:pr.id,focusSessions:0});
+    save(); openPProjModal(id); setTimeout(()=>$("prjNewTask").focus(),40); };
+  $("prjTaskAdd").onclick=addT;
+  $("prjNewTask").addEventListener("keydown",e=>{ if(e.key==="Enter") addT(); });
+  const lb=$("prjLinkBtn"); if(lb) lb.onclick=()=>{ const t=pItem($("prjLink").value); if(!t) return; t.projId=pr.id; save(); openPProjModal(id); };
+  $("pprojBox").querySelectorAll("[data-prjt]").forEach(row=>{
+    const t=pItem(row.dataset.prjt); if(!t) return;
+    row.querySelector("[data-prjtdone]").onclick=()=>{ if(t.status==="done") uncompleteItemEffects(t); else completeItemEffects(t); save(); openPProjModal(id); };
+    row.querySelector("[data-prjttext]").addEventListener("input",e=>{ t.title=e.target.value; save(); });
+    row.querySelector("[data-prjtsched]").onclick=()=>openScheduleModal(t);
+    row.querySelector("[data-prjtunlink]").onclick=()=>{ t.projId=""; save(); openPProjModal(id); };
+  });
+  const comp=$("prjComplete"); if(comp) comp.onclick=()=>{ pr.status="done"; pr.completedAt=Date.now(); save(); closePM("pprojModal"); celebrate(); toast("Project done 🎉"); renderPProjects(); };
+  $("prjClose").onclick=()=>{ closePM("pprojModal"); pR(); };
+}
+
+/* ---- Focus timer (engine 1:1 from the Pomodoro app) + pop-out always-on-top window ---- */
 const POMO={focus:25*60,short:5*60,long:15*60,longEvery:4};
 const POMO_LABEL={focus:"Focus",short:"Short break",long:"Long break"};
 let pomoMode="focus",pomoRemaining=POMO.focus,pomoRunning=false,pomoEnd=0,pomoTicker=null,pomoCycle=0;
 const pomoFmt=s=>{ s=Math.max(0,Math.round(s)); return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); };
-function pomoTick(){ pomoRemaining=Math.max(0,Math.round((pomoEnd-Date.now())/1000)); if(pomoRemaining<=0){ pomoRunning=false; clearInterval(pomoTicker); pomoTicker=null; pomoComplete(); return; } renderNow(); }
-function pomoStart(){ if(pomoRunning) return; pomoRunning=true; pomoEnd=Date.now()+pomoRemaining*1000; clearInterval(pomoTicker); pomoTicker=setInterval(pomoTick,250); renderNow(); }
-function pomoPause(){ if(!pomoRunning) return; pomoRemaining=Math.max(0,Math.round((pomoEnd-Date.now())/1000)); pomoRunning=false; clearInterval(pomoTicker); pomoTicker=null; renderNow(); }
-function pomoReset(){ pomoRunning=false; clearInterval(pomoTicker); pomoTicker=null; pomoRemaining=POMO[pomoMode]; renderNow(); }
+function pomoTick(){ pomoRemaining=Math.max(0,Math.round((pomoEnd-Date.now())/1000)); if(pomoRemaining<=0){ pomoRunning=false; clearInterval(pomoTicker); pomoTicker=null; pomoComplete(); return; } renderFocus(); }
+function pomoStart(){ if(pomoRunning) return; pomoRunning=true; pomoEnd=Date.now()+pomoRemaining*1000; clearInterval(pomoTicker); pomoTicker=setInterval(pomoTick,250); renderFocus(); }
+function pomoPause(){ if(!pomoRunning) return; pomoRemaining=Math.max(0,Math.round((pomoEnd-Date.now())/1000)); pomoRunning=false; clearInterval(pomoTicker); pomoTicker=null; renderFocus(); }
+function pomoReset(){ pomoRunning=false; clearInterval(pomoTicker); pomoTicker=null; pomoRemaining=POMO[pomoMode]; renderFocus(); }
 function pomoComplete(){
   const was=pomoMode;
   if(was==="focus"){ const it=nowItemId?pItem(nowItemId):null; if(it){ it.focusSessions=(it.focusSessions||0)+1; save(); }
@@ -3282,39 +3402,87 @@ function pomoComplete(){
   else pomoMode="focus";
   pomoRemaining=POMO[pomoMode];
   toast(was==="focus"?"Focus complete — take a break 🌿":"Break's over — back to it 🎯");
-  renderNow();
+  if(pTab==="focus") renderPFocus(); else renderFocus();
 }
 function pomoSkip(){ pomoRunning=false; clearInterval(pomoTicker); pomoTicker=null;
   if(pomoMode==="focus") pomoMode=((pomoCycle+1)%POMO.longEvery===0)?"long":"short"; else pomoMode="focus";
-  pomoRemaining=POMO[pomoMode]; renderNow(); }
-function renderNow(){
-  if($("nowView").classList.contains("hidden")) return;
+  pomoRemaining=POMO[pomoMode]; renderFocus(); }
+function renderFocus(){
   const it=nowItemId?pItem(nowItemId):null;
-  $("nowTitle").textContent=it?(it.intention||it.title):"";
-  $("nowPhase").textContent=POMO_LABEL[pomoMode];
-  $("nowClock").textContent=pomoFmt(pomoRemaining);
-  $("nowStart").textContent=pomoRunning?"Pause":"Start";
-  const inCycle=pomoCycle%POMO.longEvery;
-  $("nowDots").innerHTML=Array.from({length:POMO.longEvery},(_,k)=>`<span class="${k<inCycle?"done":""}"></span>`).join("");
-  $("nowCount").textContent=it&&it.focusSessions?it.focusSessions+" focus session"+(it.focusSessions>1?"s":"")+" on this":"";
+  const clock=pomoFmt(pomoRemaining), phase=POMO_LABEL[pomoMode], inCycle=pomoCycle%POMO.longEvery;
+  const fc=$("focusClock");
+  if(fc){
+    fc.textContent=clock; $("focusPhase").textContent=phase; $("focusStart").textContent=pomoRunning?"Pause":"Start";
+    $("focusTitle").textContent=it?it.title:"Pick something below to focus on";
+    $("focusDots").innerHTML=Array.from({length:POMO.longEvery},(_,k)=>`<span class="${k<inCycle?"done":""}"></span>`).join("");
+    $("focusCount").textContent=it&&it.focusSessions?it.focusSessions+" session"+(it.focusSessions>1?"s":"")+" logged on this":"";
+  }
+  updatePip(clock,phase,it?it.title:"");
 }
-function openNow(id){ nowItemId=id; if(!pomoRunning){ pomoMode="focus"; pomoRemaining=POMO.focus; } $("nowView").classList.remove("hidden"); renderNow(); }
-function closeNow(){ $("nowView").classList.add("hidden"); pR(); }
+function renderPFocus(){
+  const host=$("pFocusBody"); if(!host) return;
+  const plan=planFor(todayISO(),true);
+  const opts=plan.entries.map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it&&!x.e.done);
+  const inCycle=pomoCycle%POMO.longEvery;
+  host.innerHTML=`<div class="focuswrap">
+    <div class="focus-phase" id="focusPhase">${POMO_LABEL[pomoMode]}</div>
+    <div class="focus-clock" id="focusClock">${pomoFmt(pomoRemaining)}</div>
+    <div class="focus-dots" id="focusDots">${Array.from({length:POMO.longEvery},(_,k)=>`<span class="${k<inCycle?"done":""}"></span>`).join("")}</div>
+    <div id="focusTitle" style="font-size:15px;font-weight:700;min-height:20px;margin-bottom:4px">${nowItemId&&pItem(nowItemId)?esc(pItem(nowItemId).title):"Pick something below to focus on"}</div>
+    <div id="focusCount" style="font-size:11.5px;color:var(--faint);margin-bottom:12px"></div>
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+      <button class="btn primary" id="focusStart">${pomoRunning?"Pause":"Start"}</button>
+      <button class="btn" id="focusSkip">Skip phase</button>
+      <button class="btn ghost" id="focusReset">Reset</button>
+      <button class="btn" id="focusPip" title="Float a compact timer on top of every window">⧉ Pop out on top</button>
+    </div>
+    ${nowItemId?`<div style="margin-top:12px"><button class="btn sm" id="focusDone">✓ Done with this</button></div>`:""}
+    <div class="section-h">Today's tasks — pick one to focus on <span class="line"></span></div>
+    <div class="focus-pick">${opts.length?opts.map(x=>`<div class="pi-row ${x.it.type==="forMe"?"forme":""} ${x.it.id===nowItemId?"sel":""}" data-focuspick="${x.it.id}"><div style="flex:1;min-width:0">${esc(x.it.title)}</div>${x.e.time?`<span class="pi-badge">${esc(slotSharp(x.e.time))}</span>`:""}</div>`).join(""):`<div style="font-size:12.5px;color:var(--faint);text-align:center;padding:6px 0">No tasks on today yet — add some on the Today tab.</div>`}</div>
+  </div>`;
+  $("focusStart").onclick=()=>{ pomoRunning?pomoPause():pomoStart(); };
+  $("focusSkip").onclick=pomoSkip;
+  $("focusReset").onclick=pomoReset;
+  $("focusPip").onclick=openPip;
+  const fd=$("focusDone"); if(fd) fd.onclick=()=>{ const it=nowItemId?pItem(nowItemId):null;
+    if(it){ const e=plan.entries.find(x=>x.itemId===it.id&&!x.done); if(e){ e.done=true; blockAwareComplete(e,it); } else completeItemEffects(it); save(); toast("Done. That counted. 🧡"); nowItemId=null; }
+    renderPFocus(); };
+  host.querySelectorAll("[data-focuspick]").forEach(r=>r.onclick=()=>{ nowItemId=r.dataset.focuspick; if(!pomoRunning){ pomoMode="focus"; pomoRemaining=POMO.focus; } renderPFocus(); });
+  renderFocus();
+}
+async function openPip(){
+  if(!("documentPictureInPicture" in window)){ toast("Pop-out needs the latest Chrome (Document Picture-in-Picture)"); return; }
+  try{
+    if(pipWin && !pipWin.closed){ pipWin.focus(); return; }
+    pipWin=await documentPictureInPicture.requestWindow({width:260,height:190});
+    const d=pipWin.document;
+    d.body.style.cssText="margin:0;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#2c251c;color:#fff;height:100vh;display:grid;place-items:center;text-align:center;user-select:none";
+    d.body.innerHTML=`<div style="padding:14px;width:100%">
+      <div id="pw-phase" style="font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#e9b06a"></div>
+      <div id="pw-clock" style="font-size:54px;font-weight:800;letter-spacing:-.03em;line-height:1;margin:6px 0">--:--</div>
+      <div id="pw-title" style="font-size:12px;color:#cbb89f;margin-bottom:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+      <div style="display:flex;gap:6px;justify-content:center">
+        <button id="pw-toggle" style="border:0;background:#d97742;color:#fff;font-weight:700;padding:7px 16px;cursor:pointer">Start</button>
+        <button id="pw-skip" style="border:1px solid #5a4d3a;background:transparent;color:#cbb89f;font-weight:700;padding:7px 12px;cursor:pointer">Skip</button>
+      </div></div>`;
+    d.getElementById("pw-toggle").onclick=()=>{ pomoRunning?pomoPause():pomoStart(); };
+    d.getElementById("pw-skip").onclick=pomoSkip;
+    pipWin.addEventListener("pagehide",()=>{ pipWin=null; });
+    renderFocus(); toast("Timer popped out — it stays on top ⧉");
+  }catch(err){ pipWin=null; toast("Couldn't open the pop-out window"); }
+}
+function updatePip(clock,phase,title){
+  if(!pipWin || pipWin.closed) return;
+  const d=pipWin.document, c=d.getElementById("pw-clock"); if(!c) return;
+  c.textContent=clock; d.getElementById("pw-phase").textContent=phase; d.getElementById("pw-title").textContent=title||"";
+  const tg=d.getElementById("pw-toggle"); tg.textContent=pomoRunning?"Pause":"Start"; tg.style.background=pomoRunning?"#5a4d3a":"#d97742";
+}
 
 /* ---- personal boot ---- */
 function initPersonalUI(){
   $("modePill").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b&&b.dataset.mode!==appMode) applyMode(b.dataset.mode); });
   $("personalTabs").addEventListener("click",e=>{ const b=e.target.closest(".tab"); if(b) switchPTab(b.dataset.ptab); });
-  $("nowClose").onclick=closeNow;
-  $("nowStart").onclick=()=>{ pomoRunning?pomoPause():pomoStart(); };
-  $("nowSkip").onclick=pomoSkip;
-  $("nowReset").onclick=pomoReset;
-  $("nowDone").onclick=()=>{ const it=nowItemId?pItem(nowItemId):null;
-    if(it){ const plan=P().dayPlans[todayISO()]; const e=plan&&plan.entries.find(x=>x.itemId===it.id&&!x.done);
-      if(e){ e.done=true; blockAwareComplete(e,it); } else completeItemEffects(it);
-      save(); toast("Done. That counted. 🧡"); }
-    closeNow(); };
-  ["pItemModal","bucketModal","memoryModal","qpModal","ptimeModal","dayModal"].forEach(idm=>$(idm).addEventListener("click",e=>{ if(e.target.id===idm){ closePM(idm); if(idm==="dayModal") pR(); } }));
+  ["pItemModal","pprojModal","bucketModal","memoryModal","qpModal","ptimeModal","dayModal"].forEach(idm=>$(idm).addEventListener("click",e=>{ if(e.target.id===idm){ closePM(idm); if(idm==="dayModal"||idm==="pprojModal") pR(); } }));
   $("uiDialog").addEventListener("click",e=>{ if(e.target.id==="uiDialog") uiClose(false); });
   if(appMode==="personal") applyMode("personal");
 }
@@ -3359,7 +3527,7 @@ $("revokedSignOut").onclick=()=>{ if(db) db.auth.signOut(); };
 $("setupContinue").onclick=()=>{ showGate(null); applyTheme(); renderAll(); setSync("","Local only"); };
 document.addEventListener("keydown",e=>{ if(e.key==="Escape"){
   if(!$("uiDialog").classList.contains("hidden")) uiClose(false);
-  else if(!$("nowView").classList.contains("hidden")) closeNow();
+  else if(!$("pprojModal").classList.contains("hidden")){ closePM("pprojModal"); pR(); }
   else if(!$("ptimeModal").classList.contains("hidden")) closePM("ptimeModal");
   else if(!$("dayModal").classList.contains("hidden")){ closePM("dayModal"); pR(); }
   else if(!$("qpModal").classList.contains("hidden")) closePM("qpModal");
