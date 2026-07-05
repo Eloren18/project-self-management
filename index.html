@@ -2712,22 +2712,26 @@ function openPTime(plan,e){
 /* ---- daily dots (small, inline editing — no browser prompts) ---- */
 function dotsRowHTML(plan,yplan){
   const defs=P().dotDefs;
+  if(!defs.length) dotsEditing=false; /* never get stuck in edit mode with nothing to edit */
+  const canAdd=defs.length<3;
   return `<div class="dots-row">
     <span style="font-size:10px;font-weight:800;letter-spacing:.6px;color:var(--muted);text-transform:uppercase">Habits</span>
     ${defs.map((d,i)=>dotsEditing
       ?`<span style="display:inline-flex;gap:4px;align-items:center"><input data-dlab="${i}" value="${esc(d.label)}" style="width:100px;padding:4px 7px;border:1px solid var(--border);background:var(--surface);font-size:11px"><button class="pi-act" data-ddel="${i}" title="Remove">✕</button></span>`
       :`<span style="display:inline-flex;flex-direction:column;align-items:center;gap:2px"><button class="dot-big ${plan.dots[i]?"on":""} ${(!plan.dots[i]&&yplan&&!yplan.dots[i])?"missed":""}" data-dot="${i}" title="${(!plan.dots[i]&&yplan&&!yplan.dots[i])?"Missed yesterday — never skip twice":""}">${plan.dots[i]?"✓":""}</button><span class="dot-lbl">${esc(d.label)}</span></span>`).join("")}
-    ${(!dotsEditing&&defs.length<3)?`<input id="dotNew" placeholder="+ tiny habit… Enter" style="width:150px;padding:6px 9px;border:1px solid var(--border);background:var(--surface);font-size:11.5px" autocomplete="off">`:""}
-    ${defs.length?`<button class="pi-act" id="dotEditTgl" title="${dotsEditing?"Done":"Edit habits"}">${dotsEditing?"✓ done":"⚙"}</button>`:""}
+    ${canAdd?`<input id="dotNew" placeholder="${defs.length?"another tiny habit…":"a tiny habit — stretch, read one page…"}" style="width:170px;padding:6px 9px;border:1px solid var(--border);background:var(--surface);font-size:11.5px" autocomplete="off"><button class="btn sm" id="dotAdd">+ Add habit</button>`:`<span style="font-size:10.5px;color:var(--faint)">max 3 · edit to free a slot</span>`}
+    ${(defs.length||dotsEditing)?`<button class="pi-act" id="dotEditTgl" title="${dotsEditing?"Done":"Edit habits"}">${dotsEditing?"✓ done":"⚙"}</button>`:""}
   </div>`;
 }
 function bindDots(host,plan,rerender){
   host.querySelectorAll("[data-dot]").forEach(b=>b.onclick=()=>{ const i=+b.dataset.dot; plan.dots[i]=!plan.dots[i]; save(); rerender(); });
-  const dn=host.querySelector("#dotNew");
-  if(dn) dn.addEventListener("keydown",e=>{ if(e.key!=="Enter") return; const l=(dn.value||"").trim(); if(!l) return; P().dotDefs.push({id:uid(),label:l}); save(); rerender(); });
+  const dn=host.querySelector("#dotNew"), da=host.querySelector("#dotAdd");
+  const addDot=()=>{ if(!dn) return; const l=(dn.value||"").trim(); if(!l){ dn.focus(); return; } if(P().dotDefs.length>=3){ toast("Three habits is the max — keep it tiny"); return; } P().dotDefs.push({id:uid(),label:l}); save(); rerender(); };
+  if(dn) dn.addEventListener("keydown",e=>{ if(e.key==="Enter") addDot(); });
+  if(da) da.onclick=addDot;
   const tg=host.querySelector("#dotEditTgl"); if(tg) tg.onclick=()=>{ dotsEditing=!dotsEditing; rerender(); };
   host.querySelectorAll("[data-dlab]").forEach(inp=>inp.addEventListener("input",e=>{ P().dotDefs[+inp.dataset.dlab].label=e.target.value; save(); }));
-  host.querySelectorAll("[data-ddel]").forEach(b=>b.onclick=()=>{ P().dotDefs.splice(+b.dataset.ddel,1); save(); rerender(); });
+  host.querySelectorAll("[data-ddel]").forEach(b=>b.onclick=()=>{ P().dotDefs.splice(+b.dataset.ddel,1); if(!P().dotDefs.length) dotsEditing=false; save(); rerender(); });
 }
 
 /* ---- Today (navigable day pages; backward only) ---- */
