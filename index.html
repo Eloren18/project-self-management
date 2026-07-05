@@ -484,6 +484,9 @@
   .habit-pill.missed .hp-dot{box-shadow:0 0 0 2px #f0b429aa;}
   .focus-settings{margin:20px auto 0;max-width:440px;text-align:left;background:var(--surface);border:1px solid var(--border);padding:11px 15px;}
   .focus-settings summary{cursor:pointer;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);user-select:none;}
+  .focus-qnum{width:20px;height:20px;border-radius:50%;background:var(--primary);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;flex:none;}
+  .focus-qnum.off{background:transparent;border:1px dashed var(--border);color:var(--faint);}
+  .focus-pick .pi-row{align-items:center;gap:8px;}
   .gymrow{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap;}
   .gymtoggle.plan{border-style:dashed;border-color:#2f6fed;color:#2f6fed;background:transparent;}
   .gymtoggle{border:1px solid var(--border);border-left:3px solid #2f6fed;background:var(--surface);color:var(--muted);font-weight:700;font-size:12.5px;padding:10px 15px;cursor:pointer;transition:.12s;}
@@ -3488,6 +3491,7 @@ const POMO_LABEL={focus:"Focus",short:"Short break",long:"Long break"};
 function pomoCfg(){ const s=(data&&data.personal&&data.personal.settings&&data.personal.settings.pomo)||{}; return {focus:s.focus||25,short:s.short||5,long:s.long||15,longEvery:s.longEvery||4,sound:s.sound!==false,notify:s.notify!==false}; }
 function pomoDur(m){ return pomoCfg()[m]*60; }
 let pomoMode="focus",pomoRemaining=pomoDur("focus"),pomoRunning=false,pomoEnd=0,pomoTicker=null,pomoCycle=0;
+let focusQueue=[], pipSettingsOpen=false;
 const pomoFmt=s=>{ s=Math.max(0,Math.round(s)); return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); };
 let pomoActx=null;
 function primeAudio(){ try{ pomoActx=pomoActx||new (window.AudioContext||window.webkitAudioContext)(); if(pomoActx.state==="suspended") pomoActx.resume(); }catch(e){} }
@@ -3523,43 +3527,62 @@ function pomoComplete(){
   pomoChime(was); pomoNotifyDesk(was);
   toast(was==="focus"?"Focus complete — take a break 🌿":"Break's over — back to it 🎯");
   if(pTab==="focus") renderPFocus(); else renderFocus();
+  if(pipWin && !pipWin.closed) renderPipContent();
 }
 function pomoSkip(){ pomoRunning=false; clearInterval(pomoTicker); pomoTicker=null;
   if(pomoMode==="focus") pomoMode=((pomoCycle+1)%pomoCfg().longEvery===0)?"long":"short"; else pomoMode="focus";
   pomoRemaining=pomoDur(pomoMode); renderFocus(); }
+/* ---- focus session queue (multiple tasks) ---- */
+function focusDoneToday(id){ const pl=P().dayPlans[todayISO()]; const e=pl&&pl.entries.find(x=>x.itemId===id); return !!(e&&e.done); }
+function focusPrune(){ focusQueue=focusQueue.filter(id=>{ const it=pItem(id); return it && it.status!=="done" && !focusDoneToday(id); }); nowItemId=focusQueue[0]||null; }
+function focusToggle(id){ const i=focusQueue.indexOf(id); if(i>-1) focusQueue.splice(i,1); else focusQueue.push(id); if(!pomoRunning){ pomoMode="focus"; pomoRemaining=pomoDur("focus"); } focusPrune(); }
+function focusAddNew(title){ title=(title||"").trim(); if(!title) return null;
+  const plan=planFor(todayISO(),true);
+  const it={id:uid(),title,notes:"",type:"responsibility",timeEstimate:0,energy:"medium",tags:[],status:"open",createdAt:Date.now(),completedAt:0,recurringRule:null,intention:"",isRest:false,personId:"",bucketId:"",stepId:"",projId:"",focusSessions:0};
+  P().items.push(it); plan.entries.push({id:uid(),itemId:it.id,time:"",dur:0,done:false,label:""}); focusQueue.push(it.id); save(); focusPrune(); return it;
+}
+function focusCompleteCurrent(){ const it=nowItemId?pItem(nowItemId):null;
+  if(it){ const pl=planFor(todayISO(),true); const e=pl.entries.find(x=>x.itemId===it.id&&!x.done); if(e){ e.done=true; blockAwareComplete(e,it); } else completeItemEffects(it); save(); toast(focusQueue.length>1?"Done ✓ — next up":"Done. That counted. 🧡"); }
+  focusPrune();
+}
+function focusRefreshAll(){ focusPrune(); if(!$("ppage-focus").classList.contains("hidden")) renderPFocus(); else renderFocus(); if(pipWin && !pipWin.closed) renderPipContent(); }
 function renderFocus(){
   const it=nowItemId?pItem(nowItemId):null;
   const clock=pomoFmt(pomoRemaining), phase=POMO_LABEL[pomoMode], inCycle=pomoCycle%pomoCfg().longEvery;
   const fc=$("focusClock");
   if(fc){
     fc.textContent=clock; $("focusPhase").textContent=phase; $("focusStart").textContent=pomoRunning?"Pause":"Start";
-    $("focusTitle").textContent=it?it.title:"Pick a task below to focus on";
+    $("focusTitle").textContent=it?it.title:"Pick tasks below for this session";
     $("focusDots").innerHTML=Array.from({length:pomoCfg().longEvery},(_,k)=>`<span class="${k<inCycle?"done":""}"></span>`).join("");
-    $("focusCount").textContent=it&&it.focusSessions?it.focusSessions+" session"+(it.focusSessions>1?"s":"")+" logged on this":"";
+    $("focusCount").textContent=focusQueue.length>1?(focusQueue.length-1)+" more queued":(it&&it.focusSessions?it.focusSessions+" session"+(it.focusSessions>1?"s":"")+" on this":"");
   }
-  updatePip(clock,phase,it?it.title:"");
+  updatePip(clock,phase);
 }
 function renderPFocus(){
   const host=$("pFocusBody"); if(!host) return;
+  focusPrune();
   const plan=planFor(todayISO(),true);
   const opts=plan.entries.map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it&&!x.e.done&&x.it.type==="responsibility");
   const cfg=pomoCfg(); const inCycle=pomoCycle%cfg.longEvery;
   const notifState=("Notification" in window)?Notification.permission:"unsupported";
+  const cur=nowItemId?pItem(nowItemId):null;
   host.innerHTML=`<div class="focuswrap">
     <div class="focus-phase" id="focusPhase">${POMO_LABEL[pomoMode]}</div>
     <div class="focus-clock" id="focusClock">${pomoFmt(pomoRemaining)}</div>
     <div class="focus-dots" id="focusDots">${Array.from({length:cfg.longEvery},(_,k)=>`<span class="${k<inCycle?"done":""}"></span>`).join("")}</div>
-    <div id="focusTitle" style="font-size:15px;font-weight:700;min-height:20px;margin-bottom:4px">${nowItemId&&pItem(nowItemId)?esc(pItem(nowItemId).title):"Pick a task below to focus on"}</div>
-    <div id="focusCount" style="font-size:11.5px;color:var(--faint);margin-bottom:12px"></div>
+    <div id="focusTitle" style="font-size:15px;font-weight:700;min-height:20px;margin-bottom:2px">${cur?esc(cur.title):"Pick tasks below for this session"}</div>
+    <div id="focusCount" style="font-size:11.5px;color:var(--faint);margin-bottom:10px">${focusQueue.length>1?(focusQueue.length-1)+" more queued":""}</div>
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
       <button class="btn primary" id="focusStart">${pomoRunning?"Pause":"Start"}</button>
       <button class="btn" id="focusSkip">Skip phase</button>
       <button class="btn ghost" id="focusReset">Reset</button>
       <button class="btn" id="focusPip" title="Float a compact timer on top of every window">⧉ Pop out on top</button>
     </div>
-    ${nowItemId?`<div style="margin-top:12px"><button class="btn sm" id="focusDone">✓ Done with this</button></div>`:""}
-    <div class="section-h">Today's tasks — pick one to focus on <span class="line"></span></div>
-    <div class="focus-pick">${opts.length?opts.map(x=>`<div class="pi-row ${x.it.id===nowItemId?"sel":""}" data-focuspick="${x.it.id}"><div style="flex:1;min-width:0">${esc(x.it.title)}</div>${x.e.time?`<span class="pi-badge">${esc(slotSharp(x.e.time))}</span>`:""}</div>`).join(""):`<div style="font-size:12.5px;color:var(--faint);text-align:center;padding:6px 0">No tasks on today yet — add some on Today, or schedule from the Overview tab.</div>`}</div>
+    ${cur?`<div style="margin-top:12px"><button class="btn sm" id="focusDone">✓ Done — ${focusQueue.length>1?"next task":"finish"}</button></div>`:""}
+    <div class="section-h">Session tasks — tap to add / remove <span class="line"></span></div>
+    <div class="dp-add" style="max-width:420px;margin:0 auto 8px"><input id="focusNew" placeholder="+ new task for today… Enter" autocomplete="off"></div>
+    <div class="focus-pick">${opts.length?opts.map(x=>{ const qi=focusQueue.indexOf(x.it.id); const sel=qi>-1;
+      return `<div class="pi-row ${sel?"sel":""}" data-focuspick="${x.it.id}"><span class="focus-qnum ${sel?"":"off"}">${sel?qi+1:"＋"}</span><div style="flex:1;min-width:0">${esc(x.it.title)}</div>${x.e.time?`<span class="pi-badge">${esc(slotSharp(x.e.time))}</span>`:""}</div>`; }).join(""):`<div style="font-size:12.5px;color:var(--faint);text-align:center;padding:6px 0">No tasks on today yet — add one above.</div>`}</div>
     <details class="focus-settings">
       <summary>⚙ Timer settings</summary>
       <div class="grid2" style="margin-top:10px">
@@ -3579,14 +3602,13 @@ function renderPFocus(){
   $("focusSkip").onclick=pomoSkip;
   $("focusReset").onclick=pomoReset;
   $("focusPip").onclick=openPip;
-  const fd=$("focusDone"); if(fd) fd.onclick=()=>{ const it=nowItemId?pItem(nowItemId):null;
-    if(it){ const e=plan.entries.find(x=>x.itemId===it.id&&!x.done); if(e){ e.done=true; blockAwareComplete(e,it); } else completeItemEffects(it); save(); toast("Done. That counted. 🧡"); nowItemId=null; }
-    renderPFocus(); };
-  host.querySelectorAll("[data-focuspick]").forEach(r=>r.onclick=()=>{ nowItemId=r.dataset.focuspick; if(!pomoRunning){ pomoMode="focus"; pomoRemaining=pomoDur("focus"); } renderPFocus(); });
+  const fn=$("focusNew"); if(fn) fn.addEventListener("keydown",e=>{ if(e.key==="Enter"){ if(focusAddNew(fn.value)){ renderPFocus(); if(pipWin&&!pipWin.closed) renderPipContent(); const n2=$("focusNew"); if(n2) n2.focus(); } } });
+  const fd=$("focusDone"); if(fd) fd.onclick=()=>{ focusCompleteCurrent(); renderPFocus(); if(pipWin&&!pipWin.closed) renderPipContent(); };
+  host.querySelectorAll("[data-focuspick]").forEach(r=>r.onclick=()=>{ focusToggle(r.dataset.focuspick); renderPFocus(); if(pipWin&&!pipWin.closed) renderPipContent(); });
   host.querySelectorAll("[data-pcfg]").forEach(inp=>inp.addEventListener("change",()=>{
     const k=inp.dataset.pcfg, mn=+inp.min, mx=+inp.max;
     P().settings.pomo[k]=Math.min(mx,Math.max(mn,Math.round(+inp.value)||+inp.min));
-    save(); if(!pomoRunning) pomoRemaining=pomoDur(pomoMode); renderFocus();
+    save(); if(!pomoRunning) pomoRemaining=pomoDur(pomoMode); renderFocus(); if(pipWin&&!pipWin.closed) renderPipContent();
   }));
   $("cfgSound").onchange=e=>{ P().settings.pomo.sound=e.target.checked; save(); if(e.target.checked){ primeAudio(); pomoChime("short"); } };
   $("cfgNotify").onchange=e=>{ P().settings.pomo.notify=e.target.checked; save();
@@ -3598,28 +3620,66 @@ async function openPip(){
   if(!("documentPictureInPicture" in window)){ toast("Pop-out needs the latest Chrome (Document Picture-in-Picture)"); return; }
   try{
     if(pipWin && !pipWin.closed){ pipWin.focus(); return; }
-    pipWin=await documentPictureInPicture.requestWindow({width:260,height:190});
+    pipWin=await documentPictureInPicture.requestWindow({width:300,height:430});
     const d=pipWin.document;
-    d.body.style.cssText="margin:0;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#2c251c;color:#fff;height:100vh;display:grid;place-items:center;text-align:center;user-select:none";
-    d.body.innerHTML=`<div style="padding:14px;width:100%">
-      <div id="pw-phase" style="font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#e9b06a"></div>
-      <div id="pw-clock" style="font-size:54px;font-weight:800;letter-spacing:-.03em;line-height:1;margin:6px 0">--:--</div>
-      <div id="pw-title" style="font-size:12px;color:#cbb89f;margin-bottom:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-      <div style="display:flex;gap:6px;justify-content:center">
-        <button id="pw-toggle" style="border:0;background:#d97742;color:#fff;font-weight:700;padding:7px 16px;cursor:pointer">Start</button>
-        <button id="pw-skip" style="border:1px solid #5a4d3a;background:transparent;color:#cbb89f;font-weight:700;padding:7px 12px;cursor:pointer">Skip</button>
-      </div></div>`;
-    d.getElementById("pw-toggle").onclick=()=>{ pomoRunning?pomoPause():pomoStart(); };
-    d.getElementById("pw-skip").onclick=pomoSkip;
+    d.body.style.cssText="margin:0;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#2c251c;color:#fff;min-height:100vh;user-select:none;font-size:13px";
+    const root=d.createElement("div"); root.id="pw-root"; root.style.padding="14px"; d.body.appendChild(root);
     pipWin.addEventListener("pagehide",()=>{ pipWin=null; });
-    renderFocus(); toast("Timer popped out — it stays on top ⧉");
+    pipSettingsOpen=false; renderPipContent();
+    toast("Timer popped out — it stays on top ⧉");
   }catch(err){ pipWin=null; toast("Couldn't open the pop-out window"); }
 }
-function updatePip(clock,phase,title){
+function renderPipContent(){
+  if(!pipWin || pipWin.closed) return;
+  const d=pipWin.document, root=d.getElementById("pw-root"); if(!root) return;
+  focusPrune();
+  const cfg=pomoCfg(); const cur=nowItemId?pItem(nowItemId):null;
+  const queue=focusQueue.map(id=>pItem(id)).filter(Boolean);
+  const B="border:0;font-weight:700;cursor:pointer;font-size:12px";
+  root.innerHTML=`
+    <div style="text-align:center">
+      <div id="pw-phase" style="font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#e9b06a"></div>
+      <div id="pw-clock" style="font-size:46px;font-weight:800;letter-spacing:-.03em;line-height:1;margin:4px 0">--:--</div>
+      <div id="pw-title" style="font-size:12.5px;color:#f0e6d6;font-weight:700;margin-bottom:8px;overflow-wrap:anywhere">${cur?esc(cur.title):"No task selected"}</div>
+      <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:6px">
+        <button id="pw-toggle" style="${B};background:#d97742;color:#fff;padding:7px 18px">Start</button>
+        <button id="pw-skip" style="${B};background:transparent;border:1px solid #5a4d3a;color:#cbb89f;padding:7px 12px">Skip</button>
+        ${cur?`<button id="pw-next" style="${B};background:transparent;border:1px solid #5a4d3a;color:#cbb89f;padding:7px 12px">✓ Next</button>`:""}
+      </div>
+    </div>
+    <div style="border-top:1px solid #443a2c;margin:8px 0;padding-top:8px">
+      <div style="font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#8a7c66;margin-bottom:5px">Session tasks</div>
+      ${queue.length?queue.map((it,i)=>`<div style="display:flex;gap:6px;align-items:center;padding:3px 0;${i===0?"color:#fff;font-weight:700":"color:#b7a98f"}"><span style="width:16px;height:16px;border-radius:50%;background:${i===0?"#d97742":"transparent"};border:1px solid ${i===0?"#d97742":"#5a4d3a"};color:#fff;font-size:9px;display:inline-grid;place-items:center;flex:none">${i+1}</span><span style="flex:1;overflow-wrap:anywhere">${esc(it.title)}</span><button data-pwrem="${it.id}" style="border:0;background:transparent;color:#8a7c66;cursor:pointer;font-size:13px">✕</button></div>`).join(""):`<div style="font-size:11px;color:#8a7c66">Add one below, or pick tasks in the Focus tab.</div>`}
+      <input id="pw-new" placeholder="+ new task… Enter" style="width:100%;box-sizing:border-box;margin-top:6px;background:#241d15;border:1px solid #443a2c;color:#fff;padding:6px 8px;font-size:11.5px;outline:none">
+    </div>
+    <div style="border-top:1px solid #443a2c;margin-top:8px;padding-top:6px">
+      <button id="pw-cfgtgl" style="border:0;background:transparent;color:#8a7c66;font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;cursor:pointer;padding:0">⚙ Timer settings ${pipSettingsOpen?"▾":"▸"}</button>
+      <div id="pw-cfg" style="display:${pipSettingsOpen?"block":"none"};margin-top:6px">
+        ${[["focus","Focus",5,120],["short","Short break",1,60],["long","Long break",5,90],["longEvery","Long every",2,8]].map(c=>`<label style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:#cbb89f;margin:3px 0">${c[1]}<input type="number" data-pwcfg="${c[0]}" min="${c[2]}" max="${c[3]}" value="${cfg[c[0]]}" style="width:56px;background:#241d15;border:1px solid #443a2c;color:#fff;padding:3px 6px;font-size:11.5px;text-align:right"></label>`).join("")}
+        <label style="display:flex;gap:6px;align-items:center;font-size:11.5px;color:#cbb89f;margin:5px 0 2px;cursor:pointer"><input type="checkbox" id="pw-sound" ${cfg.sound?"checked":""}> 🔔 Chime</label>
+        <label style="display:flex;gap:6px;align-items:center;font-size:11.5px;color:#cbb89f;margin:2px 0;cursor:pointer"><input type="checkbox" id="pw-notify" ${cfg.notify?"checked":""}> 💬 Notify</label>
+      </div>
+    </div>`;
+  d.getElementById("pw-toggle").onclick=()=>{ pomoRunning?pomoPause():pomoStart(); };
+  d.getElementById("pw-skip").onclick=pomoSkip;
+  const nx=d.getElementById("pw-next"); if(nx) nx.onclick=()=>{ focusCompleteCurrent(); focusRefreshAll(); };
+  root.querySelectorAll("[data-pwrem]").forEach(b=>b.onclick=()=>{ focusToggle(b.dataset.pwrem); focusRefreshAll(); });
+  const pn=d.getElementById("pw-new"); pn.addEventListener("keydown",e=>{ if(e.key==="Enter"){ if(focusAddNew(pn.value)){ pn.value=""; focusRefreshAll(); } } });
+  d.getElementById("pw-cfgtgl").onclick=()=>{ pipSettingsOpen=!pipSettingsOpen; renderPipContent(); };
+  root.querySelectorAll("[data-pwcfg]").forEach(inp=>inp.addEventListener("change",()=>{
+    const k=inp.dataset.pwcfg; P().settings.pomo[k]=Math.min(+inp.max,Math.max(+inp.min,Math.round(+inp.value)||+inp.min));
+    save(); if(!pomoRunning) pomoRemaining=pomoDur(pomoMode); renderPipContent(); if(!$("ppage-focus").classList.contains("hidden")) renderPFocus();
+  }));
+  d.getElementById("pw-sound").onchange=e=>{ P().settings.pomo.sound=e.target.checked; save(); if(e.target.checked){ primeAudio(); pomoChime("short"); } };
+  d.getElementById("pw-notify").onchange=e=>{ P().settings.pomo.notify=e.target.checked; save(); if(e.target.checked && "Notification" in window && Notification.permission==="default") Notification.requestPermission(); };
+  updatePip(pomoFmt(pomoRemaining),POMO_LABEL[pomoMode]);
+}
+function updatePip(clock,phase){
   if(!pipWin || pipWin.closed) return;
   const d=pipWin.document, c=d.getElementById("pw-clock"); if(!c) return;
-  c.textContent=clock; d.getElementById("pw-phase").textContent=phase; d.getElementById("pw-title").textContent=title||"";
-  const tg=d.getElementById("pw-toggle"); tg.textContent=pomoRunning?"Pause":"Start"; tg.style.background=pomoRunning?"#5a4d3a":"#d97742";
+  c.textContent=clock; const ph=d.getElementById("pw-phase"); if(ph) ph.textContent=phase;
+  const it=nowItemId?pItem(nowItemId):null; const t=d.getElementById("pw-title"); if(t) t.textContent=it?it.title:"No task selected";
+  const tg=d.getElementById("pw-toggle"); if(tg){ tg.textContent=pomoRunning?"Pause":"Start"; tg.style.background=pomoRunning?"#5a4d3a":"#d97742"; }
 }
 
 /* ---- personal boot ---- */
