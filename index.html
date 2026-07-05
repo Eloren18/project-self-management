@@ -447,6 +447,9 @@
   .dp-ta{width:100%;border:none;background:transparent;outline:none;font-weight:600;font-size:13px;line-height:1.5;padding:1px 0;color:var(--text);resize:none;overflow:hidden;font-family:inherit;white-space:pre-wrap;overflow-wrap:anywhere;}
   .dp-ta::placeholder{color:var(--faint);font-weight:500;}
   .pi-row.done .dp-ta{text-decoration:line-through;color:var(--faint);}
+  .dp-title-disp{font-weight:600;font-size:13px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;padding:1px 0;}
+  .pi-row.done .dp-title-disp{text-decoration:line-through;color:var(--faint);}
+  .pi-body:hover .dp-title-disp{color:var(--primary);}
   .slotseg button{font-size:11px;padding:6px 9px;}
   .pproj-chip{font-size:9.5px;font-weight:700;padding:2px 7px;color:#fff;cursor:pointer;white-space:nowrap;}
   .pcolorrow{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0;}
@@ -2609,17 +2612,16 @@ function dpRowHTML(plan,e){
   const it=pItem(e.itemId); if(!it) return "";
   return `<div class="pi-row ${it.type==="forMe"?"forme":""} ${e.done?"done":""}" draggable="true" data-entry="${e.id}">
     <div class="check-sm ${e.done?"on":""}" data-edone title="Did it">${e.done?TICK:""}</div>
-    <div style="flex:1;min-width:0">
-      <textarea class="dp-ta" data-etitle rows="1" placeholder="…">${esc(it.title)}</textarea>
+    <div class="pi-body" data-eopen style="flex:1;min-width:0;cursor:pointer" title="Open — set time, length, note">
+      <div class="dp-title-disp">${esc(it.title)||'<span style="color:var(--faint);font-weight:500">Untitled — tap to edit</span>'}</div>
       <div class="pi-sub">
         ${projChipHTML(it)}
         ${e.label?`<span class="pi-badge">${esc(e.label)}</span>`:""}
         ${e.time?`<span class="pi-badge">${esc(slotLabel(e.time))}${e.dur?" · "+fmtMin(e.dur):""}</span>`:(e.dur?`<span class="pi-badge">${fmtMin(e.dur)}</span>`:"")}
         ${it.recurringRule?`<span class="pi-badge">↻</span>`:""}
-        <button class="pi-act" data-etime title="Time, length & note">🕐</button>
-        <button class="pi-act" data-edel title="Remove from this day">✕</button>
       </div>
     </div>
+    <button class="pi-act" data-edel title="Remove from this day" style="align-self:center">✕</button>
   </div>`;
 }
 function dayPageHTML(dt){
@@ -2670,11 +2672,7 @@ function bindDayPage(host,dt,rerender){
   host.querySelectorAll(".pi-row[data-entry]").forEach(row=>{
     const e=plan.entries.find(x=>x.id===row.dataset.entry); if(!e) return; const it=pItem(e.itemId); if(!it) return;
     row.querySelector("[data-edone]").onclick=()=>{ e.done=!e.done; blockAwareComplete(e,it); save(); rerender(); };
-    const et=row.querySelector("[data-etitle]");
-    et.addEventListener("input",ev=>{ it.title=ev.target.value; save(); });
-    et.addEventListener("focus",()=>{ row.draggable=false; }); /* let me select long text without starting a drag */
-    et.addEventListener("blur",()=>{ row.draggable=true; });
-    row.querySelector("[data-etime]").onclick=()=>openPTime(plan,e);
+    row.querySelector("[data-eopen]").onclick=ev=>{ if(ev.target.closest("[data-goproj]")) return; openPTime(plan,e); };
     const pc=row.querySelector("[data-goproj]"); if(pc) pc.onclick=ev=>{ ev.stopPropagation(); openPProjModal(pc.dataset.goproj); };
     row.querySelector("[data-edel]").onclick=()=>{
       plan.entries=plan.entries.filter(x=>x.id!==e.id);
@@ -2738,15 +2736,19 @@ function syncLastSeen(personId){
 function openPTime(plan,e){
   ptimeEntryCtx={date:plan.date,entryId:e.id};
   const it=pItem(e.itemId);
-  $("ptimeBox").innerHTML=`<h3>${esc(it?it.title:"This block")} · ${fmtShort(plan.date)}</h3>
+  $("ptimeBox").innerHTML=`
+    <div style="font-size:10.5px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${esc(fmtDL(plan.date,false))}</div>
+    <div class="field"><label>Task</label><textarea class="dp-ta" id="ptTitle" rows="1" placeholder="What is it?" style="border:1px solid var(--border);background:var(--surface);padding:8px 11px;font-size:14px">${esc(it?it.title:"")}</textarea></div>
     <div class="field"><label>When in the day</label><div id="ptSlot">${slotSelectHTML(e.time)}</div></div>
     <div class="field"><label>Duration</label><select id="ptDur">${[0,15,30,45,60,90,120,180,240].map(m=>`<option value="${m}"${e.dur===m?" selected":""}>${m?fmtMin(m):"—"}</option>`).join("")}</select></div>
     <div class="field"><label>This block means… (optional note)</label><input id="ptLabel" value="${esc(e.label||"")}" placeholder="e.g. Read pages 50–100"></div>
     <div style="display:flex;gap:8px"><button class="btn danger sm" id="ptRemove">Remove from this day</button><span class="grow"></span><button class="btn primary" id="ptSave">Save</button></div>`;
   const m=$("ptimeModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show"));
   bindSlotSelect($("ptSlot"));
-  $("ptSave").onclick=()=>{ e.time=readSlot($("ptSlot")); e.dur=+$("ptDur").value||0; e.label=($("ptLabel").value||"").trim(); save(); closePM("ptimeModal"); pR(); };
+  const tt=$("ptTitle"); if(tt){ autoGrow(tt); tt.addEventListener("input",()=>autoGrow(tt)); }
+  $("ptSave").onclick=()=>{ if(it){ const nv=($("ptTitle").value||"").trim(); if(nv) it.title=nv; } e.time=readSlot($("ptSlot")); e.dur=+$("ptDur").value||0; e.label=($("ptLabel").value||"").trim(); save(); closePM("ptimeModal"); pR(); };
   $("ptRemove").onclick=()=>{ plan.entries=plan.entries.filter(x=>x.id!==e.id); save(); closePM("ptimeModal"); pR(); };
+  setTimeout(()=>{ const t=$("ptTitle"); if(t){ t.focus(); t.setSelectionRange(t.value.length,t.value.length); } },60);
 }
 
 /* ---- daily dots (small, inline editing — no browser prompts) ---- */
