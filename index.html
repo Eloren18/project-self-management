@@ -2673,14 +2673,13 @@ function dayPageHTML(dt){
   const plan=planFor(dt,true);
   const lane=(type,label,cls)=>{
     const rows=plan.entries.map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it&&x.it.type===type);
-    const open=rows.filter(x=>!x.e.done), doneRows=rows.filter(x=>x.e.done);
+    const open=rows.filter(x=>!x.e.done), doneN=rows.length-open.length;
     return `<div class="lane ${cls}" data-lane="${type}">
-      <h3>${label} <span class="grow"></span><span>${doneRows.length}/${rows.length}</span></h3>
+      <h3>${label} <span class="grow"></span><span>${doneN}/${rows.length}</span></h3>
       ${open.map(x=>dpRowHTML(plan,x.e)).join("")}
       <div class="dp-add"><input data-dpadd="${type}" placeholder="${type==="forMe"?"+ add something for me… Enter":"+ add a task… Enter"}" autocomplete="off"></div>
       ${type==="responsibility"?(()=>{ const pool=P().items.filter(i=>i.type==="responsibility"&&i.status!=="done"&&!plan.entries.some(e=>e.itemId===i.id));
         return pool.length?`<select data-dpimport style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--border);background:var(--surface-2);font-size:11.5px;color:var(--muted)"><option value="">＋ pick from Need To / project steps…</option>${pool.map(i=>{ const pr=i.projId?P().projects.find(p=>p.id===i.projId):null; return `<option value="${i.id}">${pr?"◆ "+esc(pr.title)+" · ":""}${esc(i.title)}</option>`; }).join("")}</select>`:""; })():""}
-      ${doneRows.length?`<div class="dp-done-div">done ✓ · ${doneRows.length}</div>${doneRows.map(x=>dpRowHTML(plan,x.e)).join("")}`:""}
     </div>`; };
   return `
     <div class="lanes">${lane("responsibility","Tasks","")}${lane("forMe","For me 🧡","forme")}</div>
@@ -2691,12 +2690,16 @@ function dayPageHTML(dt){
       ${plan.gymPlanned&&!plan.gym&&dt<todayISO()?`<span style="font-size:11px;color:var(--faint)">planned but didn't happen — it's fine, replan it</span>`:""}
       <span class="gymcount">${(()=>{const ws=iso(weekStart(parseISO(dt)));return gymCount(ws,iso(addDays(parseISO(ws),6)));})()}× this week</span>
     </div>
-    <div style="margin-top:14px"><div class="section-h" style="margin:0 0 8px">What happened <span class="line"></span><span style="text-transform:none;letter-spacing:0;font-weight:600;color:var(--faint)">a record, not a plan</span></div>
+    <div style="margin-top:14px"><div class="section-h" style="margin:0 0 8px">What happened — everything done today <span class="line"></span><span style="text-transform:none;letter-spacing:0;font-weight:600;color:var(--faint)">checked plans + things you just did</span></div>
     <div class="lanes">
-      ${["task","forMe"].map(kind=>{ const rows=(plan.happened||[]).filter(h=>(h.kind==="forMe"?"forMe":"task")===kind);
+      ${[["task","responsibility"],["forMe","forMe"]].map(([kind,ptype])=>{
+        const doneEntries=plan.entries.map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it&&x.it.type===ptype&&x.e.done);
+        const hap=(plan.happened||[]).filter(h=>(h.kind==="forMe"?"forMe":"task")===kind);
         return `<div class="lane ${kind==="forMe"?"forme":""}" style="border-top-color:${kind==="forMe"?CAL_COLORS.forMe:CAL_COLORS.taskDone}">
-        <h3 style="color:${kind==="forMe"?CAL_COLORS.forMe:CAL_COLORS.taskDone}">${kind==="forMe"?"For me — done 🧡":"Tasks — done ✔"}</h3>
-        ${rows.map(h=>`<div class="pi-row ${kind==="forMe"?"forme":""}" data-hap="${h.id}" style="align-items:flex-start">
+        <h3 style="color:${kind==="forMe"?CAL_COLORS.forMe:CAL_COLORS.taskDone}">${kind==="forMe"?"For me — done 🧡":"Tasks — done ✔"} <span class="grow"></span><span>${doneEntries.length+hap.length}</span></h3>
+        ${doneEntries.map(x=>dpRowHTML(plan,x.e)).join("")}
+        ${hap.map(h=>`<div class="pi-row ${kind==="forMe"?"forme":""}" data-hap="${h.id}" style="align-items:flex-start">
+          <span class="check-sm on" style="cursor:default;pointer-events:none" title="Logged as done">${TICK}</span>
           <textarea class="dp-ta" data-htext rows="1" style="flex:1">${esc(h.text)}</textarea>
           <button class="pi-act" data-hswap title="Move to the other side">⇄</button>
           <button class="pi-act" data-hdel>✕</button>
