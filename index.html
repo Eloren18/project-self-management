@@ -1032,8 +1032,13 @@ function normalizePersonal(p){
     d.firstThing ??= ""; d.committed = !!d.committed; d.committedAt ??= 0; d.bestMoment ??= ""; d.heavy = !!d.heavy;
     d.energy = ["low","medium","high"].includes(d.energy)?d.energy:"medium";
     if(!Array.isArray(d.dots)) d.dots = [false,false,false]; d.triaged = !!d.triaged;
-    d.happened = Array.isArray(d.happened)?d.happened:[];
-    d.happened.forEach(h=>{ h.id ||= uid(); h.text ??= ""; h.kind = h.kind==="forMe"?"forMe":"task"; h.createdAt ??= Date.now(); });
+    /* legacy "happened" log → real completed tasks (one-time migration, then cleared) so they behave like any done item */
+    if(Array.isArray(d.happened) && d.happened.length){
+      d.happened.forEach(h=>{ const t=(h&&h.text||"").trim(); if(!t) return; const ts=+h.createdAt||Date.now();
+        const it={id:uid(),title:t,notes:"",type:h.kind==="forMe"?"forMe":"responsibility",timeEstimate:0,energy:"medium",tags:[],status:"done",createdAt:ts,completedAt:ts,recurringRule:null,intention:"",isRest:false,personId:"",bucketId:"",stepId:"",projId:"",focusSessions:0};
+        p.items.push(it); d.entries.push({id:uid(),itemId:it.id,time:"",dur:0,done:true,label:""}); });
+    }
+    d.happened=[];
     d.meetups = Array.isArray(d.meetups)?d.meetups:[];
     d.meetups.forEach(mu=>{ mu.id ||= uid(); mu.personId ??= ""; mu.note ??= ""; mu.status = ["met","planned","missed"].includes(mu.status)?mu.status:"met"; mu.createdAt ??= Date.now(); });
     d.feeling ??= ""; d.mood = (+d.mood>=1&&+d.mood<=7)?+d.mood:0; d.gym = !!d.gym; d.gymPlanned = !!d.gymPlanned; });
@@ -2694,16 +2699,9 @@ function dayPageHTML(dt){
     <div class="lanes">
       ${[["task","responsibility"],["forMe","forMe"]].map(([kind,ptype])=>{
         const doneEntries=plan.entries.map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it&&x.it.type===ptype&&x.e.done);
-        const hap=(plan.happened||[]).filter(h=>(h.kind==="forMe"?"forMe":"task")===kind);
         return `<div class="lane ${kind==="forMe"?"forme":""}" style="border-top-color:${kind==="forMe"?CAL_COLORS.forMe:CAL_COLORS.taskDone}">
-        <h3 style="color:${kind==="forMe"?CAL_COLORS.forMe:CAL_COLORS.taskDone}">${kind==="forMe"?"For me — done 🧡":"Tasks — done ✔"} <span class="grow"></span><span>${doneEntries.length+hap.length}</span></h3>
+        <h3 style="color:${kind==="forMe"?CAL_COLORS.forMe:CAL_COLORS.taskDone}">${kind==="forMe"?"For me — done 🧡":"Tasks — done ✔"} <span class="grow"></span><span>${doneEntries.length}</span></h3>
         ${doneEntries.map(x=>dpRowHTML(plan,x.e)).join("")}
-        ${hap.map(h=>`<div class="pi-row ${kind==="forMe"?"forme":""}" data-hap="${h.id}" style="align-items:flex-start">
-          <span class="check-sm on" style="cursor:default;pointer-events:none" title="Logged as done">${TICK}</span>
-          <textarea class="dp-ta" data-htext rows="1" style="flex:1">${esc(h.text)}</textarea>
-          <button class="pi-act" data-hswap title="Move to the other side">⇄</button>
-          <button class="pi-act" data-hdel>✕</button>
-        </div>`).join("")}
         <div class="dp-add"><input data-hapadd="${kind}" placeholder="${kind==="forMe"?"+ something you did for you… Enter":"+ a task you got done… Enter"}" autocomplete="off"></div>
       </div>`; }).join("")}
     </div></div>
@@ -2773,17 +2771,13 @@ function bindDayPage(host,dt,rerender){
     save(); rerender();
     const again=host.querySelector(`[data-dpadd="${type}"]`); if(again) again.focus();
   }));
-  host.querySelectorAll("[data-hap]").forEach(row=>{
-    const h=plan.happened.find(x=>x.id===row.dataset.hap); if(!h) return;
-    row.querySelector("[data-hswap]").onclick=()=>{ h.kind=h.kind==="forMe"?"task":"forMe"; save(); rerender(); };
-    row.querySelector("[data-htext]").addEventListener("input",ev=>{ h.text=ev.target.value; save(); });
-    row.querySelector("[data-hdel]").onclick=()=>{ plan.happened=plan.happened.filter(x=>x.id!==h.id); save(); rerender(); };
-  });
   host.querySelectorAll("[data-hapadd]").forEach(ha=>ha.addEventListener("keydown",ev=>{
     if(ev.key!=="Enter") return; const t=(ha.value||"").trim(); if(!t) return;
-    const kind=ha.dataset.hapadd==="forMe"?"forMe":"task";
-    plan.happened.push({id:uid(),text:t,kind,createdAt:Date.now()});
-    save(); rerender(); const again=host.querySelector(`[data-hapadd="${kind}"]`); if(again) again.focus();
+    const type=ha.dataset.hapadd==="forMe"?"forMe":"responsibility";
+    /* logged-as-done = a real completed task, so it behaves exactly like a checked plan */
+    const it={id:uid(),title:t,notes:"",type,timeEstimate:0,energy:"medium",tags:[],status:"done",createdAt:Date.now(),completedAt:Date.now(),recurringRule:null,intention:"",isRest:false,personId:"",bucketId:"",stepId:"",projId:"",focusSessions:0};
+    P().items.push(it); plan.entries.push({id:uid(),itemId:it.id,time:"",dur:0,done:true,label:""});
+    save(); rerender(); const again=host.querySelector(`[data-hapadd="${ha.dataset.hapadd}"]`); if(again) again.focus();
   }));
   host.querySelectorAll("[data-meet]").forEach(row=>{
     const mu=plan.meetups.find(x=>x.id===row.dataset.meet); if(!mu) return;
