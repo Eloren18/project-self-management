@@ -78,6 +78,8 @@
   #syncPill{display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:700;color:var(--muted);padding:7px 11px;border:1px solid var(--border);background:var(--surface);white-space:nowrap;letter-spacing:.4px;text-transform:uppercase;}
   #syncPill .dot{width:8px;height:8px;border-radius:99px;background:var(--faint);flex:none;}
   #syncPill.ok .dot{background:var(--s-done);} #syncPill.sync .dot{background:var(--s-progress);animation:pulse 1s infinite;} #syncPill.err .dot{background:var(--p-asap);}
+  #syncPill.err{color:var(--p-asap);border-color:color-mix(in srgb,var(--p-asap) 50%,var(--border));background:color-mix(in srgb,var(--p-asap) 12%,var(--surface));}
+  #syncPill.sync{color:var(--s-progress);} #syncPill[title]{cursor:help;}
   @keyframes pulse{50%{opacity:.35;}}
   .acct{display:flex;align-items:center;gap:9px;padding:5px 10px 5px 6px;border:1px solid var(--border);background:var(--surface);transition:.12s;}
   .acct:hover{border-color:#b9bdc9;}
@@ -1174,6 +1176,7 @@ function stash(tag, json){ /* keep a copy nothing can silently destroy; prune on
   pruneStash(tag,3);
 }
 let expectedShrink=false; /* set during deliberate restores so shrink guards don't cry wolf */
+let lastSyncedUp=0, syncErr=false; /* highest updatedAt confirmed in the cloud, and whether the last push errored — drive the truthful sync pill */
 function save(){
   /* monotonic clock: a device with a backwards-skewed clock can never make real edits lose a sync race */
   data.updatedAt = Math.max(Date.now(), (data.updatedAt||0)+1);
@@ -1219,8 +1222,13 @@ async function mirrorRestoreIfNewer(){
 }
 function push(){
   if(booting || !granted || !db || !authedUser || !workspaceId) return;
-  try{ db.transact(db.tx.workspaces[workspaceId].update({ data, updatedAt: data.updatedAt }).link({ owner: authedUser.id })); setSync("sync","Saving…"); setTimeout(()=>{ if(granted) setSync("ok","Synced"); },500); }
-  catch(e){ console.warn("push failed",e); setSync("err","Sync error"); setTimeout(()=>{ if(granted) push(); },5000); }
+  const target = data.updatedAt;
+  syncErr=false; renderSync(); /* pending until the cloud confirms → shows "Saving…" (or "Not synced · offline") */
+  try{
+    Promise.resolve(db.transact(db.tx.workspaces[workspaceId].update({ data, updatedAt: target }).link({ owner: authedUser.id })))
+      .then(()=>{ if(granted){ lastSyncedUp=Math.max(lastSyncedUp, target); syncErr=false; renderSync(); } })
+      .catch(e=>{ console.warn("push failed",e); if(granted){ syncErr=true; renderSync(); setTimeout(()=>{ if(granted) push(); },5000); } });
+  }catch(e){ console.warn("push threw",e); if(granted){ syncErr=true; renderSync(); setTimeout(()=>{ if(granted) push(); },5000); } }
 }
 function adoptRemote(remote){
   let next;
@@ -1242,25 +1250,28 @@ function startWorkspaceSync(){
   if(!db || !authedUser) return;
   if(workspaceSub){ workspaceSub(); workspaceSub=null; }
   workspaceSub = db.subscribeQuery({ workspaces:{ $:{ where:{ "owner.id": authedUser.id } } } }, (res)=>{
-    if(res.error){ setSync("err","Sync error"); return; }
+    if(res.error){ syncErr=true; renderSync(); return; }
     const rows = (res.data && res.data.workspaces) || [];
     if(rows.length){
       const row = rows[0]; workspaceId = row.id;
       const remoteUp = (row.data && row.data.updatedAt) || 0, localUp = data.updatedAt || 0;
+      if(remoteUp) lastSyncedUp = Math.max(lastSyncedUp, remoteUp); /* the cloud is confirmed to hold remoteUp */
       if(row.data && remoteUp > localUp) adoptRemote(row.data);
       else if(localUp > remoteUp && localUp > 0){
         /* offline edits: local is genuinely newer → upload it, but never silently destroy a larger cloud copy */
         try{ if(row.data && shrunk(blobCounts(row.data), blobCounts(data))){ stash("lost", JSON.stringify(row.data)); toast("⚠ The cloud copy was larger — a safety copy of it was kept (Security → Restore points)"); } }catch(e){}
         push();
       }
-      setSync("ok","Synced");
+      syncErr=false; renderSync();
       maybeCloudSnapshot();
       backupReminder();
     } else {
       // first sign-in on a fresh account: seed the cloud with local data
-      const nid=id(); workspaceId=nid;
-      db.transact(db.tx.workspaces[nid].update({ data, updatedAt:data.updatedAt||Date.now() }).link({ owner:authedUser.id }));
-      setSync("ok","Synced");
+      const nid=id(); workspaceId=nid; const up = data.updatedAt||Date.now();
+      Promise.resolve(db.transact(db.tx.workspaces[nid].update({ data, updatedAt:up }).link({ owner:authedUser.id })))
+        .then(()=>{ if(granted){ lastSyncedUp=Math.max(lastSyncedUp, up); syncErr=false; renderSync(); } })
+        .catch(()=>{ if(granted){ syncErr=true; renderSync(); } });
+      renderSync();
     }
   });
 }
@@ -1309,7 +1320,22 @@ function backupReminder(){
   const days = last ? Math.floor((Date.now()-last)/86400000) : -1;
   if(days===-1 || days>=14) setTimeout(()=>toast(days===-1 ? "Tip: download a backup file now and then (Security → Backups)" : "It's been "+days+" days since your last downloaded backup (Security → Backups)"), 2500);
 }
-function setSync(cls, txt){ const p=$("syncPill"); if(!p) return; p.className=""; if(cls) p.classList.add(cls); $("syncText").textContent=txt; }
+/* Truthful sync indicator: "Synced" only when the cloud has confirmed our latest copy.
+   pending = we hold a version newer than anything confirmed in the cloud → it could still be lost. */
+function syncView(pending, online, err, granted){
+  if(!granted)  return { cls:"",     text:"Local only",           title:"You’re not signed in — data stays only on this device." };
+  if(!pending)  return { cls:"ok",   text:"Synced",               title:"All your changes are saved to the cloud and your other devices." };
+  if(!online)   return { cls:"err",  text:"Not synced · offline", title:"⚠ You’re offline. These latest changes are only on this device and could be lost until you reconnect." };
+  if(err)       return { cls:"err",  text:"Not synced · retrying", title:"⚠ Can’t reach the cloud right now. Your latest changes are only on this device; retrying automatically." };
+  return          { cls:"sync",  text:"Saving…",              title:"Saving your latest changes to the cloud…" };
+}
+function renderSync(){
+  const online = !(typeof navigator!=="undefined" && navigator.onLine===false);
+  const pending = ((data&&data.updatedAt)||0) > lastSyncedUp;
+  const v = syncView(pending, online, syncErr, granted);
+  setSync(v.cls, v.text, v.title);
+}
+function setSync(cls, txt, title){ const p=$("syncPill"); if(!p) return; p.className=""; if(cls) p.classList.add(cls); $("syncText").textContent=txt; p.title=title||""; }
 
 /* ============================================================
    AUTH  (Google Sign-In, locked to ADMIN_EMAIL)
@@ -1407,7 +1433,7 @@ function grantAccess(){
   const mine = deviceRows.find(d=>d.deviceId===deviceId); if(mine) touchDevice(mine);
   startWorkspaceSync();
   applyTheme(); renderAll(); updateAccount();
-  setSync("ok","Synced");
+  renderSync();
 }
 function logSec(event, detail){
   if(!db || !authedUser) return;
@@ -4094,7 +4120,8 @@ window.addEventListener("storage",(e)=>{ /* another tab saved newer data → fol
   if(e.key!==STORAGE_KEY || !e.newValue) return;
   try{ const d=JSON.parse(e.newValue); if((d.updatedAt||0) > (data.updatedAt||0)) adoptRemote(d); }catch(err){}
 });
-window.addEventListener("online",()=>{ if(granted) push(); }); /* connection back → flush pending state to the cloud */
+window.addEventListener("online",()=>{ if(granted) push(); renderSync(); }); /* connection back → flush pending state to the cloud */
+window.addEventListener("offline",()=>{ renderSync(); }); /* went offline → warn that any unsynced changes could be lost */
 if(!CONFIGURED){
   // No IDs yet → local-only preview so Kerem can see it working.
   showGate("setupGate");

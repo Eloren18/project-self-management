@@ -125,6 +125,7 @@ async function HARNESS() {
   }
   let indexedDB = makeIDB();
   let window = { indexedDB };
+  let navigator = { onLine: true };                 // drives the sync indicator's offline state
 
   // ---- InstantDB "cloud" mock (shared across devices) ----
   const cloud = { workspaces: {}, snapshots: {} };
@@ -507,6 +508,27 @@ async function HARNESS() {
     check('data still synced to the cloud despite the full local disk', cloudWs().data.glossary.some(g => g.id === 'gQUOTA'));
     check('user was warned the device storage is full', __toasts.some(t => /full/i.test(t)));
     check('in-memory data is intact (not lost by the failed write)', data.glossary.some(g => g.id === 'gQUOTA'));
+  }
+
+  // ============================================================
+  //  S14 — the sync indicator tells the truth
+  // ============================================================
+  scen('S14 Sync indicator: "Synced" only after the cloud confirms (else "could be lost")');
+  {
+    check('signed-out → "Local only"', syncView(false, true, false, false).text === 'Local only');
+    check('no pending changes → "Synced" (green)', syncView(false, true, false, true).cls === 'ok');
+    check('pending + offline → "Not synced" (could be lost)', syncView(true, false, false, true).cls === 'err' && /not synced/i.test(syncView(true, false, false, true).text));
+    check('pending + online → "Saving…"', syncView(true, true, false, true).cls === 'sync');
+    check('pending + push error → "Not synced" (retrying)', syncView(true, true, true, true).cls === 'err');
+    // end-to-end: an edit stays PENDING until the cloud transaction is acknowledged
+    const { laptop } = setupSynced();
+    useDevice(laptop); await flush();
+    lastSyncedUp = data.updatedAt;                    // baseline: fully synced
+    __clock.t += 1000; data.glossary.push({ id: 'gIND', term: 'indicator', definition: 'x' });
+    save();                                           // local edit + push (ack resolves async)
+    check('right after an edit, state is PENDING (not yet confirmed in the cloud)', data.updatedAt > lastSyncedUp);
+    await flush();
+    check('after the cloud acknowledges the write, state becomes SYNCED', lastSyncedUp >= data.updatedAt);
   }
 
   // ===== report =====
