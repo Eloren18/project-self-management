@@ -761,9 +761,13 @@
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px">
       <button class="btn sm" id="backupBtn">⤓ Download full backup</button>
       <button class="btn sm" id="restoreBtn">⤒ Restore from backup file…</button>
+      <button class="btn sm" id="snapNowBtn">⛅ Snapshot to cloud now</button>
       <input type="file" id="restoreFile" accept="application/json,.json" style="display:none">
     </div>
-    <div style="font-size:11px;color:var(--faint);margin-bottom:8px">Everything — work + personal — in one JSON file. The app also keeps automatic daily snapshots on this device.</div>
+    <div style="font-size:11px;color:var(--faint);margin-bottom:8px">Everything — work + personal — in one JSON file.</div>
+    <div class="section-h">Restore points <span class="line"></span></div>
+    <div style="font-size:11px;color:var(--faint);margin-bottom:6px">Automatic safety copies — cloud history plus snapshots kept on this device. Restoring replaces current data everywhere (the replaced copy is kept as a restore point too).</div>
+    <div id="secSnaps" style="max-height:230px;overflow-y:auto;margin-bottom:8px"></div>
     <div class="section-h">Activity log <span class="line"></span></div>
     <div id="secLog" style="max-height:220px;overflow-y:auto"></div>
   </div>
@@ -1125,23 +1129,108 @@ function deviceLabel(){
 
 /* ============================================================
    PERSISTENCE + SYNC
+   Safety model (work + personal are one blob — every guard covers both):
+   1. localStorage main copy          4. shrink guards (save / adopt / reconnect)
+   2. IndexedDB mirror                5. cloud snapshot history (last 30)
+   3. weekday backups + stashes       6. cross-tab + monotonic clock guards
    ============================================================ */
+const STASH_FAMILIES=["prewipe","lost","prerestore","rescue","badremote"];
+function blobCounts(d){
+  d=d||{}; const per=(d.personal&&typeof d.personal==="object")?d.personal:{};
+  return {
+    projects:(d.projects||[]).length,
+    tasks:(d.tasks||[]).length + (d.projects||[]).reduce((a,p)=>a+((p&&p.tasks||[]).length),0) + (d.meetings||[]).reduce((a,m)=>a+((m&&m.tasks||[]).length),0),
+    glossary:(d.glossary||[]).length, meetings:(d.meetings||[]).length, docs:(d.docs||[]).length, weekPrep:(d.weekPrep||[]).length,
+    pItems:(per.items||[]).length, pPlans:per.dayPlans&&typeof per.dayPlans==="object"?Object.keys(per.dayPlans).length:0,
+    pBucket:(per.bucket||[]).length, pNotes:(per.notes||[]).length, pPeople:(per.people||[]).length
+  };
+}
+function countsLabel(c){ return c.projects+" projects · "+c.tasks+" tasks · "+c.glossary+" glossary · "+c.meetings+" meetings · "+c.docs+" docs · personal: "+c.pItems+" items / "+c.pPlans+" days"; }
+function scoreWork(c){ return c.projects+c.tasks+c.glossary+c.meetings+c.docs+c.weekPrep; }
+function scorePersonal(c){ return c.pItems+c.pPlans+c.pBucket+c.pNotes+c.pPeople; }
+/* a "shrink" = losing >75% of EITHER platform's content — checked per-namespace so a
+   personal-only wipe can't hide behind a big work dataset (and vice versa) */
+function shrunk(prevC,nextC){
+  const w0=scoreWork(prevC), w1=scoreWork(nextC), p0=scorePersonal(prevC), p1=scorePersonal(nextC);
+  return (w0>=12 && w1 < w0*0.25) || (p0>=12 && p1 < p0*0.25);
+}
+function pruneStash(tag, keep){
+  try{ const pre=STORAGE_KEY+"_"+tag+"_";
+    const ks=Object.keys(localStorage).filter(k=>k.startsWith(pre)).sort();
+    while(ks.length>keep) localStorage.removeItem(ks.shift());
+  }catch(e){}
+}
+function stash(tag, json){ /* keep a copy nothing can silently destroy; prune on quota pressure */
+  if(!json) return;
+  try{ localStorage.setItem(STORAGE_KEY+"_"+tag+"_"+Date.now(), json); }
+  catch(e){ STASH_FAMILIES.forEach(t=>pruneStash(t,1)); try{ localStorage.setItem(STORAGE_KEY+"_"+tag+"_"+Date.now(), json); }catch(_e){} }
+  pruneStash(tag,3);
+}
+let expectedShrink=false; /* set during deliberate restores so shrink guards don't cry wolf */
 function save(){
-  data.updatedAt = Date.now();
+  /* monotonic clock: a device with a backwards-skewed clock can never make real edits lose a sync race */
+  data.updatedAt = Math.max(Date.now(), (data.updatedAt||0)+1);
   const json = JSON.stringify(data);
-  try{ localStorage.setItem(STORAGE_KEY, json); }catch(e){}
+  /* shrink guard: overwriting a much larger dataset (work OR personal) keeps the old copy first */
+  try{
+    const prev = localStorage.getItem(STORAGE_KEY);
+    if(prev && !expectedShrink){
+      const pc = blobCounts(JSON.parse(prev));
+      if(shrunk(pc, blobCounts(data))){
+        stash("prewipe", prev);
+        toast("⚠ Large data removal detected — a safety copy was kept (Security → Restore points)");
+        try{ logSec("data_shrunk", countsLabel(pc)); }catch(e){}
+      }
+    }
+  }catch(e){}
+  try{ localStorage.setItem(STORAGE_KEY, json); }
+  catch(e){ STASH_FAMILIES.forEach(t=>pruneStash(t,1));
+    try{ localStorage.setItem(STORAGE_KEY, json); }catch(_e){ toast("⚠ Device storage is full — changes may not persist on this device"); }
+  }
   /* rolling daily backup: one slot per weekday, overwritten weekly — survives accidental wipes */
   try{ const slot = STORAGE_KEY+"_bak_"+new Date().getDay(); const prev = localStorage.getItem(slot);
     if(!prev || (JSON.parse(prev).updatedAt||0) < data.updatedAt - 3600000) localStorage.setItem(slot, json);
   }catch(e){}
+  mirrorWrite(json);
   push();
+}
+/* ---- second local copy in IndexedDB: survives localStorage clears (and vice versa) ---- */
+function mirrorDB(){ return new Promise((res,rej)=>{ const rq=indexedDB.open("psm_mirror",1); rq.onupgradeneeded=()=>rq.result.createObjectStore("kv"); rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error); }); }
+function mirrorWrite(json){ if(!window.indexedDB) return; mirrorDB().then(dbi=>{ const tx=dbi.transaction("kv","readwrite"); tx.objectStore("kv").put(json,"main"); tx.oncomplete=()=>dbi.close(); tx.onerror=()=>dbi.close(); }).catch(()=>{}); }
+function mirrorRead(){ if(!window.indexedDB) return Promise.resolve(null); return mirrorDB().then(dbi=>new Promise(res=>{ const rq=dbi.transaction("kv").objectStore("kv").get("main"); rq.onsuccess=()=>{ dbi.close(); res(rq.result||null); }; rq.onerror=()=>{ dbi.close(); res(null); }; })).catch(()=>null); }
+async function mirrorRestoreIfNewer(){
+  try{ const json=await mirrorRead(); if(!json) return;
+    const m=JSON.parse(json);
+    if((m.updatedAt||0) > (data.updatedAt||0)){
+      console.warn("primary storage was older or empty — recovering newer copy from the IndexedDB mirror");
+      adoptRemote(m);
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }catch(e){}
+      toast("Recovered latest data from this device's mirror copy");
+      if(granted) push();
+    }
+  }catch(e){}
 }
 function push(){
   if(booting || !granted || !db || !authedUser || !workspaceId) return;
   try{ db.transact(db.tx.workspaces[workspaceId].update({ data, updatedAt: data.updatedAt }).link({ owner: authedUser.id })); setSync("sync","Saving…"); setTimeout(()=>{ if(granted) setSync("ok","Synced"); },500); }
-  catch(e){ console.warn("push failed",e); setSync("err","Sync error"); }
+  catch(e){ console.warn("push failed",e); setSync("err","Sync error"); setTimeout(()=>{ if(granted) push(); },5000); }
 }
-function adoptRemote(remote){ booting=true; data = normalize(remote); applyTheme(); renderAll(); booting=false; }
+function adoptRemote(remote){
+  let next;
+  try{ next = normalize(remote); }
+  catch(e){ /* a copy we can't load must never replace working data */
+    console.error("incoming copy failed to load — keeping current data", e);
+    try{ stash("badremote", JSON.stringify(remote)); }catch(_e){}
+    setSync("err","Sync error"); return;
+  }
+  try{
+    if(!expectedShrink && shrunk(blobCounts(data), blobCounts(next))){
+      stash("lost", JSON.stringify(data));
+      toast("⚠ A much smaller copy synced in — your previous data was kept (Security → Restore points)");
+    }
+  }catch(e){}
+  booting=true; data = next; applyTheme(); renderAll(); booting=false;
+}
 function startWorkspaceSync(){
   if(!db || !authedUser) return;
   if(workspaceSub){ workspaceSub(); workspaceSub=null; }
@@ -1150,8 +1239,16 @@ function startWorkspaceSync(){
     const rows = (res.data && res.data.workspaces) || [];
     if(rows.length){
       const row = rows[0]; workspaceId = row.id;
-      if(row.data && (row.data.updatedAt||0) > (data.updatedAt||0)) adoptRemote(row.data);
+      const remoteUp = (row.data && row.data.updatedAt) || 0, localUp = data.updatedAt || 0;
+      if(row.data && remoteUp > localUp) adoptRemote(row.data);
+      else if(localUp > remoteUp && localUp > 0){
+        /* offline edits: local is genuinely newer → upload it, but never silently destroy a larger cloud copy */
+        try{ if(row.data && shrunk(blobCounts(row.data), blobCounts(data))){ stash("lost", JSON.stringify(row.data)); toast("⚠ The cloud copy was larger — a safety copy of it was kept (Security → Restore points)"); } }catch(e){}
+        push();
+      }
       setSync("ok","Synced");
+      maybeCloudSnapshot();
+      backupReminder();
     } else {
       // first sign-in on a fresh account: seed the cloud with local data
       const nid=id(); workspaceId=nid;
@@ -1159,6 +1256,51 @@ function startWorkspaceSync(){
       setSync("ok","Synced");
     }
   });
+}
+/* ---- cloud snapshot history: periodic full copies in their own collection.
+        Overwriting the live workspace row can no longer destroy history. ---- */
+const SNAP_EVERY = 4*3600*1000, SNAP_KEEP = 30;
+function queryOnceSafe(q){
+  if(db && db.queryOnce) return db.queryOnce(q).then(r=>r.data);
+  return new Promise(res=>{ const un=db.subscribeQuery(q, r=>{ if(r.data){ try{un();}catch(e){} res(r.data); } else if(r.error){ try{un();}catch(e){} res(null); } }); });
+}
+async function maybeCloudSnapshot(force){
+  if(!granted || !db || !authedUser) return false;
+  let last=0; try{ last=+localStorage.getItem(STORAGE_KEY+"_snapat")||0; }catch(e){}
+  if(!force && Date.now()-last < SNAP_EVERY) return false;
+  if(!(data.updatedAt>0)) return false; /* never snapshot an untouched seed */
+  try{
+    const nid=id();
+    const p = db.transact(db.tx.snapshots[nid].update({ ts:Date.now(), updatedAt:data.updatedAt, label:countsLabel(blobCounts(data)), data }).link({ owner:authedUser.id }));
+    try{ localStorage.setItem(STORAGE_KEY+"_snapat", ""+Date.now()); }catch(e){}
+    await p;
+    const got = await queryOnceSafe({ snapshots:{ $:{ where:{ "owner.id": authedUser.id } } } });
+    const rows = ((got&&got.snapshots)||[]).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
+    if(rows.length>SNAP_KEEP) await db.transact(rows.slice(SNAP_KEEP).map(r=>db.tx.snapshots[r.id].delete()));
+    return true;
+  }catch(e){ console.warn("cloud snapshot failed", e); return false; }
+}
+/* ---- one shared restore path: file restores and restore-points both go through here ---- */
+async function restoreData(obj, sourceLabel){
+  let next; try{ next = normalize(JSON.parse(JSON.stringify(obj))); }
+  catch(e){ toast("That copy could not be loaded: "+(e.message||e)); return false; }
+  try{ stash("prerestore", localStorage.getItem(STORAGE_KEY)); }catch(e){}
+  try{ maybeCloudSnapshot(true); }catch(e){} /* current state → cloud history before it's replaced */
+  expectedShrink=true;
+  booting=true; data = next; booting=false;
+  save(); /* fresh updatedAt → authoritative on every device */
+  expectedShrink=false;
+  applyTheme(); renderAll();
+  try{ logSec("data_restored", sourceLabel||""); }catch(e){}
+  toast("Restored ✓ — syncing to your devices");
+  return true;
+}
+let dlReminded=false;
+function backupReminder(){
+  if(dlReminded) return; dlReminded=true;
+  let last=0; try{ last=+localStorage.getItem(STORAGE_KEY+"_lastdl")||0; }catch(e){}
+  const days = last ? Math.floor((Date.now()-last)/86400000) : -1;
+  if(days===-1 || days>=14) setTimeout(()=>toast(days===-1 ? "Tip: download a backup file now and then (Security → Backups)" : "It's been "+days+" days since your last downloaded backup (Security → Backups)"), 2500);
 }
 function setSync(cls, txt){ const p=$("syncPill"); if(!p) return; p.className=""; if(cls) p.classList.add(cls); $("syncText").textContent=txt; }
 
@@ -2481,11 +2623,53 @@ function loadSecLog(){
   if(logSub){ logSub(); logSub=null; }
   logSub=db.subscribeQuery({ securityLog:{ $:{ where:{"owner.id":authedUser.id}, order:{ ts:"desc" }, limit:30 } } }, res=>{
     const rows=(res.data&&res.data.securityLog)||[];
-    const nice={sign_in:"Signed in",device_bootstrap:"First device trusted",device_requested:"New device requested access",device_approved:"Device approved",device_rejected:"Device request rejected",device_revoked:"Device revoked",device_removed:"Device removed",signout_others:"Signed out other devices"};
+    const nice={sign_in:"Signed in",device_bootstrap:"First device trusted",device_requested:"New device requested access",device_approved:"Device approved",device_rejected:"Device request rejected",device_revoked:"Device revoked",device_removed:"Device removed",signout_others:"Signed out other devices",data_restored:"Data restored from a backup",data_shrunk:"Large data removal detected (safety copy kept)"};
     $("secLog").innerHTML = rows.length? rows.map(l=>`<div class="log-row"><span class="lt">${new Date(l.ts).toLocaleString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span><span><span class="le">${esc(nice[l.event]||l.event)}</span>${l.detail?" · "+esc(l.detail):""}</span></div>`).join("") : `<div style="font-size:12.5px;color:var(--faint)">No activity yet.</div>`;
   });
 }
-function openSec(){ renderSecurity(); const m=$("secModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show")); }
+/* ---- restore points: every automatic safety copy, local + cloud, in one list ---- */
+let restorePoints={};
+function rpWhen(ts){ return new Date(ts).toLocaleString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}); }
+function rpRow(key, icon, ts, label){
+  return `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-soft);font-size:11.5px">
+    <span style="color:var(--faint);white-space:nowrap">${icon} ${rpWhen(ts)}</span>
+    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)" title="${esc(label)}">${esc(label)}</span>
+    <button class="btn sm" data-rp="${key}" style="padding:2px 10px;flex-shrink:0">Restore</button></div>`;
+}
+function renderRestorePoints(){
+  const box=$("secSnaps"); if(!box) return;
+  restorePoints={};
+  const pts=[];
+  /* local: weekday backups + every stash family */
+  try{
+    for(let dow=0;dow<7;dow++){
+      const raw=localStorage.getItem(STORAGE_KEY+"_bak_"+dow); if(!raw) continue;
+      try{ const d=JSON.parse(raw); pts.push({ts:d.updatedAt||0, icon:"💾", tag:"daily backup", data:d}); }catch(e){}
+    }
+    STASH_FAMILIES.forEach(tag=>{
+      Object.keys(localStorage).filter(k=>k.startsWith(STORAGE_KEY+"_"+tag+"_")).forEach(k=>{
+        try{ const d=JSON.parse(localStorage.getItem(k)); if(d&&typeof d==="object") pts.push({ts:+k.slice((STORAGE_KEY+"_"+tag+"_").length)||d.updatedAt||0, icon:"🛟", tag:tag==="prewipe"?"kept before large removal":tag==="lost"?"kept before sync overwrite":tag==="prerestore"?"kept before restore":tag, data:d}); }catch(e){}
+      });
+    });
+  }catch(e){}
+  const paint=()=>{
+    pts.sort((a,b)=>b.ts-a.ts);
+    box.innerHTML = pts.length ? pts.map((p,i)=>{
+      const key="rp"+i; restorePoints[key]={when:rpWhen(p.ts), data:p.data};
+      return rpRow(key, p.icon, p.ts, p.tag+" — "+countsLabel(blobCounts(p.data)));
+    }).join("") : `<div style="font-size:12px;color:var(--faint)">No restore points yet — they appear automatically as you use the app.</div>`;
+  };
+  paint();
+  /* cloud snapshots load async and merge in */
+  if(granted && db && authedUser){
+    queryOnceSafe({ snapshots:{ $:{ where:{ "owner.id": authedUser.id } } } }).then(got=>{
+      const rows=((got&&got.snapshots)||[]).filter(r=>r&&r.data);
+      rows.forEach(r=>pts.push({ts:r.ts||0, icon:"⛅", tag:"cloud snapshot", data:r.data}));
+      if(rows.length) paint();
+    }).catch(()=>{});
+  }
+}
+function openSec(){ renderSecurity(); renderRestorePoints(); const m=$("secModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show")); }
 function closeSec(){ const m=$("secModal"); m.classList.remove("show"); setTimeout(()=>m.classList.add("hidden"),220); }
 
 /* ---- account / theme ---- */
@@ -3826,7 +4010,9 @@ $("signOutBtn").onclick=async()=>{ if(db && await uiConfirm("Sign out of this de
 $("backupBtn").onclick=()=>{
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="self-management-backup-"+todayISO()+".json"; a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),4000); toast("Backup downloaded");
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  try{ localStorage.setItem(STORAGE_KEY+"_lastdl", ""+Date.now()); }catch(e){}
+  toast("Backup downloaded");
 };
 $("restoreBtn").onclick=()=>$("restoreFile").click();
 $("restoreFile").addEventListener("change",e=>{
@@ -3836,17 +4022,29 @@ $("restoreFile").addEventListener("change",e=>{
     let incoming=null;
     try{ incoming=JSON.parse(rd.result); }catch(_e){ toast("That file isn't valid JSON"); return; }
     if(!incoming || !Array.isArray(incoming.projects)){ toast("That doesn't look like a Self-Management backup"); return; }
-    const summary=incoming.projects.length+" projects · "+((incoming.tasks||[]).length)+" tasks · "+((incoming.glossary||[]).length)+" glossary terms · "+((incoming.meetings||[]).length)+" meetings";
-    if(!await uiConfirm("Replace ALL current data (work + personal, on every synced device) with this backup?\n\nBackup contains: "+summary,{title:"Restore backup?",yes:"Restore everything"})) return;
-    booting=true;
-    try{ data=normalize(incoming); }catch(err){ booting=false; toast("Backup could not be loaded: "+err.message); return; }
-    booting=false;
-    save(); /* stamps updatedAt=now → becomes authoritative and syncs everywhere */
-    applyTheme(); renderAll();
-    if(appMode==="personal") switchPTab(pTab); else switchTab(curTab==="project"?"projects":curTab);
-    closeSec(); toast("Backup restored ✓ — syncing to your devices");
+    if(!await uiConfirm("Replace ALL current data (work + personal, on every synced device) with this backup?\n\nBackup contains: "+countsLabel(blobCounts(incoming)),{title:"Restore backup?",yes:"Restore everything"})) return;
+    if(await restoreData(incoming, "file: "+f.name)){
+      if(appMode==="personal") switchPTab(pTab); else switchTab(curTab==="project"?"projects":curTab);
+      closeSec();
+    }
   };
   rd.readAsText(f);
+});
+$("snapNowBtn").onclick=async()=>{
+  $("snapNowBtn").disabled=true;
+  const ok=await maybeCloudSnapshot(true);
+  $("snapNowBtn").disabled=false;
+  toast(ok ? "Cloud snapshot saved ⛅" : "Cloud snapshot unavailable right now");
+  if(ok) renderRestorePoints();
+};
+$("secSnaps").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-rp]"); if(!b) return;
+  const rp=restorePoints[b.dataset.rp]; if(!rp) return;
+  if(!await uiConfirm("Go back to this copy from "+rp.when+"?\n\nIt contains: "+countsLabel(blobCounts(rp.data))+"\n\nCurrent data will be replaced everywhere (but kept as a restore point).",{title:"Restore this point?",yes:"Restore"})) return;
+  if(await restoreData(rp.data, "restore point: "+rp.when)){
+    if(appMode==="personal") switchPTab(pTab); else switchTab(curTab==="project"?"projects":curTab);
+    closeSec();
+  }
 });
 $("signOutOthers").onclick=signOutOthers;
 $("pendingSignOut").onclick=()=>{ if(db) db.auth.signOut(); };
@@ -3875,6 +4073,14 @@ document.addEventListener("keydown",e=>{ if(e.key==="Escape"){
 applyTheme();
 initPersonalUI();
 (function(){ const wi=weekInfo(todayISO()); if(wi) $("weekPillTxt").textContent="W"+wi.week+" · "+wi.year; })();
+/* ---- boot-time data protection ---- */
+try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{}); }catch(e){} /* ask the browser to never evict our storage */
+mirrorRestoreIfNewer(); /* localStorage wiped but IndexedDB mirror survived → recover automatically */
+window.addEventListener("storage",(e)=>{ /* another tab saved newer data → follow it live, so no tab ever goes stale */
+  if(e.key!==STORAGE_KEY || !e.newValue) return;
+  try{ const d=JSON.parse(e.newValue); if((d.updatedAt||0) > (data.updatedAt||0)) adoptRemote(d); }catch(err){}
+});
+window.addEventListener("online",()=>{ if(granted) push(); }); /* connection back → flush pending state to the cloud */
 if(!CONFIGURED){
   // No IDs yet → local-only preview so Kerem can see it working.
   showGate("setupGate");
