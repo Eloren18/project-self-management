@@ -1757,14 +1757,14 @@ function renderTodo(){
     <div class="check-sm" data-pjdone="${p.id}" title="Mark project complete"></div>
     <div class="trow-main">
       <div style="font-weight:700;font-size:13px;padding:2px 0">🚩 ${esc(p.name)}</div>
-      <div class="trow-sub"><span class="chip" style="background:color-mix(in srgb,${projColor(p)} 14%,transparent);color:${projColor(p)}">Project</span><button class="chip trow-dl over" data-pjdl="${p.id}" title="Pick a new deadline">${esc(fmtDL(p.deadline,p.deadlineWeek))} · overdue</button></div>
+      <div class="trow-sub"><span class="chip" style="background:color-mix(in srgb,${projColor(p)} 14%,transparent);color:${projColor(p)}">Project</span>${p.category?`<span class="chip" style="background:color-mix(in srgb,${catColor(p.category)} 16%,transparent);color:${catColor(p.category)}">${esc(p.category)}</span>`:""}<button class="chip trow-dl over" data-pjdl="${p.id}" title="Pick a new deadline">${esc(fmtDL(p.deadline,p.deadlineWeek))} · overdue</button></div>
     </div>
   </div>`;
   const doneProjRowHTML=p=>`<div class="trow done" data-goprojrow="${p.id}" style="cursor:pointer">
     <div class="check-sm on" data-pjdone="${p.id}" title="Restore project">${TICK}</div>
     <div class="trow-main">
       <div style="font-weight:700;font-size:13px;padding:2px 0;text-decoration:line-through;color:var(--faint)">🚩 ${esc(p.name)}</div>
-      <div class="trow-sub"><span class="chip" style="background:color-mix(in srgb,${projColor(p)} 14%,transparent);color:${projColor(p)}">Project</span>${p.completedAt?`<span class="chip soft">done ${fmtShort(iso(new Date(p.completedAt)))}</span>`:""}</div>
+      <div class="trow-sub"><span class="chip" style="background:color-mix(in srgb,${projColor(p)} 14%,transparent);color:${projColor(p)}">Project</span>${p.category?`<span class="chip" style="background:color-mix(in srgb,${catColor(p.category)} 16%,transparent);color:${catColor(p.category)}">${esc(p.category)}</span>`:""}${p.completedAt?`<span class="chip soft">done ${fmtShort(iso(new Date(p.completedAt)))}</span>`:""}</div>
     </div>
   </div>`;
   let html="";
