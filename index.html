@@ -134,7 +134,10 @@
   .pcard:hover{border-color:var(--text);}
   .pcard.dragging{opacity:.5;}
   .pcard-top{display:flex;align-items:center;gap:9px;padding:10px 11px;cursor:pointer;}
-  .pc-title{font-weight:700;font-size:12.5px;line-height:1.35;flex:1;min-width:0;letter-spacing:-.01em;}
+  .pc-title{font-weight:700;font-size:12.5px;line-height:1.35;min-width:0;letter-spacing:-.01em;}
+  .pc-cat{font-size:9.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin-top:3px;display:flex;align-items:center;gap:5px;opacity:.9;}
+  .pc-cat::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
+  .pcard.done .pc-cat{filter:grayscale(1);opacity:.5;}
   .pcard.done{border-left-color:var(--s-done);}
   .pcard.done .pc-title{text-decoration:line-through;color:var(--faint);}
   .pcard-more{display:none;padding:0 12px 12px 38px;}
@@ -915,6 +918,8 @@ function glColor(src){ if(GL_COLORS[src]) return GL_COLORS[src]; const custom=gl
 /* Project color: custom if set, otherwise falls back to the priority color.
    Tasks always take their project's color, so the link stays intact. */
 function projColor(p){ return (p && p.color) ? p.color : PRIO_COLOR[(p && p.priority) || "Medium"]; }
+const CAT_COLOR = {"Planned Research / Evaluation":"#3a8fd9","Long-term Business Case":"#8a63d2","Ad Hoc Request":"#d9822b"};
+function catColor(c){ if(CAT_COLOR[c]) return CAT_COLOR[c]; let h=0; for(let i=0;i<(c||"").length;i++) h=(h*31+c.charCodeAt(i))>>>0; return `hsl(${h%360} 45% 50%)`; }
 function colorFieldHTML(p){
   return `<div class="field"><label>Project color</label><div class="colorrow" id="colorRow">
     <button type="button" class="cswatch auto ${p.color?'':'sel'}" data-c="" title="Automatic — follows priority">Auto</button>
@@ -993,7 +998,9 @@ function normalize(d){
   d = d || {};
   d.projects = Array.isArray(d.projects) ? d.projects : [];
   d.projects.forEach((p,idx)=>{
-    p.id ||= uid(); p.name ??= "Untitled"; p.category ??= CATEGORIES[0];
+    p.id ||= uid(); p.name ??= "Untitled";
+    /* empty category ≠ missing: the page select silently DISPLAYS the first option while storing "" — make the data match what the user sees */
+    if(typeof p.category!=="string" || !p.category.trim()) p.category = CATEGORIES[0];
     p.description ??= ""; p.progress = PROGRESS.includes(p.progress)?p.progress:"Not Started";
     p.priority = PRIORITIES.includes(p.priority)?p.priority:"Medium"; p.deadline ??= ""; p.deadlineWeek = !!p.deadlineWeek;
     p.color ??= "";
@@ -1480,7 +1487,10 @@ function projectCardHTML(p){
   return `<div class="pcard ${done?'done':''}" draggable="true" data-id="${p.id}"${done?'':` style="border-left-color:${projColor(p)}"`}>
     <div class="pcard-top">
       <div class="check-sm ${done?'on':''}" data-done title="Mark complete">${done?TICK:''}</div>
-      <div class="pc-title">${esc(p.name)}</div>
+      <div style="flex:1;min-width:0">
+        <div class="pc-title">${esc(p.name)}</div>
+        ${p.category?`<div class="pc-cat" style="color:${catColor(p.category)}">${esc(p.category)}</div>`:""}
+      </div>
     </div>
     <div class="pcard-more">
       ${p.deadline?`<div class="dl-flag ${over?'over':''}">🚩 ${esc(fmtDL(p.deadline,p.deadlineWeek))}${over?' · overdue':''}</div>`:`<div class="tinytxt">No overall deadline</div>`}
@@ -3542,7 +3552,9 @@ function renderPLog(){
   Object.keys(P().dayPlans).sort().reverse().forEach(dt=>{
     const pl=P().dayPlans[dt];
     (pl.meetups||[]).forEach(mu=>{ if(!pLogPerson||mu.personId===pLogPerson) rows.push({kind:"meet",dt,pl,mu}); });
-    if(!pLogPerson && ((pl.feeling||"").trim()||pl.mood>0)) rows.push({kind:"day",dt,pl});
+    /* a day belongs in the log when anything happened on it — not only when a feeling was written */
+    const doneN=(pl.entries||[]).filter(e=>e.done).length;
+    if(!pLogPerson && ((pl.feeling||"").trim()||pl.mood>0||doneN>0||pl.gym)) rows.push({kind:"day",dt,pl,doneN});
   });
   host.innerHTML=`
     <div class="toolbar"><h1 class="page-title">Log</h1><div class="grow"></div>
@@ -3552,7 +3564,9 @@ function renderPLog(){
     ${rows.map((r,ix)=>{
       if(r.kind==="day") return `<div class="pi-row" data-lday="${r.dt}" style="align-items:flex-start;border-left-color:#e9c400">
         <span class="pi-badge" style="margin-top:2px">${fmtShort(r.dt)}${r.pl.mood?" "+MOODS[r.pl.mood-1]:""}</span>
-        <textarea data-lfeel rows="2" style="flex:1;border:none;background:transparent;outline:none;resize:vertical;font-size:12.5px;line-height:1.5">${esc(r.pl.feeling)}</textarea>
+        ${r.doneN?`<span class="pi-badge" style="margin-top:2px;color:var(--s-done)">✓ ${r.doneN} done</span>`:""}
+        ${r.pl.gym?`<span class="pi-badge" style="margin-top:2px" title="Gym day">🏋️</span>`:""}
+        <textarea data-lfeel rows="2" placeholder="how did this day feel?" style="flex:1;border:none;background:transparent;outline:none;resize:vertical;font-size:12.5px;line-height:1.5">${esc(r.pl.feeling)}</textarea>
         <button class="pi-act" data-lopen title="Open that day">↗</button>
       </div>`;
       const per=P().people.find(p=>p.id===r.mu.personId);
