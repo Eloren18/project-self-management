@@ -34,6 +34,14 @@ const _schema = i.schema({
       detail: i.string(),
       deviceId: i.string(),
     }),
+    // Full-workspace safety copies (cloud snapshot history, pruned to the
+    // most recent 30 by the app). Each row holds the entire workspace JSON.
+    snapshots: i.entity({
+      ts: i.number().indexed(),   // when the snapshot was taken
+      updatedAt: i.number(),      // the workspace updatedAt it captured
+      label: i.string(),          // human summary, e.g. "12 projects · 20 tasks · …"
+      data: i.json(),             // the full workspace blob
+    }),
   },
   links: {
     workspaceOwner: {
@@ -47,6 +55,10 @@ const _schema = i.schema({
     logOwner: {
       forward: { on: "securityLog", has: "one", label: "owner" },
       reverse: { on: "$users", has: "many", label: "logs" },
+    },
+    snapshotOwner: {
+      forward: { on: "snapshots", has: "one", label: "owner" },
+      reverse: { on: "$users", has: "many", label: "snapshots" },
     },
   },
 });

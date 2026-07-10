@@ -39,6 +39,14 @@ const rules = {
       delete: "false", // append-only
     },
   },
+  snapshots: {
+    allow: {
+      view: isOwnerAndAdmin,
+      create: isAdmin,
+      update: "false",          // snapshots are immutable once written
+      delete: isOwnerAndAdmin,  // the app prunes to the most recent 30
+    },
+  },
 } satisfies InstantRules;
 
 export default rules;

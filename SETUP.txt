@@ -123,6 +123,14 @@ This is what actually makes the app private. Without it, the database is open.
       "update": "false",
       "delete": "false"
     }
+  },
+  "snapshots": {
+    "allow": {
+      "view": "auth.id != null && 'keremladkeholland@gmail.com' in auth.ref('$user.email') && auth.id in data.ref('owner.id')",
+      "create": "auth.id != null && 'keremladkeholland@gmail.com' in auth.ref('$user.email')",
+      "update": "false",
+      "delete": "auth.id != null && 'keremladkeholland@gmail.com' in auth.ref('$user.email') && auth.id in data.ref('owner.id')"
+    }
   }
 }
 

@@ -531,6 +531,39 @@ async function HARNESS() {
     check('after the cloud acknowledges the write, state becomes SYNCED', lastSyncedUp >= data.updatedAt);
   }
 
+  // ============================================================
+  //  S15 — cloud/schema failures can never kill UI paths
+  //  (regression: the `snapshots` entity was missing from the InstantDB schema,
+  //   so queryOnce threw synchronously inside openSec → the Security modal never
+  //   opened → the shield AND account buttons both appeared dead when signed in)
+  // ============================================================
+  scen('S15 A throwing cloud query can never kill a UI path (dead shield/account buttons)');
+  {
+    const { laptop } = setupSynced();
+    useDevice(laptop);
+    const orig = db.queryOnce;
+    db.queryOnce = () => { throw new Error('validation: could not find entity "snapshots" in schema'); };
+    let threw = false, result = 'unset';
+    try { result = await queryOnceSafe({ snapshots: { $: { where: { 'owner.id': authedUser.id } } } }); }
+    catch (e) { threw = true; }
+    check('queryOnceSafe does NOT throw when the underlying query throws synchronously', !threw);
+    check('…and resolves to null so callers degrade gracefully', result === null, String(result));
+    db.queryOnce = () => Promise.reject(new Error('permission denied'));
+    let threw2 = false, result2 = 'unset';
+    try { result2 = await queryOnceSafe({ snapshots: { $: {} } }); } catch (e) { threw2 = true; }
+    check('queryOnceSafe also absorbs async rejections (e.g. permission denied)', !threw2 && result2 === null);
+    db.queryOnce = orig;
+    // and a snapshot attempt against a broken cloud must fail soft, not crash
+    const okBefore = wScore(data);
+    const origTx = db.transact;
+    db.transact = () => { throw new Error('validation: unknown entity snapshots'); };
+    let snapThrew = false, snapOk = 'unset';
+    try { snapOk = await maybeCloudSnapshot(true); } catch (e) { snapThrew = true; }
+    db.transact = origTx;
+    check('maybeCloudSnapshot fails SOFT when the cloud rejects it', !snapThrew && snapOk === false);
+    check('…and the working data is untouched', wScore(data) === okBefore);
+  }
+
   // ===== report =====
   __log.push('\n' + '─'.repeat(60));
   __log.push('  ' + __pass + ' passed, ' + __fail + ' failed');
@@ -549,5 +582,31 @@ const ctx = vm.createContext({
 });
 vm.runInContext('var __run = (' + body + ')();', ctx, { filename: 'e2e-harness.js' });
 const res = await ctx.__run;
-if (res.fail > 0) { console.log('\n❌ ' + res.fail + ' check(s) failed'); process.exit(1); }
-console.log('\n✅ all ' + res.pass + ' checks passed');
+
+/* ---- S16 (static): every InstantDB entity the app uses must exist in ALL schema/perms layers.
+        Regression guard for the missing-`snapshots` incident (dead shield/account buttons). ---- */
+console.log('\nS16 Static: schema & perms layers stay consistent (index.html / instant.schema.ts / instant.perms.ts / SETUP.txt)');
+let sPass = 0, sFail = 0;
+const sCheck = (n, c) => { if (c) { sPass++; console.log('  ✓ ' + n); } else { sFail++; console.log('  ✗ FAIL: ' + n); } };
+const schemaTs = readFileSync(join(__dirname, '..', 'instant.schema.ts'), 'utf8');
+const permsTs = readFileSync(join(__dirname, '..', 'instant.perms.ts'), 'utf8');
+const setupTxt = readFileSync(join(__dirname, '..', 'SETUP.txt'), 'utf8');
+// every entity referenced via db.tx.<entity> or queried in index.html
+const used = [...new Set([
+  ...[...src.matchAll(/db\.tx\.([A-Za-z_$][\w$]*)/g)].map(m => m[1]),
+  ...[...src.matchAll(/(?:queryOnce|queryOnceSafe|subscribeQuery)\(\{\s*([A-Za-z_$][\w$]*)\s*:/g)].map(m => m[1]),
+])];
+const inlineSchema = src.slice(src.indexOf('const schema = i.schema({'), src.indexOf('const CONFIGURED'));
+for (const ent of used) {
+  sCheck(`entity "${ent}" is declared in index.html's inline schema`, new RegExp(ent + ':\\s*i\\.entity\\(').test(inlineSchema));
+  sCheck(`entity "${ent}" is mirrored in instant.schema.ts`, new RegExp(ent + ':\\s*i\\.entity\\(').test(schemaTs));
+  sCheck(`entity "${ent}" has server rules in instant.perms.ts`, new RegExp('\\b' + ent + ':\\s*\\{').test(permsTs));
+  sCheck(`entity "${ent}" is in SETUP.txt's dashboard permissions JSON`, setupTxt.includes('"' + ent + '"'));
+}
+sCheck('openSec() is hardened (renderers wrapped in try/catch)', src.includes('try{ renderSecurity(); }catch') && src.includes('try{ renderRestorePoints(); }catch'));
+sCheck('queryOnceSafe is hardened (synchronous throws absorbed)', /function queryOnceSafe\(q\)\{[^]*?try\{/.test(src));
+console.log('  ' + sPass + ' passed, ' + sFail + ' failed');
+
+const totalPass = res.pass + sPass, totalFail = res.fail + sFail;
+if (totalFail > 0) { console.log('\n❌ ' + totalFail + ' check(s) failed'); process.exit(1); }
+console.log('\n✅ all ' + totalPass + ' checks passed');

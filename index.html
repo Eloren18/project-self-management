@@ -891,11 +891,18 @@ const schema = i.schema({
     securityLog: i.entity({
       ts: i.number().indexed(), event: i.string(), detail: i.string(), deviceId: i.string(),
     }),
+    /* full-workspace safety copies (cloud snapshot history — see maybeCloudSnapshot).
+       Missing from the schema once = the typed client threw on every snapshots query,
+       which killed openSec() for signed-in users (dead shield/account buttons). */
+    snapshots: i.entity({
+      ts: i.number().indexed(), updatedAt: i.number(), label: i.string(), data: i.json(),
+    }),
   },
   links: {
     workspaceOwner: { forward:{on:"workspaces",has:"one",label:"owner"}, reverse:{on:"$users",has:"one",label:"workspace"} },
     deviceOwner:    { forward:{on:"devices",has:"one",label:"owner"},    reverse:{on:"$users",has:"many",label:"devices"} },
     logOwner:       { forward:{on:"securityLog",has:"one",label:"owner"},reverse:{on:"$users",has:"many",label:"logs"} },
+    snapshotOwner:  { forward:{on:"snapshots",has:"one",label:"owner"},  reverse:{on:"$users",has:"many",label:"snapshots"} },
   },
 });
 const CONFIGURED = !!(INSTANT_APP_ID && GOOGLE_CLIENT_ID);
@@ -1278,9 +1285,11 @@ function startWorkspaceSync(){
 /* ---- cloud snapshot history: periodic full copies in their own collection.
         Overwriting the live workspace row can no longer destroy history. ---- */
 const SNAP_EVERY = 4*3600*1000, SNAP_KEEP = 30;
-function queryOnceSafe(q){
-  if(db && db.queryOnce) return db.queryOnce(q).then(r=>r.data);
-  return new Promise(res=>{ const un=db.subscribeQuery(q, r=>{ if(r.data){ try{un();}catch(e){} res(r.data); } else if(r.error){ try{un();}catch(e){} res(null); } }); });
+function queryOnceSafe(q){ /* must NEVER throw — a cloud/schema error can't be allowed to kill UI paths */
+  try{
+    if(db && db.queryOnce) return db.queryOnce(q).then(r=>r.data).catch(e=>{ console.warn("cloud query failed",e); return null; });
+    return new Promise(res=>{ const un=db.subscribeQuery(q, r=>{ if(r.data){ try{un();}catch(e){} res(r.data); } else if(r.error){ try{un();}catch(e){} res(null); } }); });
+  }catch(e){ console.warn("cloud query failed",e); return Promise.resolve(null); }
 }
 async function maybeCloudSnapshot(force){
   if(!granted || !db || !authedUser) return false;
@@ -2705,7 +2714,11 @@ function renderRestorePoints(){
     }).catch(()=>{});
   }
 }
-function openSec(){ renderSecurity(); renderRestorePoints(); const m=$("secModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show")); }
+function openSec(){ /* the security modal is the recovery UI — it must open even if a renderer breaks */
+  try{ renderSecurity(); }catch(e){ console.error("renderSecurity failed",e); }
+  try{ renderRestorePoints(); }catch(e){ console.error("renderRestorePoints failed",e); }
+  const m=$("secModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show"));
+}
 function closeSec(){ const m=$("secModal"); m.classList.remove("show"); setTimeout(()=>m.classList.add("hidden"),220); }
 
 /* ---- account / theme ---- */
