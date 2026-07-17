@@ -573,7 +573,8 @@ async function HARNESS() {
       projects: [{ id: 'mp', name: 'M', meetingNotes: [
         { id: 'a', date: '2026-07-01', text: 'legacy project note\n- do X' },                 // legacy → discussed
         { id: 'b', date: '2026-07-02', text: 'from the old field', discussed: 'already here' }, // must APPEND, not overwrite
-        { id: 'c', date: '2026-07-03', discussed: 'new fmt', steps: '- s1', jumps: 'j1' },       // new format untouched
+        { id: 'c', date: '2026-07-03', discussed: 'new fmt', steps: '- s1\n✓ done one', jumps: 'j1' }, // string steps → checklist
+        { id: 'd', date: '2026-07-05', steps: [{ id: 's', text: 'already an item', done: true }] },     // array steps kept
       ] }],
       meetings: [{ id: 'mm', name: 'MM', entries: [
         { id: 'e', date: '2026-07-04', agenda: 'agenda kept', notes: 'legacy meeting notes' },   // legacy notes → discussed, agenda kept
@@ -582,17 +583,21 @@ async function HARNESS() {
     const a = blob.projects[0].meetingNotes.find(n => n.id === 'a');
     const b = blob.projects[0].meetingNotes.find(n => n.id === 'b');
     const c = blob.projects[0].meetingNotes.find(n => n.id === 'c');
+    const d = blob.projects[0].meetingNotes.find(n => n.id === 'd');
     const e = blob.meetings[0].entries.find(n => n.id === 'e');
     check('legacy project "text" moved into discussed', a.discussed.includes('legacy project note'));
     check('legacy "text" key is removed (idempotent)', !('text' in a));
-    check('every note gains the three sections', ['discussed', 'steps', 'jumps'].every(k => k in a) && ['discussed', 'steps', 'jumps'].every(k => k in e));
+    check('every note gains the three sections; steps is now a checklist array', ['discussed', 'jumps'].every(k => k in a) && Array.isArray(a.steps) && Array.isArray(e.steps));
     check('legacy text APPENDS when discussed already had content (no overwrite, no loss)', b.discussed.includes('already here') && b.discussed.includes('from the old field'));
-    check('new-format note is left untouched', c.discussed === 'new fmt' && c.steps === '- s1' && c.jumps === 'j1');
+    check('string "steps" migrate to checklist items, preserving ✓ done-state', c.steps.length === 2 && c.steps[0].text === 's1' && c.steps[0].done === false && c.steps[1].text === 'done one' && c.steps[1].done === true);
+    check('array "steps" are kept as-is (id/text/done)', d.steps.length === 1 && d.steps[0].text === 'already an item' && d.steps[0].done === true);
     check('legacy meeting-entry "notes" moved into discussed, agenda preserved', e.discussed.includes('legacy meeting notes') && e.agenda === 'agenda kept' && !('notes' in e));
-    // idempotency: normalizing again must not duplicate the migrated text
+    // idempotency: normalizing again must not duplicate migrated text or re-split steps
     const twice = normalize(clone(blob));
     const b2 = twice.projects[0].meetingNotes.find(n => n.id === 'b');
+    const c2 = twice.projects[0].meetingNotes.find(n => n.id === 'c');
     check('re-normalizing does NOT duplicate migrated text', (b2.discussed.match(/from the old field/g) || []).length === 1);
+    check('re-normalizing keeps steps as a stable 2-item checklist (no re-split)', c2.steps.length === 2 && c2.steps[1].done === true);
   }
 
   // ===== report =====

@@ -108,9 +108,10 @@ One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both
 - **Three fixed sections** auto-titled: **What was discussed?**, **Next steps**, **Next Jumps** (meeting-log entries also keep an **Agenda** section on top).
 - **Natural editing**: seamless borderless textareas that **auto-grow** as you type (no fixed rows, no manual resize); `- ` bullet lists auto-continue on Enter and end on an empty bullet.
 - **Collapsible cards** with a date header, a one-line snippet preview when collapsed, a `⇢ N` chip showing unconverted next-steps, and a relative "edited …" time when open.
-- **Next steps → tasks**: a button turns each un-ticked Next-steps line into a real task (on the project or meeting) that flows into To-Do; converted lines get a `✓` prefix so re-running never duplicates. Confirm dialog previews exactly what will be created.
+- **Next steps is a checkbox checklist** (`{id,text,done}`): tick items off with a real checkbox, edit text inline, add via the "＋ Add a next step" input (Enter), delete per row; done items strike through.
+- **Next steps → tasks**: a button turns each **un-ticked** step into a real task (on the project or meeting) that flows into To-Do, then **ticks that step's checkbox** so re-running never duplicates. Confirm dialog previews exactly what will be created.
 - **Pin** (★, sorts to top), **Copy** (⧉, whole note to clipboard as text), **Delete** (styled confirm).
-- Meeting-log extras: **search** the log, **⤓ Last agenda** (copy previous entry's agenda), **⤓ Carry over open steps** (pull the previous entry's un-ticked next steps into this agenda), single-open accordion, "Latest" badge.
+- Meeting-log extras: **search** the log, **⤓ Last agenda** (copy previous entry's agenda), **⤓ Carry over open steps** (pull the previous entry's un-ticked next-step items into this entry's Next-steps checklist), single-open accordion, "Latest" badge.
 - **Migration [ALWAYS CHECK — data safety]**: legacy free-text (`text` on project notes, `notes` on meeting entries) moves into **What was discussed?** and is NEVER dropped — if that section already had content the legacy text is appended; idempotent, never duplicates (S17).
 
 ### 4.4 Calendar — month grid; shows project deadlines, task deadlines, meetings; month navigation; overdue tint; click-through to items.

@@ -228,6 +228,16 @@
   .mnote-ta:hover{border-color:var(--border-soft);}
   .mnote-ta:focus{border-color:var(--primary);background:var(--surface-2);}
   .mnote-ta::placeholder{color:var(--faint);}
+  .mn-steps{display:flex;flex-direction:column;gap:1px;}
+  .mn-step{display:flex;align-items:center;gap:8px;padding:1px 0;}
+  .mn-step .check-sm{width:16px;height:16px;}
+  .mn-step-txt{flex:1;min-width:0;border:1px solid transparent;background:transparent;padding:4px 6px;font-family:inherit;font-size:12.5px;color:var(--text);outline:none;transition:border-color .12s,background .12s;}
+  .mn-step-txt:hover{border-color:var(--border-soft);}
+  .mn-step-txt:focus{border-color:var(--primary);background:var(--surface-2);}
+  .mn-step.done .mn-step-txt{text-decoration:line-through;color:var(--faint);}
+  .mn-step-add{width:100%;border:1px dashed var(--border);background:transparent;padding:5px 8px;font-family:inherit;font-size:12px;color:var(--muted);outline:none;margin-top:3px;}
+  .mn-step-add:focus{border-color:var(--primary);border-style:solid;color:var(--text);}
+  .mn-step-add::placeholder{color:var(--faint);}
   .dl-btn{width:100%;justify-content:flex-start;}
   .dl-btn.set{border-color:var(--primary);color:var(--text);font-weight:700;}
 
@@ -1021,6 +1031,22 @@ function normTask(t){ t.id ||= uid(); t.text ??= ""; t.done=!!t.done; if(t.deadl
    The old free-text field migrates into "What was discussed?" and is NEVER dropped —
    if that section already had text, the legacy note is appended rather than lost.
    Deleting the legacy key afterwards keeps this idempotent. */
+/* "Next steps" is a checklist of {id,text,done}. Accepts the legacy string form
+   (one step per line, a leading ✓ or [x] meaning done) and converts it losslessly. */
+function normMeetingSteps(v){
+  if(Array.isArray(v)) return v.map(s=> (s && typeof s==="object")
+    ? { id:s.id||uid(), text:(s.text==null?"":""+s.text), done:!!s.done }
+    : { id:uid(), text:(s==null?"":""+s), done:false });
+  const out=[];
+  (v==null?"":(""+v)).split("\n").forEach(line=>{
+    const t=line.trim(); if(!t) return;
+    let done=false, text=t;
+    const m=t.match(/^(✓|\[[xX]\])\s*/); if(m){ done=true; text=t.slice(m[0].length); }
+    text=text.replace(/^[-•*]\s*/,"").trim();
+    if(text) out.push({ id:uid(), text, done });
+  });
+  return out;
+}
 function normMeetingNote(o, legacyKey){
   const legacy = o[legacyKey];
   if(typeof legacy==="string" && legacy.trim()){
@@ -1029,7 +1055,7 @@ function normMeetingNote(o, legacyKey){
     else if(!o.discussed.includes(legacy.trim())) o.discussed = o.discussed.replace(/\s*$/,"") + "\n" + legacy;
   }
   delete o[legacyKey];
-  o.discussed ??= ""; o.steps ??= ""; o.jumps ??= "";
+  o.discussed ??= ""; o.steps = normMeetingSteps(o.steps); o.jumps ??= "";
   o.pinned = !!o.pinned;
   o.createdAt ??= Date.now(); o.updatedAt ??= o.createdAt;
   return o;
@@ -1755,18 +1781,15 @@ function bulletKeys(ta, onChange){
     autoGrow(ta); onChange(ta.value);
   });
 }
-/* "Next steps" lines still waiting to become tasks — a ✓ prefix means already converted */
-function stepLines(txt){
-  return (txt||"").split("\n").map(s=>s.trim()).filter(s=>s && !s.startsWith("✓"))
-    .map(s=>s.replace(/^[-•*]\s*/,"").trim()).filter(Boolean);
-}
-function markStepsDone(txt){
-  return (txt||"").split("\n").map(l=>{ const t=l.trim(); if(!t||t.startsWith("✓")) return l; return "✓ "+t.replace(/^[-•*]\s*/,"").trim(); }).join("\n");
-}
+/* "Next steps" checklist helpers ({id,text,done}) */
+function stepOpen(steps){ return (steps||[]).filter(s=>!s.done && (s.text||"").trim()); }
+function stepsText(steps){ return (steps||[]).map(s=>s.text).filter(t=>(t||"").trim()).join("\n"); } /* for search + snippet */
+function stepsCopy(steps){ return (steps||[]).map(s=>(s.done?"✓ ":"- ")+s.text).join("\n"); }        /* for clipboard */
+function sectionText(o,k){ return k==="steps" ? stepsText(o.steps) : (o[k]||""); }
 function mnoteDateLabel(isoStr){ const d=parseISO(isoStr); return d ? d.toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short",year:"numeric"}) : "No date"; }
 function mnoteFirstLine(v){ const l=(v||"").split("\n").map(s=>s.trim()).find(Boolean); return l ? l.replace(/^[-•*✓]\s*/,"") : ""; }
 function mnoteSnippet(o){
-  for(const s of MNOTE_SECTIONS){ const v=(o[s.k]||"").trim(); if(v) return mnoteFirstLine(v); }
+  for(const s of MNOTE_SECTIONS){ const v=sectionText(o,s.k).trim(); if(v) return mnoteFirstLine(v); }
   return mnoteFirstLine(o.agenda||"");
 }
 function mnoteSort(arr){ return [...arr].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0) || (b.date||"").localeCompare(a.date||"") || (b.createdAt||0)-(a.createdAt||0)); }
@@ -1781,21 +1804,35 @@ function mnoteRelTime(ts){
 function mnoteCopyText(o, title){
   const out=[title];
   if((o.agenda||"").trim()) out.push("","Agenda",o.agenda.trim());
-  MNOTE_SECTIONS.forEach(s=>{ const v=(o[s.k]||"").trim(); if(v) out.push("",s.label,v); });
+  MNOTE_SECTIONS.forEach(s=>{ const v=(s.k==="steps"?stepsCopy(o.steps):(o[s.k]||"")).trim(); if(v) out.push("",s.label,v); });
   return out.join("\n");
 }
 async function copyToClipboard(txt){
   try{ await navigator.clipboard.writeText(txt); toast("Copied to clipboard"); }
   catch(e){ toast("Couldn't copy — the browser blocked clipboard access"); }
 }
+function stepRowHTML(s){
+  return `<div class="mn-step ${s.done?"done":""}" data-step="${s.id}">
+    <div class="check-sm ${s.done?"on":""}" data-stdone title="${s.done?"Mark not done":"Tick off"}">${s.done?TICK:""}</div>
+    <input class="mn-step-txt" data-sttext value="${esc(s.text)}" placeholder="Next step…" autocomplete="off">
+    <button class="mnote-ico del" data-stdel title="Remove this step">✕</button>
+  </div>`;
+}
+function mnoteStepsHTML(o){
+  return `<div class="mnote-sec"><label>Next steps</label>
+    <div class="mn-steps">${(o.steps||[]).map(stepRowHTML).join("")}</div>
+    <input class="mn-step-add" data-stadd placeholder="＋ Add a next step… press Enter" autocomplete="off">
+  </div>`;
+}
 function mnoteSectionsHTML(o){
-  return MNOTE_SECTIONS.map(s=>`<div class="mnote-sec"><label>${s.label}</label>
+  return MNOTE_SECTIONS.map(s=> s.k==="steps" ? mnoteStepsHTML(o)
+    : `<div class="mnote-sec"><label>${s.label}</label>
     <textarea class="mnote-ta" data-sec="${s.k}" rows="1" placeholder="${esc(s.ph)}">${esc(o[s.k]||"")}</textarea></div>`).join("");
 }
 function mnoteCardHTML(o, opts){
   opts=opts||{};
-  const open=!!opts.open, n=stepLines(o.steps).length, snip=mnoteSnippet(o);
-  const empty=!MNOTE_SECTIONS.some(s=>(o[s.k]||"").trim()) && !(o.agenda||"").trim();
+  const open=!!opts.open, n=stepOpen(o.steps).length, snip=mnoteSnippet(o);
+  const empty=!MNOTE_SECTIONS.some(s=>sectionText(o,s.k).trim()) && !(o.agenda||"").trim();
   return `<div class="mnote ${open?"open":""} ${o.pinned?"pinned":""}" data-mn="${o.id}">
     <div class="mnote-head" data-mntoggle>
       <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
@@ -1823,13 +1860,13 @@ function mnoteCardHTML(o, opts){
   </div>`;
 }
 async function makeTasksFromSteps(o, arr, where, after){
-  const lines=stepLines(o.steps);
-  if(!lines.length){ toast("No new next steps to turn into tasks"); return; }
-  const preview=lines.slice(0,6).map(l=>"• "+l).join("\n")+(lines.length>6?"\n…and "+(lines.length-6)+" more":"");
-  const nT=lines.length+" task"+(lines.length>1?"s":"");
+  const open=stepOpen(o.steps);
+  if(!open.length){ toast("No open next steps to turn into tasks"); return; }
+  const preview=open.slice(0,6).map(s=>"• "+s.text).join("\n")+(open.length>6?"\n…and "+(open.length-6)+" more":"");
+  const nT=open.length+" task"+(open.length>1?"s":"");
   if(!await uiConfirm("These will be added to "+where+" and show up in your To-Do:\n\n"+preview,{title:"Turn next steps into "+nT+"?",yes:"Create "+nT,danger:false})) return;
-  lines.forEach(t=>arr.push({id:uid(),text:t,done:false,deadline:"",deadlineWeek:false,notes:""}));
-  o.steps=markStepsDone(o.steps); o.updatedAt=Date.now();
+  open.forEach(s=>{ arr.push({id:uid(),text:s.text,done:false,deadline:"",deadlineWeek:false,notes:""}); s.done=true; }); /* tick them off */
+  o.updatedAt=Date.now();
   save(); if(after) after();
   toast(nT+" created ✓ — ticked off in Next steps");
 }
@@ -1858,6 +1895,21 @@ function bindMnoteCards(host, arr, opts){
       ta.addEventListener("input",()=>{ set(ta.value); autoGrow(ta); });
       bulletKeys(ta,set);
     });
+    /* Next-steps checklist — tick with a checkbox; edits repaint just the list so focus stays put */
+    const stepsBox=body.querySelector(".mn-steps"), addStep=body.querySelector("[data-stadd]");
+    if(stepsBox){
+      o.steps=o.steps||[];
+      const bindRows=()=>{ stepsBox.querySelectorAll(".mn-step").forEach(row=>{
+        const s=o.steps.find(x=>x.id===row.dataset.step); if(!s) return;
+        row.querySelector("[data-stdone]").onclick=()=>{ s.done=!s.done; o.updatedAt=Date.now(); save(); paint(); };
+        row.querySelector("[data-sttext]").oninput=e=>{ s.text=e.target.value; o.updatedAt=Date.now(); save(); };
+        row.querySelector("[data-sttext]").onkeydown=e=>{ if(e.key==="Enter"&&addStep){ e.preventDefault(); addStep.focus(); } };
+        row.querySelector("[data-stdel]").onclick=()=>{ const i=o.steps.indexOf(s); if(i>-1) o.steps.splice(i,1); o.updatedAt=Date.now(); save(); paint(); };
+      }); };
+      const paint=()=>{ stepsBox.innerHTML=o.steps.map(stepRowHTML).join(""); bindRows(); };
+      bindRows();
+      if(addStep) addStep.addEventListener("keydown",e=>{ if(e.key!=="Enter") return; const v=addStep.value.trim(); if(!v) return; o.steps.push({id:uid(),text:v,done:false}); o.updatedAt=Date.now(); save(); addStep.value=""; paint(); });
+    }
     const mk=body.querySelector("[data-mnmk]");
     if(mk) mk.addEventListener("click",()=>makeTasksFromSteps(o,opts.tasksArr,opts.tasksWhere,opts.afterTasks||opts.rerender));
     if(opts.bindExtra) opts.bindExtra(body,o);
@@ -2521,7 +2573,7 @@ function meetingEntriesSorted(m){ return mnoteByDate(m.entries); } /* chronologi
 let mtgSearch="";
 /* accordion adapter so the shared note cards can drive the meeting log's single-open behaviour */
 const meetOpenSet = { has:id=>meetOpenEntryId===id, add:id=>{ meetOpenEntryId=id; }, delete:id=>{ if(meetOpenEntryId===id) meetOpenEntryId=null; } };
-function meetingEntryMatch(en,q){ return [en.agenda,en.discussed,en.steps,en.jumps,en.date].some(v=>(v||"").toLowerCase().includes(q)); }
+function meetingEntryMatch(en,q){ return [en.agenda,en.discussed,stepsText(en.steps),en.jumps,en.date].some(v=>(v||"").toLowerCase().includes(q)); }
 function meetingPanelHTML(m){
   const entries=mnoteSort(m.entries);
   const latestId=(mnoteByDate(m.entries)[0]||{}).id;
@@ -2634,14 +2686,14 @@ function bindMeetingEntries(host,cur2){
       const carry=body.querySelector("[data-encarry]");
       if(carry) carry.addEventListener("click",()=>{
         const prev=prevOf(); if(!prev){ toast("No earlier entry to carry from"); return; }
-        const open=stepLines(prev.steps);
-        if(!open.length){ toast("No open next steps in the previous entry"); return; }
-        const have=new Set(stepLines(en.steps).map(s=>s.toLowerCase()));
-        const add=open.filter(s=>!have.has(s.toLowerCase()));
+        const openPrev=stepOpen(prev.steps).map(s=>s.text);
+        if(!openPrev.length){ toast("No open next steps in the previous entry"); return; }
+        const have=new Set((en.steps||[]).map(s=>(s.text||"").toLowerCase()));
+        const add=openPrev.filter(t=>!have.has(t.toLowerCase()));
         if(!add.length){ toast("Those steps are already here"); return; }
-        en.agenda=(en.agenda.trim()?en.agenda.replace(/\s*$/,"")+"\n":"")+add.map(s=>"- "+s).join("\n");
+        en.steps=en.steps||[]; add.forEach(t=>en.steps.push({id:uid(),text:t,done:false}));
         en.updatedAt=Date.now(); save(); renderMeetings();
-        toast(add.length+" open step"+(add.length>1?"s":"")+" carried into the agenda");
+        toast(add.length+" open step"+(add.length>1?"s":"")+" carried into Next steps");
       });
     },
   });
