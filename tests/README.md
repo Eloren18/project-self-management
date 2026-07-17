@@ -38,6 +38,7 @@ change shape, the test follows automatically.
 | S14 | The sync indicator tells the truth: "Synced" only after the cloud acknowledges (else "could be lost") |
 | S15 | A throwing cloud query can never kill a UI path (the dead shield/account-buttons regression) |
 | S16 | *Static:* every InstantDB entity used in code exists in ALL 4 schema/perms layers (index.html, instant.schema.ts, instant.perms.ts, SETUP.txt) |
+| S17 | Meeting-notes migration: legacy free-text moves into "What was discussed?" and is never dropped, overwritten, or duplicated |
 
 Re-run this after any change to `seed`, `save`, `adoptRemote`, `normalize`,
 `startWorkspaceSync`, the mirror, `restoreData`, `push`, the sync pill, or the

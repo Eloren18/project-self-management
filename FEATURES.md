@@ -93,7 +93,7 @@ on `data.updatedAt` via InstantDB (`workspaces` row, owner-linked).
 - **Board view**: projects grouped by progress (Not Started / In Progress / On Hold / Done), colored left borders (custom color or priority fallback), title, **category label with colored dot** (blue = Planned Research / Evaluation, purple = Long-term Business Case, orange = Ad Hoc Request) **[ALWAYS CHECK — regression: cards once rendered without categories]**, deadline flag with overdue state, done cards fade + grayscale.
 - **List view**: sortable table — done check, name, **Category**, Progress, Priority, Deadline, Stakeholders.
 - Search box, priority filter, category filter, **+ New project**.
-- Click a card/row → full **project page**: editable name, description, **category select (never silently empty — `normalize` coerces "" to the first option)**, progress, priority, deadline (date or week-type), color swatches + custom color, involved/informed stakeholders, value proposition, doc link, notes, **meeting-notes log** (dated entries), **tasks** (add / inline edit / done / deadline / notes post-it / delete), complete ⇄ reopen, delete (styled confirm).
+- Click a card/row → full **project page**: editable name, description, **category select (never silently empty — `normalize` coerces "" to the first option)**, progress, priority, deadline (date or week-type), color swatches + custom color, involved/informed stakeholders, value proposition, doc link, notes, **structured meeting-notes log** (see 4.10), **tasks** (add / inline edit / done / deadline / notes post-it / delete), complete ⇄ reopen, delete (styled confirm).
 
 ### 4.2 To-Do
 - **Quick-add bar**: text (Enter adds), project selector (or Ad-hoc), deadline picker (calendar + quick options incl. `+3 business days`, week-type deadlines).
@@ -101,7 +101,17 @@ on `data.updatedAt` via InstantDB (`workspaces` row, owner-linked).
 - Task rows everywhere: done check, inline text edit, project tag (click = jump to project/meeting), deadline chip picker (`· overdue` state), 🗒 notes post-it, delete. Search filters tasks + notes + project names.
 
 ### 4.3 Meetings
-- Recurring meetings: name, cadence, attendees. Meeting page: dated **entries** (agenda + notes), **action items** (tasks that flow into To-Do/Calendar tinted with the meeting accent), delete with confirm.
+- Recurring meetings: name, cadence, attendees. Meeting page: **action items** (tasks that flow into To-Do/Calendar tinted with the meeting accent), a searchable **meeting log** of dated entries (see 4.10), delete with confirm.
+
+### 4.10 Meeting notes — structured editor (shared: project pages **and** the meeting log)
+One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both places. **[ALWAYS CHECK — both surfaces]**
+- **Three fixed sections** auto-titled: **What was discussed?**, **Next steps**, **Next Jumps** (meeting-log entries also keep an **Agenda** section on top).
+- **Natural editing**: seamless borderless textareas that **auto-grow** as you type (no fixed rows, no manual resize); `- ` bullet lists auto-continue on Enter and end on an empty bullet.
+- **Collapsible cards** with a date header, a one-line snippet preview when collapsed, a `⇢ N` chip showing unconverted next-steps, and a relative "edited …" time when open.
+- **Next steps → tasks**: a button turns each un-ticked Next-steps line into a real task (on the project or meeting) that flows into To-Do; converted lines get a `✓` prefix so re-running never duplicates. Confirm dialog previews exactly what will be created.
+- **Pin** (★, sorts to top), **Copy** (⧉, whole note to clipboard as text), **Delete** (styled confirm).
+- Meeting-log extras: **search** the log, **⤓ Last agenda** (copy previous entry's agenda), **⤓ Carry over open steps** (pull the previous entry's un-ticked next steps into this agenda), single-open accordion, "Latest" badge.
+- **Migration [ALWAYS CHECK — data safety]**: legacy free-text (`text` on project notes, `notes` on meeting entries) moves into **What was discussed?** and is NEVER dropped — if that section already had content the legacy text is appended; idempotent, never duplicates (S17).
 
 ### 4.4 Calendar — month grid; shows project deadlines, task deadlines, meetings; month navigation; overdue tint; click-through to items.
 

@@ -204,8 +204,30 @@
   .pp-head{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
   .pp-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin:14px 0;}
   .cat-tag{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);margin-bottom:7px;}
-  .mn{border:1px solid var(--border);border-left:3px solid var(--border);padding:10px;margin-bottom:8px;background:var(--surface);}
-  .mn-top{display:flex;gap:8px;align-items:center;margin-bottom:6px;}
+  /* ===== meeting notes — structured, document-like editing (project pages + meeting log) ===== */
+  .mnote{border:1px solid var(--border);border-left:3px solid var(--border);margin-bottom:8px;background:var(--surface);transition:border-color .12s;}
+  .mnote.open{border-left-color:var(--primary);}
+  .mnote.pinned{border-left-color:var(--s-hold);}
+  .mnote-head{display:flex;gap:8px;align-items:center;padding:9px 10px;cursor:pointer;user-select:none;}
+  .mnote-head:hover{background:var(--surface-2);}
+  .mnote-head b{font-size:12.5px;white-space:nowrap;}
+  .mnote .chev{transition:transform .18s var(--ease);color:var(--faint);flex:none;}
+  .mnote.open .chev{transform:rotate(180deg);}
+  .mnote-snip{font-size:11.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+  .mnote-time{font-size:10px;color:var(--faint);white-space:nowrap;flex:none;}
+  .mnote-ico{border:none;background:transparent;color:var(--faint);cursor:pointer;padding:3px 4px;line-height:1;flex:none;font-size:12px;}
+  .mnote-ico:hover{color:var(--text);}
+  .mnote-ico.on{color:var(--s-hold);}
+  .mnote-ico.del:hover{color:var(--p-asap);}
+  .mnote-body{padding:0 12px 12px;}
+  .mnote-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:2px 0 4px;}
+  .mnote-bar input[type=date]{padding:5px 8px;border:1px solid var(--border);background:var(--surface-2);font-size:11.5px;color:var(--text);}
+  .mnote-sec{margin-top:9px;}
+  .mnote-sec label{display:block;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);margin-bottom:3px;}
+  .mnote-ta{width:100%;border:1px solid transparent;background:transparent;padding:6px 8px;font-family:inherit;font-size:12.5px;line-height:1.6;color:var(--text);resize:none;overflow:hidden;min-height:30px;outline:none;transition:border-color .12s,background .12s;}
+  .mnote-ta:hover{border-color:var(--border-soft);}
+  .mnote-ta:focus{border-color:var(--primary);background:var(--surface-2);}
+  .mnote-ta::placeholder{color:var(--faint);}
   .dl-btn{width:100%;justify-content:flex-start;}
   .dl-btn.set{border-color:var(--primary);color:var(--text);font-weight:700;}
 
@@ -302,7 +324,7 @@
   .modal{width:min(620px,100%);max-height:88vh;overflow-y:auto;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow-lg);padding:22px 24px;transform:scale(.985);transition:transform .2s var(--ease);}
   .modal-back.show .modal{transform:none;}
   .modal h3{margin:0 0 12px;font-size:13.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid var(--text);padding-bottom:8px;}
-  .modal .sub{color:var(--muted);font-size:12.5px;margin:0 0 16px;}
+  .modal .sub{color:var(--muted);font-size:12.5px;margin:0 0 16px;white-space:pre-line;}
   .dev{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);margin-bottom:8px;background:var(--surface);}
   .dev .dico{width:38px;height:38px;background:var(--surface-2);border:1px solid var(--border-soft);display:grid;place-items:center;color:var(--muted);flex:none;}
   .dev .dinfo{flex:1;min-width:0;}
@@ -364,14 +386,6 @@
   .gl-group.dragging{opacity:.45;}
   .gl-group.drag-over{outline:2px dashed var(--primary);outline-offset:2px;background:var(--primary-soft);}
   /* ===== recurring meetings ===== */
-  .mtg-entry{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--border);margin-bottom:8px;}
-  .mtg-entry.open{border-left-color:#6b3fb8;}
-  .mtg-entry-head{display:flex;align-items:center;gap:9px;padding:10px 12px;cursor:pointer;user-select:none;}
-  .mtg-entry-head .chev{color:var(--faint);transition:transform .15s var(--ease);flex:none;}
-  .mtg-entry.open .chev{transform:rotate(180deg);}
-  .mtg-entry-body{padding:2px 12px 12px;}
-  .mtg-entry-body textarea{width:100%;padding:8px 11px;border:1px solid var(--border);background:var(--surface);outline:none;font-weight:500;resize:vertical;line-height:1.5;}
-  .mtg-entry-body textarea:focus{border-color:var(--primary);}
 
   .gl-cat{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--faint);margin:12px 0 6px 2px;display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;padding:3px 0;}
   .gl-cat:hover{color:var(--muted);}
@@ -1003,6 +1017,23 @@ function seed(){
        (A fresh browser once seeded itself "newer" than the real data and overwrote it. Never again.) */
 }
 function normTask(t){ t.id ||= uid(); t.text ??= ""; t.done=!!t.done; if(t.deadline===undefined) t.deadline = t.due || ""; delete t.due; t.deadline ??= ""; t.deadlineWeek = !!t.deadlineWeek; t.notes ??= ""; t.completedAt ??= 0; return t; }
+/* Structured meeting notes (project notes + meeting-log entries share this shape).
+   The old free-text field migrates into "What was discussed?" and is NEVER dropped —
+   if that section already had text, the legacy note is appended rather than lost.
+   Deleting the legacy key afterwards keeps this idempotent. */
+function normMeetingNote(o, legacyKey){
+  const legacy = o[legacyKey];
+  if(typeof legacy==="string" && legacy.trim()){
+    const cur = (o.discussed||"").trim();
+    if(!cur) o.discussed = legacy;
+    else if(!o.discussed.includes(legacy.trim())) o.discussed = o.discussed.replace(/\s*$/,"") + "\n" + legacy;
+  }
+  delete o[legacyKey];
+  o.discussed ??= ""; o.steps ??= ""; o.jumps ??= "";
+  o.pinned = !!o.pinned;
+  o.createdAt ??= Date.now(); o.updatedAt ??= o.createdAt;
+  return o;
+}
 function normalize(d){
   d = d || {};
   d.projects = Array.isArray(d.projects) ? d.projects : [];
@@ -1018,7 +1049,7 @@ function normalize(d){
     if(p.notes===undefined){ let n=""; if(p.lastDiscussed) n+="Last discussed: "+p.lastDiscussed+"\n"; if(p.nextSteps) n+=p.nextSteps; p.notes=n; }
     p.notes ??= ""; delete p.lastDiscussed; delete p.nextSteps;
     if(!Array.isArray(p.meetingNotes)) p.meetingNotes = [];
-    p.meetingNotes.forEach(m=>{ m.id ||= uid(); m.date ??= ""; m.text ??= ""; });
+    p.meetingNotes.forEach(m=>{ m.id ||= uid(); m.date ??= ""; normMeetingNote(m,"text"); });
     if(!PROGRESS.includes(p.prevProgress)) p.prevProgress = (p.progress==="Done")?"In Progress":p.progress;
     p.tasks = Array.isArray(p.tasks)?p.tasks:[]; p.tasks.forEach(normTask);
     if(typeof p.order!=="number") p.order=idx;
@@ -1037,7 +1068,7 @@ function normalize(d){
   d.meetings.forEach(m=>{
     m.id ||= uid(); m.name ??= "Untitled meeting"; m.cadence ??= ""; m.attendees ??= ""; m.createdAt ??= Date.now();
     m.entries = Array.isArray(m.entries) ? m.entries : [];
-    m.entries.forEach(en=>{ en.id ||= uid(); en.date ??= ""; en.agenda ??= ""; en.notes ??= ""; en.createdAt ??= Date.now(); en.updatedAt ??= en.createdAt; });
+    m.entries.forEach(en=>{ en.id ||= uid(); en.date ??= ""; en.agenda ??= ""; normMeetingNote(en,"notes"); });
     m.tasks = Array.isArray(m.tasks) ? m.tasks : []; m.tasks.forEach(normTask);
   });
   d.settings = d.settings || {}; d.settings.theme ??= "light";
@@ -1691,7 +1722,7 @@ function renderProjectPage(){
   renderPPTasks(p);
   $("ppAddTask").onclick=()=>{ p.tasks.push({id:uid(),text:"",done:false,deadline:todayISO(),deadlineWeek:false,notes:""}); save(); renderPPTasks(p); const inps=$("ppTasks").querySelectorAll(".trow-text"); if(inps.length) inps[inps.length-1].focus(); };
   renderPPMeetings(p);
-  $("ppAddMeeting").onclick=()=>{ p.meetingNotes.unshift({id:uid(),date:todayISO(),text:""}); save(); renderPPMeetings(p); const t=$("ppMeetings").querySelector("textarea"); if(t) t.focus(); };
+  $("ppAddMeeting").onclick=()=>{ const m={id:uid(),date:todayISO(),discussed:"",steps:"",jumps:"",pinned:false,createdAt:Date.now(),updatedAt:Date.now()}; p.meetingNotes.unshift(m); openMNotes.add(m.id); save(); renderPPMeetings(p); const t=$("ppMeetings").querySelector(".mnote-ta"); if(t) t.focus(); };
 }
 function renderPPTasks(p){
   const host=$("ppTasks");
@@ -1699,19 +1730,152 @@ function renderPPTasks(p){
   host.innerHTML=p.tasks.map(t=>taskRowHTML(t,null,{showProject:false})).join("");
   bindTaskRows(host);
 }
+/* ============================================================
+   MEETING NOTES — one structured editor shared by project pages and the
+   recurring-meeting log: three fixed sections, seamless auto-growing
+   textareas, and Next steps that become real tasks.
+   ============================================================ */
+const MNOTE_SECTIONS = [
+  { k:"discussed", label:"What was discussed?", ph:"Key points, decisions, who said what…" },
+  { k:"steps",     label:"Next steps",          ph:"One action per line — then turn them into real tasks" },
+  { k:"jumps",     label:"Next Jumps",          ph:"The bigger leaps this unlocks — where this is heading next" },
+];
+/* Enter continues a "- " list; Enter on an empty bullet ends it */
+function bulletKeys(ta, onChange){
+  ta.addEventListener("keydown",e=>{
+    if(e.key!=="Enter" || e.shiftKey) return;
+    const v=ta.value, pos=ta.selectionStart;
+    if(pos!==ta.selectionEnd) return;
+    const ls=v.lastIndexOf("\n",pos-1)+1;
+    const m=v.slice(ls,pos).match(/^(\s*)([-•*])(\s+)(.*)$/);
+    if(!m) return;
+    e.preventDefault();
+    if(!m[4].trim()){ ta.value=v.slice(0,ls)+v.slice(pos); ta.selectionStart=ta.selectionEnd=ls; }
+    else { const ins="\n"+m[1]+m[2]+" "; ta.value=v.slice(0,pos)+ins+v.slice(pos); ta.selectionStart=ta.selectionEnd=pos+ins.length; }
+    autoGrow(ta); onChange(ta.value);
+  });
+}
+/* "Next steps" lines still waiting to become tasks — a ✓ prefix means already converted */
+function stepLines(txt){
+  return (txt||"").split("\n").map(s=>s.trim()).filter(s=>s && !s.startsWith("✓"))
+    .map(s=>s.replace(/^[-•*]\s*/,"").trim()).filter(Boolean);
+}
+function markStepsDone(txt){
+  return (txt||"").split("\n").map(l=>{ const t=l.trim(); if(!t||t.startsWith("✓")) return l; return "✓ "+t.replace(/^[-•*]\s*/,"").trim(); }).join("\n");
+}
+function mnoteDateLabel(isoStr){ const d=parseISO(isoStr); return d ? d.toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short",year:"numeric"}) : "No date"; }
+function mnoteFirstLine(v){ const l=(v||"").split("\n").map(s=>s.trim()).find(Boolean); return l ? l.replace(/^[-•*✓]\s*/,"") : ""; }
+function mnoteSnippet(o){
+  for(const s of MNOTE_SECTIONS){ const v=(o[s.k]||"").trim(); if(v) return mnoteFirstLine(v); }
+  return mnoteFirstLine(o.agenda||"");
+}
+function mnoteSort(arr){ return [...arr].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0) || (b.date||"").localeCompare(a.date||"") || (b.createdAt||0)-(a.createdAt||0)); }
+function mnoteByDate(arr){ return [...arr].sort((a,b)=>(b.date||"").localeCompare(a.date||"") || (b.createdAt||0)-(a.createdAt||0)); }
+function mnoteRelTime(ts){
+  if(!ts) return "";
+  const s=Math.floor((Date.now()-ts)/1000);
+  if(s<60) return "just now"; if(s<3600) return Math.floor(s/60)+"m ago";
+  if(s<86400) return Math.floor(s/3600)+"h ago";
+  const d=Math.floor(s/86400); return d<30 ? d+"d ago" : fmtShort(iso(new Date(ts)));
+}
+function mnoteCopyText(o, title){
+  const out=[title];
+  if((o.agenda||"").trim()) out.push("","Agenda",o.agenda.trim());
+  MNOTE_SECTIONS.forEach(s=>{ const v=(o[s.k]||"").trim(); if(v) out.push("",s.label,v); });
+  return out.join("\n");
+}
+async function copyToClipboard(txt){
+  try{ await navigator.clipboard.writeText(txt); toast("Copied to clipboard"); }
+  catch(e){ toast("Couldn't copy — the browser blocked clipboard access"); }
+}
+function mnoteSectionsHTML(o){
+  return MNOTE_SECTIONS.map(s=>`<div class="mnote-sec"><label>${s.label}</label>
+    <textarea class="mnote-ta" data-sec="${s.k}" rows="1" placeholder="${esc(s.ph)}">${esc(o[s.k]||"")}</textarea></div>`).join("");
+}
+function mnoteCardHTML(o, opts){
+  opts=opts||{};
+  const open=!!opts.open, n=stepLines(o.steps).length, snip=mnoteSnippet(o);
+  const empty=!MNOTE_SECTIONS.some(s=>(o[s.k]||"").trim()) && !(o.agenda||"").trim();
+  return `<div class="mnote ${open?"open":""} ${o.pinned?"pinned":""}" data-mn="${o.id}">
+    <div class="mnote-head" data-mntoggle>
+      <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+      <b>${esc(mnoteDateLabel(o.date))}</b>
+      ${opts.latest?'<span class="badge this">Latest</span>':""}
+      ${!open&&snip?`<span class="mnote-snip">${esc(snip)}</span>`:""}
+      ${!open&&empty?`<span class="mnote-time">empty</span>`:""}
+      <span class="grow"></span>
+      ${!open&&n?`<span class="chip soft" title="${n} next step${n>1?"s":""} not yet turned into tasks">⇢ ${n}</span>`:""}
+      ${open&&o.updatedAt?`<span class="mnote-time">edited ${esc(mnoteRelTime(o.updatedAt))}</span>`:""}
+      <button class="mnote-ico ${o.pinned?"on":""}" data-mnpin title="${o.pinned?"Unpin":"Pin to the top"}">${o.pinned?"★":"☆"}</button>
+      <button class="mnote-ico" data-mncopy title="Copy this note as text">⧉</button>
+      <button class="mnote-ico del" data-mndel title="Delete this note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    ${open?`<div class="mnote-body">
+      <div class="mnote-bar">
+        <input type="date" data-mndate value="${esc(o.date)}">
+        <span class="grow"></span>
+        ${opts.barExtra||""}
+        <button class="btn sm" data-mnmk title="Create a task for every Next-steps line that isn't ticked off yet — they'll appear in your To-Do">⇢ Next steps → tasks</button>
+      </div>
+      ${opts.beforeSections||""}
+      ${mnoteSectionsHTML(o)}
+    </div>`:""}
+  </div>`;
+}
+async function makeTasksFromSteps(o, arr, where, after){
+  const lines=stepLines(o.steps);
+  if(!lines.length){ toast("No new next steps to turn into tasks"); return; }
+  const preview=lines.slice(0,6).map(l=>"• "+l).join("\n")+(lines.length>6?"\n…and "+(lines.length-6)+" more":"");
+  const nT=lines.length+" task"+(lines.length>1?"s":"");
+  if(!await uiConfirm("These will be added to "+where+" and show up in your To-Do:\n\n"+preview,{title:"Turn next steps into "+nT+"?",yes:"Create "+nT,danger:false})) return;
+  lines.forEach(t=>arr.push({id:uid(),text:t,done:false,deadline:"",deadlineWeek:false,notes:""}));
+  o.steps=markStepsDone(o.steps); o.updatedAt=Date.now();
+  save(); if(after) after();
+  toast(nT+" created ✓ — ticked off in Next steps");
+}
+function bindMnoteCards(host, arr, opts){
+  host.querySelectorAll(".mnote").forEach(card=>{
+    const o=arr.find(x=>x.id===card.dataset.mn); if(!o) return;
+    card.querySelector("[data-mntoggle]").addEventListener("click",e=>{
+      if(e.target.closest("input,textarea,button")) return;
+      if(opts.open.has(o.id)) opts.open.delete(o.id); else opts.open.add(o.id);
+      opts.rerender();
+    });
+    card.querySelector("[data-mnpin]").addEventListener("click",()=>{ o.pinned=!o.pinned; o.updatedAt=Date.now(); save(); opts.rerender(); });
+    card.querySelector("[data-mncopy]").addEventListener("click",()=>copyToClipboard(mnoteCopyText(o,(opts.copyTitle?opts.copyTitle+" · ":"")+mnoteDateLabel(o.date))));
+    card.querySelector("[data-mndel]").addEventListener("click",async()=>{
+      if(!await uiConfirm("Delete the note of "+mnoteDateLabel(o.date)+"? This can't be undone.",{title:"Delete meeting note?"})) return;
+      const i=arr.indexOf(o); if(i>-1) arr.splice(i,1);
+      opts.open.delete(o.id); save(); opts.rerender();
+    });
+    const body=card.querySelector(".mnote-body"); if(!body) return;
+    const dt=body.querySelector("[data-mndate]");
+    if(dt) dt.addEventListener("change",e=>{ o.date=e.target.value; o.updatedAt=Date.now(); save(); opts.rerender(); });
+    body.querySelectorAll(".mnote-ta[data-sec]").forEach(ta=>{
+      autoGrow(ta);
+      const k=ta.dataset.sec;
+      const set=v=>{ o[k]=v; o.updatedAt=Date.now(); save(); };
+      ta.addEventListener("input",()=>{ set(ta.value); autoGrow(ta); });
+      bulletKeys(ta,set);
+    });
+    const mk=body.querySelector("[data-mnmk]");
+    if(mk) mk.addEventListener("click",()=>makeTasksFromSteps(o,opts.tasksArr,opts.tasksWhere,opts.afterTasks||opts.rerender));
+    if(opts.bindExtra) opts.bindExtra(body,o);
+  });
+}
+const openMNotes=new Set(); /* which project meeting notes are expanded this session */
 function renderPPMeetings(p){
   const host=$("ppMeetings");
-  if(!p.meetingNotes.length){ host.innerHTML=`<div style="font-size:12.5px;color:var(--faint);padding:4px 0 8px">No meeting notes yet.</div>`; return; }
-  host.innerHTML=p.meetingNotes.map(m=>`
-    <div class="mn" data-mid="${m.id}">
-      <div class="mn-top"><input type="date" data-mdate value="${esc(m.date)}" style="width:160px"><div class="grow"></div><button class="tk-del" data-mdel><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
-      <textarea data-mtext rows="3" placeholder="What was discussed…" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);resize:vertical">${esc(m.text)}</textarea>
-    </div>`).join("");
-  host.querySelectorAll(".mn").forEach(row=>{
-    const mid=row.dataset.mid; const m=p.meetingNotes.find(x=>x.id===mid); if(!m) return;
-    row.querySelector("[data-mdate]").addEventListener("change",e=>{ m.date=e.target.value; save(); });
-    row.querySelector("[data-mtext]").addEventListener("input",e=>{ m.text=e.target.value; save(); });
-    row.querySelector("[data-mdel]").addEventListener("click",()=>{ p.meetingNotes=p.meetingNotes.filter(x=>x.id!==mid); save(); renderPPMeetings(p); });
+  if(!p.meetingNotes.length){ host.innerHTML=`<div style="font-size:12.5px;color:var(--faint);padding:4px 0 8px">No meeting notes yet — add one to capture what was discussed, the next steps and the next jumps.</div>`; return; }
+  const latestId=(mnoteByDate(p.meetingNotes)[0]||{}).id;
+  host.innerHTML=mnoteSort(p.meetingNotes).map(m=>mnoteCardHTML(m,{open:openMNotes.has(m.id), latest:m.id===latestId})).join("");
+  bindMnoteCards(host, p.meetingNotes, {
+    open: openMNotes,
+    tasksArr: p.tasks,
+    tasksWhere: "“"+(p.name||"this project")+"”",
+    copyTitle: p.name||"",
+    rerender: ()=>{ renderPPMeetings(p); renderPPTasks(p); },
+    afterTasks: refreshTaskViews,
   });
 }
 
@@ -2353,10 +2517,17 @@ function renderGlossary(){
 /* ---- Recurring meetings (ongoing doc per series + dated entries + action items) ---- */
 let curMeetingId=null, meetOpenEntryId=null;
 function openMeetingPage(id){ curMeetingId=id; meetOpenEntryId=null; switchTab("meetings"); }
-function meetingEntriesSorted(m){ return [...m.entries].sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.createdAt||0)-(a.createdAt||0)); }
+function meetingEntriesSorted(m){ return mnoteByDate(m.entries); } /* chronological — used for "previous entry" lookups */
+let mtgSearch="";
+/* accordion adapter so the shared note cards can drive the meeting log's single-open behaviour */
+const meetOpenSet = { has:id=>meetOpenEntryId===id, add:id=>{ meetOpenEntryId=id; }, delete:id=>{ if(meetOpenEntryId===id) meetOpenEntryId=null; } };
+function meetingEntryMatch(en,q){ return [en.agenda,en.discussed,en.steps,en.jumps,en.date].some(v=>(v||"").toLowerCase().includes(q)); }
 function meetingPanelHTML(m){
-  const entries=meetingEntriesSorted(m);
-  if(!entries.find(e=>e.id===meetOpenEntryId)) meetOpenEntryId=entries.length?entries[0].id:null;
+  const entries=mnoteSort(m.entries);
+  const latestId=(mnoteByDate(m.entries)[0]||{}).id;
+  const q=(mtgSearch||"").toLowerCase().trim();
+  const shown=q?entries.filter(en=>meetingEntryMatch(en,q)):entries;
+  if(!entries.find(e=>e.id===meetOpenEntryId)) meetOpenEntryId=latestId||null;
   const doneT=m.tasks.filter(t=>t.done).length;
   return `<div class="doc-editor" id="mtgPanel">
     <div style="display:flex;gap:10px;align-items:center">
@@ -2374,30 +2545,23 @@ function meetingPanelHTML(m){
       <button class="btn sm" id="mtgAddTask">Add</button>
     </div>
     <div class="section-h">Meeting log <span class="line"></span></div>
-    <button class="btn sm" id="mtgNewEntry"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New entry (today)</button>
-    <div id="mtgEntries" style="margin-top:10px">${entries.map((en,i)=>{
-      const open=en.id===meetOpenEntryId;
-      const d=parseISO(en.date);
-      const label=d ? d.toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short",year:"numeric"}) : "No date";
-      const hasPrev=i<entries.length-1;
-      return `<div class="mtg-entry ${open?'open':''}" data-en="${en.id}">
-        <div class="mtg-entry-head" data-entoggle>
-          <b style="font-size:12.5px">${label}</b>
-          ${i===0?'<span class="badge this">Latest</span>':''}
-          ${!open&&en.agenda?`<span style="font-size:11.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px">${esc(en.agenda)}</span>`:''}
-          <span class="grow"></span>
-          <button class="tk-del" data-endel title="Delete entry"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-          <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
-        </div>
-        ${open?`<div class="mtg-entry-body">
-          <div class="field"><label>Date</label><input type="date" data-endate value="${esc(en.date)}" style="width:170px"></div>
-          <div class="field">
-            <div style="display:flex;align-items:center;margin-bottom:6px"><label style="margin:0">Agenda</label><span class="grow"></span>${hasPrev?`<button class="btn sm" data-enimport title="Copy the agenda from the previous entry">⤓ Import last agenda</button>`:""}</div>
-            <textarea data-enagenda rows="4" placeholder="What's on the table this time…">${esc(en.agenda)}</textarea>
-          </div>
-          <div class="field"><label>Notes &amp; decisions</label><textarea data-ennotes rows="6" placeholder="Discussion, decisions, who said what, follow-ups…">${esc(en.notes)}</textarea></div>
-        </div>`:""}
-      </div>`;}).join("")||`<div style="font-size:12.5px;color:var(--faint);padding:6px 0">No entries yet — create one for today's meeting.</div>`}
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn sm" id="mtgNewEntry"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New entry (today)</button>
+      <span class="grow"></span>
+      ${m.entries.length>1?`<input id="mtgSearch" placeholder="Search this log…" value="${esc(mtgSearch)}" autocomplete="off" style="width:190px;padding:6px 10px;border:1px solid var(--border);background:var(--surface-2);font-size:11.5px;outline:none;color:var(--text)">`:""}
+    </div>
+    <div id="mtgEntries" style="margin-top:10px">${shown.map(en=>{
+      const chron=entries.findIndex(x=>x.id===en.id);
+      const hasPrev=chron>-1 && chron<entries.length-1;
+      return mnoteCardHTML(en,{
+        open: en.id===meetOpenEntryId,
+        latest: latestId===en.id,
+        beforeSections: `<div class="mnote-sec">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><label style="margin:0">Agenda</label><span class="grow"></span>${hasPrev?`<button class="btn sm" data-enimport title="Copy the agenda from the previous entry">⤓ Last agenda</button><button class="btn sm" data-encarry title="Bring the previous entry's unticked next steps into this one">⤓ Carry over open steps</button>`:""}</div>
+          <textarea class="mnote-ta" data-enagenda rows="1" placeholder="What's on the table this time…">${esc(en.agenda)}</textarea>
+        </div>`,
+      });
+    }).join("")|| (mtgSearch ? `<div style="font-size:12.5px;color:var(--faint);padding:6px 0">No entries match “${esc(mtgSearch)}”.</div>` : `<div style="font-size:12.5px;color:var(--faint);padding:6px 0">No entries yet — create one for today's meeting.</div>`)}
     </div>
   </div>`;
 }
@@ -2442,27 +2606,44 @@ function renderMeetings(){
   const addT=()=>{ const inp=$("mtgNewTask"); const txt=(inp.value||"").trim(); if(!txt){ inp.focus(); return; } cur2.tasks.push({id:uid(),text:txt,done:false,deadline:todayISO(),deadlineWeek:false,notes:""}); save(); refreshTaskViews(); const i2=$("mtgNewTask"); if(i2) i2.focus(); };
   $("mtgAddTask").onclick=addT;
   $("mtgNewTask").addEventListener("keydown",e=>{ if(e.key==="Enter") addT(); });
-  $("mtgNewEntry").onclick=()=>{ const en={id:uid(),date:todayISO(),agenda:"",notes:"",createdAt:Date.now(),updatedAt:Date.now()}; cur2.entries.push(en); meetOpenEntryId=en.id; save(); renderMeetings(); const a=host.querySelector("[data-enagenda]"); if(a) a.focus(); };
-  const entriesSorted=meetingEntriesSorted(cur2);
-  host.querySelectorAll(".mtg-entry").forEach(row=>{
-    const en=cur2.entries.find(x=>x.id===row.dataset.en); if(!en) return;
-    row.querySelector("[data-entoggle]").addEventListener("click",e=>{ if(e.target.closest("input,textarea,button")) return; meetOpenEntryId=(meetOpenEntryId===en.id)?null:en.id; renderMeetings(); });
-    row.querySelector("[data-endel]").addEventListener("click",async()=>{ if(!await uiConfirm("Delete the entry of "+(en.date?fmtShort(en.date):"(no date)")+"?",{title:"Delete entry?"})) return; cur2.entries=cur2.entries.filter(x=>x.id!==en.id); save(); renderMeetings(); });
-    const dateEl=row.querySelector("[data-endate]");
-    if(dateEl){
-      dateEl.addEventListener("change",e=>{ en.date=e.target.value; en.updatedAt=Date.now(); save(); renderMeetings(); });
-      row.querySelector("[data-enagenda]").addEventListener("input",e=>{ en.agenda=e.target.value; en.updatedAt=Date.now(); save(); });
-      row.querySelector("[data-ennotes]").addEventListener("input",e=>{ en.notes=e.target.value; en.updatedAt=Date.now(); save(); });
-      const imp=row.querySelector("[data-enimport]");
+  $("mtgNewEntry").onclick=()=>{ const en={id:uid(),date:todayISO(),agenda:"",discussed:"",steps:"",jumps:"",pinned:false,createdAt:Date.now(),updatedAt:Date.now()}; cur2.entries.push(en); meetOpenEntryId=en.id; save(); renderMeetings(); const a=host.querySelector("[data-enagenda]"); if(a) a.focus(); };
+  const srch=$("mtgSearch");
+  if(srch) srch.addEventListener("input",e=>{ mtgSearch=e.target.value; renderMeetings(); const s=$("mtgSearch"); if(s){ s.focus(); const v=s.value; s.setSelectionRange(v.length,v.length); } });
+  bindMeetingEntries(host,cur2);
+}
+function bindMeetingEntries(host,cur2){
+  const entriesChron=meetingEntriesSorted(cur2);
+  bindMnoteCards($("mtgEntries"), cur2.entries, {
+    open: meetOpenSet,
+    tasksArr: cur2.tasks,
+    tasksWhere: "“"+(cur2.name||"this meeting")+"”",
+    copyTitle: cur2.name||"",
+    rerender: renderMeetings,
+    afterTasks: ()=>{ refreshTaskViews(); },
+    bindExtra: (body,en)=>{
+      const ag=body.querySelector("[data-enagenda]");
+      if(ag){ autoGrow(ag); ag.addEventListener("input",()=>{ en.agenda=ag.value; en.updatedAt=Date.now(); save(); autoGrow(ag); }); bulletKeys(ag,v=>{ en.agenda=v; en.updatedAt=Date.now(); save(); }); }
+      const prevOf=()=>{ const i=entriesChron.findIndex(x=>x.id===en.id); return i>-1?entriesChron[i+1]:null; };
+      const imp=body.querySelector("[data-enimport]");
       if(imp) imp.addEventListener("click",async()=>{
-        const idx=entriesSorted.findIndex(x=>x.id===en.id);
-        const prev=entriesSorted[idx+1];
-        if(!prev){ toast("No earlier entry to import from"); return; }
-        if(en.agenda.trim() && !await uiConfirm("Replace this agenda with the one from "+(prev.date?fmtShort(prev.date):"the previous entry")+"?",{title:"Import agenda?",yes:"Replace"})) return;
+        const prev=prevOf(); if(!prev){ toast("No earlier entry to import from"); return; }
+        if(en.agenda.trim() && !await uiConfirm("Replace this agenda with the one from "+mnoteDateLabel(prev.date)+"?",{title:"Import agenda?",yes:"Replace",danger:false})) return;
         en.agenda=prev.agenda; en.updatedAt=Date.now(); save(); renderMeetings();
-        toast("Agenda imported from "+(prev.date?fmtShort(prev.date):"previous entry"));
+        toast("Agenda imported from "+mnoteDateLabel(prev.date));
       });
-    }
+      const carry=body.querySelector("[data-encarry]");
+      if(carry) carry.addEventListener("click",()=>{
+        const prev=prevOf(); if(!prev){ toast("No earlier entry to carry from"); return; }
+        const open=stepLines(prev.steps);
+        if(!open.length){ toast("No open next steps in the previous entry"); return; }
+        const have=new Set(stepLines(en.steps).map(s=>s.toLowerCase()));
+        const add=open.filter(s=>!have.has(s.toLowerCase()));
+        if(!add.length){ toast("Those steps are already here"); return; }
+        en.agenda=(en.agenda.trim()?en.agenda.replace(/\s*$/,"")+"\n":"")+add.map(s=>"- "+s).join("\n");
+        en.updatedAt=Date.now(); save(); renderMeetings();
+        toast(add.length+" open step"+(add.length>1?"s":"")+" carried into the agenda");
+      });
+    },
   });
 }
 

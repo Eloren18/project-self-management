@@ -564,6 +564,37 @@ async function HARNESS() {
     check('…and the working data is untouched', wScore(data) === okBefore);
   }
 
+  // ============================================================
+  //  S17 — structured meeting notes migrate legacy text without EVER losing it
+  // ============================================================
+  scen('S17 Meeting-notes migration: legacy free-text → "What was discussed?", never dropped');
+  {
+    const blob = normalize(clone({
+      projects: [{ id: 'mp', name: 'M', meetingNotes: [
+        { id: 'a', date: '2026-07-01', text: 'legacy project note\n- do X' },                 // legacy → discussed
+        { id: 'b', date: '2026-07-02', text: 'from the old field', discussed: 'already here' }, // must APPEND, not overwrite
+        { id: 'c', date: '2026-07-03', discussed: 'new fmt', steps: '- s1', jumps: 'j1' },       // new format untouched
+      ] }],
+      meetings: [{ id: 'mm', name: 'MM', entries: [
+        { id: 'e', date: '2026-07-04', agenda: 'agenda kept', notes: 'legacy meeting notes' },   // legacy notes → discussed, agenda kept
+      ] }],
+    }));
+    const a = blob.projects[0].meetingNotes.find(n => n.id === 'a');
+    const b = blob.projects[0].meetingNotes.find(n => n.id === 'b');
+    const c = blob.projects[0].meetingNotes.find(n => n.id === 'c');
+    const e = blob.meetings[0].entries.find(n => n.id === 'e');
+    check('legacy project "text" moved into discussed', a.discussed.includes('legacy project note'));
+    check('legacy "text" key is removed (idempotent)', !('text' in a));
+    check('every note gains the three sections', ['discussed', 'steps', 'jumps'].every(k => k in a) && ['discussed', 'steps', 'jumps'].every(k => k in e));
+    check('legacy text APPENDS when discussed already had content (no overwrite, no loss)', b.discussed.includes('already here') && b.discussed.includes('from the old field'));
+    check('new-format note is left untouched', c.discussed === 'new fmt' && c.steps === '- s1' && c.jumps === 'j1');
+    check('legacy meeting-entry "notes" moved into discussed, agenda preserved', e.discussed.includes('legacy meeting notes') && e.agenda === 'agenda kept' && !('notes' in e));
+    // idempotency: normalizing again must not duplicate the migrated text
+    const twice = normalize(clone(blob));
+    const b2 = twice.projects[0].meetingNotes.find(n => n.id === 'b');
+    check('re-normalizing does NOT duplicate migrated text', (b2.discussed.match(/from the old field/g) || []).length === 1);
+  }
+
   // ===== report =====
   __log.push('\n' + '─'.repeat(60));
   __log.push('  ' + __pass + ' passed, ' + __fail + ' failed');
