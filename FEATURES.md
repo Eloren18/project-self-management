@@ -132,11 +132,14 @@ One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both
 
 ## 5. Personal Life platform — 9 tabs
 
-### 5.1 Overview (hub) — day flags, overdue people, missed for-me items this week, stats, jump-offs into the other tabs.
+### 5.1 Overview (hub) — day flags, overdue people, missed for-me items this week, weekly main things, stats, jump-offs into the other tabs.
+- **Finalization stats [ALWAYS CHECK]**: a "◷ N recent days still open" nudge (jumps to the latest unclosed day), plus **Days closed · this week** and **🔥 Finalize streak** KPI tiles (streak = consecutive finalized days ending today/yesterday).
 ### 5.2 Today — 4-box layout + collapsible log **[ALWAYS CHECK]**
 - **Top: exactly 4 boxes** (the `.day4` grid): **① First activity** (`firstThing`, set the night before on the Tomorrow page — the "determined from the day prior" flow), **② Tasks for today** (open responsibility entries + add + import-from-Need-To), **③ Things for me 🧡** (open for-me entries + add), **④ Who I'm meeting** (meetups + add).
 - **Below: one collapsible `<details>` panel** ("📓 What happened & how I felt"), **collapsed by default**, whose open/closed state persists across re-renders (`dayLogOpen`). Contains everything retrospective: **habits/dots** (up to 3 trackers), **gym** (plan/went + weekly count), **What happened** (done tasks + done for-me, with "log what you did" inputs), **How I felt** (mood 1–7 + free-text reflection).
-- Day-page entries keep time/duration/note/drag-reorder; responsibilities/for-me items still have the full editor (type, energy, tags, recurring rule, links). Backward day navigation; past days show the same 4-box + log.
+- **Gym plan** (planned/not) sits in a slim planning strip under the 4 boxes; whether you actually **went** is logged inside the collapsible (plan vs. reality kept separate).
+- **Finalize bar** (bottom of each today/past day): "◷ This day isn't closed yet → ✓ Finalize day", or "✓ Day finalized · <time> · Reopen" once closed. Sets `finalized`/`finalizedAt`; drives the Overview streak/nudge and the Journal "◷ open" marker. Future days (Tomorrow) show no finalize bar.
+- Day-page entries keep time/duration/note/drag-reorder; responsibilities/for-me items still have the full editor (type, energy, tags, recurring rule, links). Backward day navigation; past days show the same 4-box + log + finalize.
 ### 5.3 Tomorrow — the SAME 4-box day page fixed on tomorrow (this is where you set tomorrow's **First activity**). Future days hide the retrospective sections — the collapsible only offers gym planning.
 ### 5.4 Calendar (personal) — month view of day plans / items / gym / mood.
 ### 5.5 Focus
@@ -147,6 +150,7 @@ One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both
 - Reverse-chronological history with an **All / ☀ Reflections** toggle (`.seg`):
   - **All**: **any** day with something (feeling, mood, done items, gym) appears **[regression: used to show only days with a feeling]** — `✓ N done` chip, 🏋️ gym chip, mood, feeling; plus meetup rows filterable by person.
   - **☀ Reflections**: only the days you actually **wrote a feeling or set a mood** — meetup rows and the person filter are hidden.
+- Day rows show a **◷ open** chip when a past day was never finalized.
 - "+ log a past day" opens any date. (The tab and page title read **Journal**; the People tab's "Log →" still jumps here for a person's meetups.)
 ### 5.9 Self Notes — notes with folders + rich-text editing.
 

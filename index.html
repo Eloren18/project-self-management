@@ -559,6 +559,11 @@
   .day-log[open]>summary .chev{transform:rotate(180deg);}
   .day-log-body{padding:12px 14px 14px;border-top:1px solid var(--border-soft);}
   .day-log-body .dots-row{margin-bottom:0;}
+  .planbar{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);padding:8px 12px;margin-bottom:4px;flex-wrap:wrap;}
+  .planbar-lab{font-size:10px;font-weight:800;letter-spacing:.6px;color:#2f6fed;text-transform:uppercase;flex:none;}
+  .finalize-bar{display:flex;align-items:center;gap:12px;margin-top:12px;padding:12px 14px;border:1px solid var(--border);background:var(--surface-2);flex-wrap:wrap;}
+  .finalize-bar .fb-sub{font-size:11px;color:var(--faint);font-weight:500;margin-top:2px;}
+  .finalize-bar.done{border-color:color-mix(in srgb,var(--s-done) 45%,var(--border));background:color-mix(in srgb,var(--s-done) 9%,var(--surface));color:var(--s-done);font-weight:700;font-size:12.5px;}
   @media(max-width:820px){ .day4{grid-template-columns:1fr;} }
   .gymtoggle.plan{border-style:dashed;border-color:#2f6fed;color:#2f6fed;background:transparent;}
   .gymtoggle{border:1px solid var(--border);border-left:3px solid #2f6fed;background:var(--surface);color:var(--muted);font-weight:700;font-size:12.5px;padding:10px 15px;cursor:pointer;transition:.12s;}
@@ -1137,6 +1142,7 @@ function normalizePersonal(p){
   Object.keys(p.dayPlans).forEach(k=>{ const d=p.dayPlans[k]; d.date=k;
     d.entries = Array.isArray(d.entries)?d.entries:[]; d.entries.forEach(e=>{ e.id ||= uid(); e.itemId ??= ""; e.time ??= ""; e.dur = +e.dur||0; e.done = !!e.done; e.label ??= ""; });
     d.firstThing ??= ""; d.committed = !!d.committed; d.committedAt ??= 0; d.bestMoment ??= ""; d.heavy = !!d.heavy;
+    d.finalized = !!d.finalized; d.finalizedAt ??= 0;   /* the day has been deliberately closed/recorded */
     d.energy = ["low","medium","high"].includes(d.energy)?d.energy:"medium";
     if(!Array.isArray(d.dots)) d.dots = [false,false,false]; d.triaged = !!d.triaged;
     /* legacy "happened" log → real completed tasks (one-time migration, then cleared) so they behave like any done item */
@@ -3023,7 +3029,7 @@ function curWeekIso(){ return iso(weekStart(new Date())); }
 function planFor(dt,create){
   let d=P().dayPlans[dt];
   if(!d && create){
-    d={date:dt,entries:[],firstThing:"",committed:false,committedAt:0,bestMoment:"",heavy:false,energy:"medium",dots:[false,false,false],triaged:false,happened:[],meetups:[],feeling:"",mood:0,gym:false,gymPlanned:false};
+    d={date:dt,entries:[],firstThing:"",committed:false,committedAt:0,bestMoment:"",heavy:false,energy:"medium",dots:[false,false,false],triaged:false,happened:[],meetups:[],feeling:"",mood:0,gym:false,gymPlanned:false,finalized:false,finalizedAt:0};
     const wd=(parseISO(dt).getDay()+6)%7;
     P().items.filter(it=>it.status!=="done" && it.recurringRule && (it.recurringRule.type==="daily" || (it.recurringRule.type==="weekly" && it.recurringRule.weekday===wd)))
       .forEach(it=>d.entries.push({id:uid(),itemId:it.id,time:"",dur:it.timeEstimate||0,done:false,label:""}));
@@ -3122,24 +3128,42 @@ function maybeShowFlag(){
 }
 
 /* ---- stats (Overview) ---- */
+/* consecutive finalized days, ending today (if closed) or yesterday — the routine's heartbeat */
+function finalizeStreak(){
+  const plans=P().dayPlans; let n=0;
+  let d=todayISO();
+  if(!(plans[d]&&plans[d].finalized)) d=iso(addDays(parseISO(d),-1)); /* today may still be in progress */
+  while(plans[d]&&plans[d].finalized){ n++; d=iso(addDays(parseISO(d),-1)); }
+  return n;
+}
+/* recent days (before today) that had real activity but were never closed */
+function openDaysRecent(back){
+  const out=[];
+  for(let i=1;i<=(back||7);i++){ const d=iso(addDays(new Date(),-i)); const pl=P().dayPlans[d]; if(!pl||pl.finalized) continue;
+    const activity=(pl.entries||[]).length||(pl.meetups||[]).length||(pl.feeling||"").trim()||pl.mood>0||pl.gym||(pl.firstThing||"").trim();
+    if(activity) out.push(d);
+  }
+  return out;
+}
 function pStats(){
   const t=new Date(); const monthStart=iso(new Date(t.getFullYear(),t.getMonth(),1));
   const days=(from,to,fn)=>{ let n=0; for(let dt=from; dt<=to; dt=iso(addDays(parseISO(dt),1))) if(fn(dt)) n++; return n; };
   const tISO=todayISO(); const ws=curWeekIso();
   const plans=P().dayPlans;
-  let meets=0, refl=0, habit=0, gymMonth=0, gymWeek=0;
+  let meets=0, refl=0, habit=0, gymMonth=0, gymWeek=0, finalizedWeek=0;
   Object.keys(plans).forEach(k=>{ if(k<monthStart||k>tISO) return; const pl=plans[k];
     meets+=(pl.meetups||[]).filter(m=>m.status==="met").length;
     if((pl.feeling||"").trim()||pl.mood>0) refl++;
     if(P().dotDefs.length&&pl.dots&&P().dotDefs.every((_,i)=>pl.dots[i])) habit++;
     if(pl.gym){ gymMonth++; if(k>=ws) gymWeek++; }
+    if(pl.finalized && k>=ws) finalizedWeek++;
   });
   return {
     meWeek:days(ws,tISO,dayHasForMe),
     weekLen:Math.round((d0(new Date())-d0(parseISO(ws)))/864e5)+1,
     meMonth:days(monthStart,tISO,dayHasForMe),
     monthLen:Math.round((d0(new Date())-d0(parseISO(monthStart)))/864e5)+1,
-    meets,refl,habit,gymWeek,gymMonth
+    meets,refl,habit,gymWeek,gymMonth,finalizedWeek,streak:finalizeStreak()
   };
 }
 
@@ -3225,13 +3249,22 @@ function dayPageHTML(dt){
       ${P().people.length?"":`<span style="font-size:11.5px;color:var(--faint)">add people in the People tab first</span>`}
   </div>`;
   /* ---- collapsible: gym, habits, what happened, how I felt ---- */
+  /* gym PLAN sits in the top planning strip; whether you actually WENT is logged below in the reality section */
+  const gymPlanStrip=`<div class="planbar">
+    <span class="planbar-lab">🏋 Plan</span>
+    <button class="gymtoggle ${plan.gymPlanned?"plan on":""}" data-gymplan>${plan.gymPlanned?"📅 Gym — planned":"📅 Plan gym"}</button>
+  </div>`;
   const gymRow=`<div class="gymrow">
     <span style="font-size:10px;font-weight:800;letter-spacing:.6px;color:#2f6fed;text-transform:uppercase">🏋 Gym</span>
-    <button class="gymtoggle ${plan.gymPlanned&&!plan.gym?"plan":""}" data-gymplan>${plan.gymPlanned&&!plan.gym?"📅 Planned":"📅 Plan it"}</button>
+    ${plan.gymPlanned?`<span class="pi-badge" style="border-color:${CAL_COLORS.gym};color:${CAL_COLORS.gym}">was planned</span>`:""}
     <button class="gymtoggle ${plan.gym?"on":""}" data-gym>${plan.gym?"Went ✓":"Went?"}</button>
-    ${plan.gymPlanned&&!plan.gym&&dt<todayISO()?`<span style="font-size:11px;color:var(--faint)">planned but didn't happen — it's fine, replan it</span>`:""}
+    ${plan.gymPlanned&&!plan.gym&&dt<todayISO()?`<span style="font-size:11px;color:var(--faint)">planned but didn't happen — it's fine</span>`:""}
     <span class="gymcount">${(()=>{const ws=iso(weekStart(parseISO(dt)));return gymCount(ws,iso(addDays(parseISO(ws),6)));})()}× this week</span>
   </div>`;
+  /* finalize: deliberately close the day. Unfinalized days show as "open" in the Overview. */
+  const finalizeBar = plan.finalized
+    ? `<div class="finalize-bar done"><span>✓ Day finalized${plan.finalizedAt?" · "+new Date(plan.finalizedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}):""}</span><span class="grow"></span><button class="btn ghost sm" data-reopen>Reopen</button></div>`
+    : `<div class="finalize-bar"><div><b>◷ This day isn't closed yet</b><div class="fb-sub">Finalize it to record it in your stats &amp; streak</div></div><span class="grow"></span><button class="btn primary" data-finalize>✓ Finalize day</button></div>`;
   const whatHappened=`<div style="margin-top:14px"><div class="section-h" style="margin:0 0 8px">What happened — everything done today <span class="line"></span><span style="text-transform:none;letter-spacing:0;font-weight:600;color:var(--faint)">checked plans + things you just did</span></div>
     <div class="lanes">
       ${[["task","responsibility"],["forMe","forMe"]].map(([kind,ptype])=>{
@@ -3249,6 +3282,7 @@ function dayPageHTML(dt){
   </div>`;
   return `
     <div class="day4">${firstBox}${lane("responsibility",isToday?"Tasks for today":"Tasks","")}${lane("forMe","Things for me 🧡","forme")}${peopleBox}</div>
+    ${gymPlanStrip}
     <details class="day-log" ${dayLogOpen?"open":""}>
       <summary><svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>📓 ${isFuture?"Plan the rest":"What happened & how I felt"}<span class="grow"></span><span style="text-transform:none;letter-spacing:0;font-weight:600;color:var(--faint)">${isFuture?"gym":"habits · gym · what I did · reflection"}</span></summary>
       <div class="day-log-body">
@@ -3257,7 +3291,8 @@ function dayPageHTML(dt){
         ${!isFuture?whatHappened:""}
         ${!isFuture?howFelt:""}
       </div>
-    </details>`;
+    </details>
+    ${dt<=todayISO()?finalizeBar:""}`;
 }
 function bindDayPage(host,dt,rerender){
   const plan=planFor(dt,true);
@@ -3330,6 +3365,8 @@ function bindDayPage(host,dt,rerender){
   const ft=host.querySelector("[data-firstthing]"); if(ft){ autoGrow(ft); ft.addEventListener("input",()=>{ plan.firstThing=ft.value; save(); autoGrow(ft); }); }
   bindDots(host,plan,rerender);
   const dl=host.querySelector(".day-log"); if(dl) dl.addEventListener("toggle",()=>{ dayLogOpen=dl.open; });
+  const fin=host.querySelector("[data-finalize]"); if(fin) fin.onclick=()=>{ plan.finalized=true; plan.finalizedAt=Date.now(); save(); rerender(); const s=finalizeStreak(); toast(s>1?("Day finalized ✓ — "+s+"-day streak 🔥"):"Day finalized ✓"); };
+  const rop=host.querySelector("[data-reopen]"); if(rop) rop.onclick=()=>{ plan.finalized=false; plan.finalizedAt=0; save(); rerender(); };
   bindAutoGrow(host);
 }
 function syncLastSeen(personId){
@@ -3569,6 +3606,7 @@ function renderPOverview(){
   const host=$("pOverviewBody"); if(!host) return;
   const ws=curWeekIso(); const wk=weeklyFor(ws);
   const od=overduePeople(); const fm=forMeMissThisWeek(); const st=pStats();
+  const openRecent=openDaysRecent(7);
   const wi=weekInfo(ws);
   const prioRow=(x,key,cls)=>{ const pr=x.projId?P().projects.find(p=>p.id===x.projId):null; const pg=pr?projProgress(pr):null;
     return `<div class="pi-row ${cls} ${x.done?"done":""}" data-prio="${x.id}" data-pkey="${key}" style="align-items:center">
@@ -3588,6 +3626,7 @@ function renderPOverview(){
   host.innerHTML=`
     <div class="toolbar"><h1 class="page-title">Overview</h1><span style="color:var(--faint);font-size:12.5px;font-weight:600">Week ${wi?wi.week:"?"}</span><div class="grow"></div><button class="btn sm ghost" id="pExport" title="Download all personal data as JSON">⤓ Export</button></div>
     ${fm.flagged?flagBannerHTML(fm):(fm.misses>=3?`<div class="pinned-hint" style="cursor:default;opacity:.75">🧡 ${fm.misses} for-me-less days this week — acknowledged.</div>`:"")}
+    ${openRecent.length?`<div class="pinned-hint" id="closeNudge" style="border-color:#e0a100;background:color-mix(in srgb,#e0a100 12%,var(--surface));color:var(--text)">◷ ${openRecent.length} recent day${openRecent.length>1?"s":""} still open — close ${openRecent.length>1?"them":"it"} to keep the habit<span class="grow"></span><span style="color:var(--muted);font-weight:700">Close ${fmtShort(openRecent[0])} →</span></div>`:""}
     <div class="section-h" style="margin-top:2px">This week's main things <span class="line"></span></div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:stretch">
       ${prioLane(wk.me,"me","For me 🧡","forme")}
@@ -3598,6 +3637,8 @@ function renderPOverview(){
       :`<div style="font-size:12.5px;color:var(--faint)">All caught up — nobody's overdue.</div>`}
     <div class="section-h">Gently, the numbers <span class="line"></span></div>
     <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+      <div class="kpi"><div class="lab">Days closed · this week</div><div class="val">${st.finalizedWeek}<em> / ${st.weekLen}</em></div></div>
+      <div class="kpi"><div class="lab">🔥 Finalize streak</div><div class="val">${st.streak}<em> ${st.streak===1?"day":"days"}</em></div></div>
       <div class="kpi"><div class="lab">For-me days · this week</div><div class="val">${st.meWeek}<em> / ${st.weekLen}</em></div></div>
       <div class="kpi"><div class="lab">For-me days · this month</div><div class="val">${st.meMonth}<em> / ${st.monthLen}</em></div></div>
       <div class="kpi"><div class="lab" style="color:${CAL_COLORS.gym}">🏋 Gym · this week</div><div class="val" style="color:${CAL_COLORS.gym}">${st.gymWeek}</div></div>
@@ -3607,6 +3648,7 @@ function renderPOverview(){
       <div class="kpi"><div class="lab">Full habit days · this month</div><div class="val">${st.habit}</div></div>
     </div>`;
   $("pExport").onclick=exportPersonal;
+  const cn=$("closeNudge"); if(cn) cn.onclick=()=>{ pDayIso=openRecent[0]; switchPTab("today"); };
   bindFlagBanner(host);
   host.querySelectorAll("[data-prioadd]").forEach(inp=>inp.addEventListener("keydown",e=>{
     if(e.key!=="Enter") return; const t=(inp.value||"").trim(); if(!t) return;
@@ -3880,6 +3922,7 @@ function renderPLog(){
         <span class="pi-badge" style="margin-top:2px">${fmtShort(r.dt)}${r.pl.mood?" "+MOODS[r.pl.mood-1]:""}</span>
         ${r.doneN?`<span class="pi-badge" style="margin-top:2px;color:var(--s-done)">✓ ${r.doneN} done</span>`:""}
         ${r.pl.gym?`<span class="pi-badge" style="margin-top:2px" title="Gym day">🏋️</span>`:""}
+        ${(!r.pl.finalized&&r.dt<todayISO())?`<span class="pi-badge" style="margin-top:2px;color:var(--faint)" title="This day was never finalized">◷ open</span>`:""}
         <textarea data-lfeel rows="2" placeholder="how did this day feel?" style="flex:1;border:none;background:transparent;outline:none;resize:vertical;font-size:12.5px;line-height:1.5">${esc(r.pl.feeling)}</textarea>
         <button class="pi-act" data-lopen title="Open that day">↗</button>
       </div>`;
