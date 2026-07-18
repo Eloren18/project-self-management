@@ -577,6 +577,7 @@
   .prep-add:focus{border-color:var(--primary);border-style:solid;color:var(--text);}
   .prep-add::placeholder{color:var(--faint);}
   .first-didit{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  .day-first:not(.has-activity) .first-didit{display:none;}  /* "Did it?" only matters once there's an activity; prep stays addable always */
   .chip.did{border:1px solid var(--border);background:var(--surface-2);color:var(--muted);cursor:pointer;font-weight:700;padding:5px 12px;}
   .chip.did.on{background:color-mix(in srgb,var(--s-done) 14%,var(--surface));border-color:var(--s-done);color:var(--s-done);}
   .first-why{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:11px;color:var(--faint);}
@@ -3323,18 +3324,15 @@ function dayPageHTML(dt){
     </div>`; };
   /* Box 1 — the first activity of the day. Shows the prep steps you set up the night
      before, a "did it?" toggle, and — if you didn't — why not (barrier tags). */
-  const hasFirst=(plan.firstThing||"").trim()||(plan.firstPrep||[]).length;
-  const firstBox=`<div class="lane day-first" style="border-top-color:#e0a100">
+  const firstBox=`<div class="lane day-first ${(plan.firstThing||"").trim()?"has-activity":""}" style="border-top-color:#e0a100">
     <h3 style="color:#b98600">▶ First activity${isToday?` <span class="grow"></span><span class="hint">set the night before</span>`:``}</h3>
     <textarea data-firstthing rows="1" placeholder="${isFuture?"What should this day start with?":"The one thing to start the day with…"}">${esc(plan.firstThing||"")}</textarea>
-    ${hasFirst?`
-      <div class="first-prep-lab">✅ Prep I did to make it easy</div>
-      ${prepChecklistHTML(plan.firstPrep,"fp")}
-      ${!isFuture?`<div class="first-didit">
-        <button type="button" class="chip did ${plan.firstDone?"on":""}" data-firstdone>${plan.firstDone?"✓ Did it":"Did it?"}</button>
-        ${!plan.firstDone?`<span class="first-why">didn't happen? ${Object.entries(BARRIERS).map(([k,v])=>`<button type="button" class="bchip ${plan.firstBarrier===k?"on":""}" data-barrier="${k}">${v}</button>`).join("")}</span>`:""}
-      </div>`:""}
-    `:""}
+    <div class="first-prep-lab">✅ How I prepared for it</div>
+    ${prepChecklistHTML(plan.firstPrep,"fp")}
+    ${!isFuture?`<div class="first-didit">
+      <button type="button" class="chip did ${plan.firstDone?"on":""}" data-firstdone>${plan.firstDone?"✓ Did it":"Did it?"}</button>
+      ${!plan.firstDone?`<span class="first-why">didn't happen? ${Object.entries(BARRIERS).map(([k,v])=>`<button type="button" class="bchip ${plan.firstBarrier===k?"on":""}" data-barrier="${k}">${v}</button>`).join("")}</span>`:""}
+    </div>`:""}
   </div>`;
   /* Box 4 — who I'm meeting */
   const peopleBox=`<div class="lane day-people" style="border-top-color:${CAL_COLORS.meet}">
@@ -3472,7 +3470,7 @@ function bindDayPage(host,dt,rerender){
   const gy=host.querySelector("[data-gym]"); if(gy) gy.onclick=()=>{ plan.gym=!plan.gym; save(); rerender(); };
   const gp=host.querySelector("[data-gymplan]"); if(gp) gp.onclick=()=>{ plan.gymPlanned=!plan.gymPlanned; save(); rerender(); };
   const fe=host.querySelector("[data-feel]"); if(fe) fe.addEventListener("input",ev=>{ plan.feeling=ev.target.value; save(); });
-  const ft=host.querySelector("[data-firstthing]"); if(ft){ autoGrow(ft); ft.addEventListener("input",()=>{ plan.firstThing=ft.value; save(); autoGrow(ft); }); }
+  const ft=host.querySelector("[data-firstthing]"); if(ft){ autoGrow(ft); ft.addEventListener("input",()=>{ plan.firstThing=ft.value; const box=ft.closest(".day-first"); if(box) box.classList.toggle("has-activity", !!ft.value.trim()); save(); autoGrow(ft); }); }
   const fpList=host.querySelector('.prep-list[data-preplist="fp"]'); if(fpList) bindPrepChecklist(fpList, ()=>plan.firstPrep, needR=>{ save(); if(needR) rerender(); });
   const fd=host.querySelector("[data-firstdone]"); if(fd) fd.onclick=()=>{ plan.firstDone=!plan.firstDone; if(plan.firstDone) plan.firstBarrier=""; save(); rerender(); };
   host.querySelectorAll("[data-barrier]").forEach(b=>b.onclick=()=>{ plan.firstBarrier=(plan.firstBarrier===b.dataset.barrier)?"":b.dataset.barrier; save(); rerender(); });
