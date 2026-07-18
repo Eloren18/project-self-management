@@ -564,6 +564,26 @@
   .finalize-bar{display:flex;align-items:center;gap:12px;margin-top:12px;padding:12px 14px;border:1px solid var(--border);background:var(--surface-2);flex-wrap:wrap;}
   .finalize-bar .fb-sub{font-size:11px;color:var(--faint);font-weight:500;margin-top:2px;}
   .finalize-bar.done{border-color:color-mix(in srgb,var(--s-done) 45%,var(--border));background:color-mix(in srgb,var(--s-done) 9%,var(--surface));color:var(--s-done);font-weight:700;font-size:12.5px;}
+  .first-prep-lab{font-size:9.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--faint);margin:9px 0 3px;}
+  .day-first .first-prep{border-style:dashed !important;font-size:12.5px;font-weight:500;}
+  /* growing writing fields (meetup notes, person notes, journal) — text wraps & extends downward */
+  textarea.dp-ta.write{border:1px solid var(--border);background:var(--surface-2);padding:6px 9px;min-height:30px;}
+  textarea.dp-ta.write:focus{border-color:var(--primary);background:var(--surface);}
+  /* locked recap for a finalized day */
+  .day-recap{border:1px solid var(--border);background:var(--surface);padding:14px 16px;}
+  .recap-head{display:flex;align-items:center;gap:10px;font-size:11.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--s-done);padding-bottom:10px;border-bottom:1px solid var(--border-soft);}
+  .recap-first{font-size:15px;font-weight:700;color:var(--text);margin-top:12px;}
+  .recap-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px;}
+  .recap-chip{font-size:12px;font-weight:600;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);padding:5px 10px;}
+  .recap-chip.forme{color:#2e8b57;} .recap-chip.meet{color:#6b3fb8;}
+  .recap-feel{margin-top:12px;font-size:13px;line-height:1.6;color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere;border-left:3px solid #e9c400;padding:2px 0 2px 12px;}
+  .recap-meets{margin-top:10px;display:flex;flex-direction:column;gap:5px;}
+  .recap-meet{font-size:12px;color:var(--muted);overflow-wrap:anywhere;}
+  .cal-cell{position:relative;}
+  .cal-fin{position:absolute;top:3px;right:4px;font-size:10px;font-weight:800;color:var(--s-done);}
+  .cal-open{position:absolute;top:3px;right:4px;font-size:10px;color:var(--faint);}
+  .cal-cell.finalized{box-shadow:inset 3px 0 0 var(--s-done);}
+  .cal-cell.dayopen{opacity:.8;}
   @media(max-width:820px){ .day4{grid-template-columns:1fr;} }
   .gymtoggle.plan{border-style:dashed;border-color:#2f6fed;color:#2f6fed;background:transparent;}
   .gymtoggle{border:1px solid var(--border);border-left:3px solid #2f6fed;background:var(--surface);color:var(--muted);font-weight:700;font-size:12.5px;padding:10px 15px;cursor:pointer;transition:.12s;}
@@ -1141,7 +1161,7 @@ function normalizePersonal(p){
   p.dayPlans = (p.dayPlans && typeof p.dayPlans==="object" && !Array.isArray(p.dayPlans)) ? p.dayPlans : {};
   Object.keys(p.dayPlans).forEach(k=>{ const d=p.dayPlans[k]; d.date=k;
     d.entries = Array.isArray(d.entries)?d.entries:[]; d.entries.forEach(e=>{ e.id ||= uid(); e.itemId ??= ""; e.time ??= ""; e.dur = +e.dur||0; e.done = !!e.done; e.label ??= ""; });
-    d.firstThing ??= ""; d.committed = !!d.committed; d.committedAt ??= 0; d.bestMoment ??= ""; d.heavy = !!d.heavy;
+    d.firstThing ??= ""; d.firstPrep ??= ""; d.committed = !!d.committed; d.committedAt ??= 0; d.bestMoment ??= ""; d.heavy = !!d.heavy;
     d.finalized = !!d.finalized; d.finalizedAt ??= 0;   /* the day has been deliberately closed/recorded */
     d.energy = ["low","medium","high"].includes(d.energy)?d.energy:"medium";
     if(!Array.isArray(d.dots)) d.dots = [false,false,false]; d.triaged = !!d.triaged;
@@ -3029,7 +3049,7 @@ function curWeekIso(){ return iso(weekStart(new Date())); }
 function planFor(dt,create){
   let d=P().dayPlans[dt];
   if(!d && create){
-    d={date:dt,entries:[],firstThing:"",committed:false,committedAt:0,bestMoment:"",heavy:false,energy:"medium",dots:[false,false,false],triaged:false,happened:[],meetups:[],feeling:"",mood:0,gym:false,gymPlanned:false,finalized:false,finalizedAt:0};
+    d={date:dt,entries:[],firstThing:"",firstPrep:"",committed:false,committedAt:0,bestMoment:"",heavy:false,energy:"medium",dots:[false,false,false],triaged:false,happened:[],meetups:[],feeling:"",mood:0,gym:false,gymPlanned:false,finalized:false,finalizedAt:0};
     const wd=(parseISO(dt).getDay()+6)%7;
     P().items.filter(it=>it.status!=="done" && it.recurringRule && (it.recurringRule.type==="daily" || (it.recurringRule.type==="weekly" && it.recurringRule.weekday===wd)))
       .forEach(it=>d.entries.push({id:uid(),itemId:it.id,time:"",dur:it.timeEstimate||0,done:false,label:""}));
@@ -3136,12 +3156,12 @@ function finalizeStreak(){
   while(plans[d]&&plans[d].finalized){ n++; d=iso(addDays(parseISO(d),-1)); }
   return n;
 }
+function dayHadActivity(pl){ return !!(pl && ((pl.entries||[]).length||(pl.meetups||[]).length||(pl.feeling||"").trim()||pl.mood>0||pl.gym||(pl.firstThing||"").trim())); }
 /* recent days (before today) that had real activity but were never closed */
 function openDaysRecent(back){
   const out=[];
-  for(let i=1;i<=(back||7);i++){ const d=iso(addDays(new Date(),-i)); const pl=P().dayPlans[d]; if(!pl||pl.finalized) continue;
-    const activity=(pl.entries||[]).length||(pl.meetups||[]).length||(pl.feeling||"").trim()||pl.mood>0||pl.gym||(pl.firstThing||"").trim();
-    if(activity) out.push(d);
+  for(let i=1;i<=(back||7);i++){ const d=iso(addDays(new Date(),-i)); const pl=P().dayPlans[d];
+    if(pl && !pl.finalized && dayHadActivity(pl)) out.push(d);
   }
   return out;
 }
@@ -3150,20 +3170,20 @@ function pStats(){
   const days=(from,to,fn)=>{ let n=0; for(let dt=from; dt<=to; dt=iso(addDays(parseISO(dt),1))) if(fn(dt)) n++; return n; };
   const tISO=todayISO(); const ws=curWeekIso();
   const plans=P().dayPlans;
-  let meets=0, refl=0, habit=0, gymMonth=0, gymWeek=0, finalizedWeek=0;
+  let meets=0, refl=0, habit=0, gymMonth=0, gymWeek=0, finalizedWeek=0, finalizedMonth=0;
   Object.keys(plans).forEach(k=>{ if(k<monthStart||k>tISO) return; const pl=plans[k];
     meets+=(pl.meetups||[]).filter(m=>m.status==="met").length;
     if((pl.feeling||"").trim()||pl.mood>0) refl++;
     if(P().dotDefs.length&&pl.dots&&P().dotDefs.every((_,i)=>pl.dots[i])) habit++;
     if(pl.gym){ gymMonth++; if(k>=ws) gymWeek++; }
-    if(pl.finalized && k>=ws) finalizedWeek++;
+    if(pl.finalized){ finalizedMonth++; if(k>=ws) finalizedWeek++; }
   });
   return {
     meWeek:days(ws,tISO,dayHasForMe),
     weekLen:Math.round((d0(new Date())-d0(parseISO(ws)))/864e5)+1,
     meMonth:days(monthStart,tISO,dayHasForMe),
     monthLen:Math.round((d0(new Date())-d0(parseISO(monthStart)))/864e5)+1,
-    meets,refl,habit,gymWeek,gymMonth,finalizedWeek,streak:finalizeStreak()
+    meets,refl,habit,gymWeek,gymMonth,finalizedWeek,finalizedMonth,streak:finalizeStreak()
   };
 }
 
@@ -3216,9 +3236,33 @@ function dpRowHTML(plan,e){
     <button class="pi-act" data-edel title="Remove from this day" style="align-self:center">✕</button>
   </div>`;
 }
+/* a finalized day is locked to a clean read-only recap; Reopen returns to the editable planner */
+function dayRecapHTML(dt,plan){
+  const cnt=type=>plan.entries.map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it&&x.it.type===type);
+  const rt=cnt("responsibility"), rm=cnt("forMe");
+  const tDone=rt.filter(x=>x.e.done).length, mDone=rm.filter(x=>x.e.done).length;
+  const met=(plan.meetups||[]).map(mu=>{ const p=P().people.find(x=>x.id===mu.personId); return {name:p?p.name:"someone",mu}; });
+  const habits=(P().dotDefs||[]).filter((d,i)=>plan.dots&&plan.dots[i]).map(d=>d.label);
+  const chip=(txt,cls)=>`<span class="recap-chip ${cls||""}">${txt}</span>`;
+  return `<div class="day-recap">
+    <div class="recap-head"><span>✓ Day closed${plan.finalizedAt?" · "+new Date(plan.finalizedAt).toLocaleString(undefined,{weekday:"short",hour:"numeric",minute:"2-digit"}):""}</span><span class="grow"></span><button class="btn ghost sm" data-reopen>Reopen to edit</button></div>
+    ${(plan.firstThing||"").trim()?`<div class="recap-first">▶ ${esc(plan.firstThing)}</div>`:""}
+    <div class="recap-chips">
+      ${chip("✔ "+tDone+(rt.length?"/"+rt.length:"")+" task"+(rt.length===1?"":"s"))}
+      ${mDone?chip("🧡 "+mDone+" for me","forme"):""}
+      ${chip(plan.gym?"🏋 went":(plan.gymPlanned?"🏋 planned · skipped":"🏋 —"))}
+      ${plan.mood?chip(MOODS[plan.mood-1]+" mood"):""}
+      ${habits.length?chip("✓ "+esc(habits.join(", "))):""}
+      ${met.length?chip("👥 "+met.map(m=>esc(m.name)+(m.mu.status!=="met"?" ("+m.mu.status+")":"")).join(", "),"meet"):""}
+    </div>
+    ${(plan.feeling||"").trim()?`<div class="recap-feel">${esc(plan.feeling)}</div>`:""}
+    ${met.some(m=>(m.mu.note||"").trim())?`<div class="recap-meets">${met.filter(m=>(m.mu.note||"").trim()).map(m=>`<div class="recap-meet"><b>${esc(m.name)}</b> — ${esc(m.mu.note)}</div>`).join("")}</div>`:""}
+  </div>`;
+}
 function dayPageHTML(dt){
   const plan=planFor(dt,true);
   const isToday=dt===todayISO(), isFuture=dt>todayISO();
+  if(plan.finalized) return dayRecapHTML(dt,plan);
   const yplan=P().dayPlans[iso(addDays(parseISO(dt),-1))];
   const lane=(type,label,cls)=>{
     const rows=plan.entries.map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it&&x.it.type===type);
@@ -3230,20 +3274,23 @@ function dayPageHTML(dt){
       ${type==="responsibility"?(()=>{ const pool=P().items.filter(i=>i.type==="responsibility"&&i.status!=="done"&&!plan.entries.some(e=>e.itemId===i.id));
         return pool.length?`<select data-dpimport style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--border);background:var(--surface-2);font-size:11.5px;color:var(--muted)"><option value="">＋ pick from Need To / project steps…</option>${pool.map(i=>{ const pr=i.projId?P().projects.find(p=>p.id===i.projId):null; return `<option value="${i.id}">${pr?"◆ "+esc(pr.title)+" · ":""}${esc(i.title)}</option>`; }).join("")}</select>`:""; })():""}
     </div>`; };
-  /* Box 1 — the first activity of the day (set the day before, on the Tomorrow page) */
+  /* Box 1 — the first activity of the day (set the day before, on the Tomorrow page),
+     plus what to prep the night before so the barrier to doing it is low */
   const firstBox=`<div class="lane day-first" style="border-top-color:#e0a100">
     <h3 style="color:#b98600">▶ First activity${isToday?` <span class="grow"></span><span style="text-transform:none;letter-spacing:0;font-weight:600;color:var(--faint)">set the night before</span>`:``}</h3>
     <textarea data-firstthing rows="1" placeholder="${isFuture?"What should this day start with?":"The one thing to start the day with…"}">${esc(plan.firstThing||"")}</textarea>
+    <div class="first-prep-lab">🌙 To make it easy — prep the night before</div>
+    <textarea data-firstprep class="first-prep" rows="1" placeholder="What to set up tonight so it's effortless — clothes out, water ready, the file already open…">${esc(plan.firstPrep||"")}</textarea>
   </div>`;
   /* Box 4 — who I'm meeting */
   const peopleBox=`<div class="lane day-people" style="border-top-color:${CAL_COLORS.meet}">
     <h3 style="color:${CAL_COLORS.meet}">👥 ${isFuture?"Who I'm seeing":"Who I'm meeting"} <span class="grow"></span><span>${(plan.meetups||[]).length}</span></h3>
     ${(plan.meetups||[]).map(mu=>{ const per=P().people.find(p=>p.id===mu.personId);
-      return `<div class="pi-row" data-meet="${mu.id}" style="align-items:center;flex-wrap:wrap">
-        <b style="color:${CAL_COLORS.meet};min-width:80px">${esc(per?per.name:"(gone)")}</b>
-        <select data-mstatus style="padding:3px 6px;border:1px solid var(--border);background:var(--surface);font-size:11px">${[["met","met up ✓"],["planned","planned"],["missed","didn't happen"]].map(o=>`<option value="${o[0]}"${mu.status===o[0]?" selected":""}>${o[1]}</option>`).join("")}</select>
-        <input data-mnote value="${esc(mu.note)}" placeholder="how was it? how did you feel with them?" style="flex:1;min-width:150px;border:none;background:transparent;outline:none;font-size:12px">
-        <button class="pi-act" data-mdel>✕</button>
+      return `<div class="pi-row" data-meet="${mu.id}" style="align-items:flex-start;flex-wrap:wrap">
+        <b style="color:${CAL_COLORS.meet};min-width:80px;margin-top:5px">${esc(per?per.name:"(gone)")}</b>
+        <select data-mstatus style="padding:3px 6px;border:1px solid var(--border);background:var(--surface);font-size:11px;margin-top:3px">${[["met","met up ✓"],["planned","planned"],["missed","didn't happen"]].map(o=>`<option value="${o[0]}"${mu.status===o[0]?" selected":""}>${o[1]}</option>`).join("")}</select>
+        <textarea class="dp-ta write" data-mnote rows="1" placeholder="how was it? how did you feel with them?" style="flex:1;min-width:160px;font-size:12px">${esc(mu.note)}</textarea>
+        <button class="pi-act" data-mdel style="margin-top:3px">✕</button>
       </div>`;}).join("")}
       <select data-meetsel style="width:100%;padding:7px 9px;border:1px solid var(--border);background:var(--surface);margin-top:2px"><option value="">+ log a meetup…</option>${P().people.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select>
       ${P().people.length?"":`<span style="font-size:11.5px;color:var(--faint)">add people in the People tab first</span>`}
@@ -3363,6 +3410,7 @@ function bindDayPage(host,dt,rerender){
   const gp=host.querySelector("[data-gymplan]"); if(gp) gp.onclick=()=>{ plan.gymPlanned=!plan.gymPlanned; save(); rerender(); };
   const fe=host.querySelector("[data-feel]"); if(fe) fe.addEventListener("input",ev=>{ plan.feeling=ev.target.value; save(); });
   const ft=host.querySelector("[data-firstthing]"); if(ft){ autoGrow(ft); ft.addEventListener("input",()=>{ plan.firstThing=ft.value; save(); autoGrow(ft); }); }
+  const fp=host.querySelector("[data-firstprep]"); if(fp){ autoGrow(fp); fp.addEventListener("input",()=>{ plan.firstPrep=fp.value; save(); autoGrow(fp); }); }
   bindDots(host,plan,rerender);
   const dl=host.querySelector(".day-log"); if(dl) dl.addEventListener("toggle",()=>{ dayLogOpen=dl.open; });
   const fin=host.querySelector("[data-finalize]"); if(fin) fin.onclick=()=>{ plan.finalized=true; plan.finalizedAt=Date.now(); save(); rerender(); const s=finalizeStreak(); toast(s>1?("Day finalized ✓ — "+s+"-day streak 🔥"):"Day finalized ✓"); };
@@ -3471,12 +3519,14 @@ function renderPCal(){
   for(let d2=1;d2<=dim;d2++) cells.push({d:d2,other:false,date:new Date(y,m,d2)});
   while(cells.length%7!==0){ const nd=cells.length-(start+dim)+1; cells.push({d:nd,other:true,date:new Date(y,m+1,nd)}); }
   const tISO=todayISO();
+  let finMonth=0; Object.keys(P().dayPlans).forEach(k=>{ const d=parseISO(k); if(d&&d.getFullYear()===y&&d.getMonth()===m&&P().dayPlans[k].finalized) finMonth++; });
   host.innerHTML=`
     <div class="cal-head">
       <button class="icon-btn" id="pcPrev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button>
       <h2>${pCalDate.toLocaleDateString(undefined,{month:"long",year:"numeric"})}</h2>
       <button class="icon-btn" id="pcNext"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg></button>
       <button class="btn ghost sm" id="pcToday">Today</button>
+      <span style="font-size:11.5px;color:var(--s-done);font-weight:700" title="Days you finalized this month">✓ ${finMonth} closed</span>
       <div class="grow"></div>
       <button class="btn primary sm" id="pcSpread">⧉ Spread a task over days</button>
     </div>
@@ -3493,7 +3543,10 @@ function renderPCal(){
       const refl=(pl&&((pl.feeling||"").trim()||pl.mood>0))?`<div class="pw-ev" style="border-left-color:#e9c400;color:${CAL_COLORS.refl};font-weight:700">☀ reflection${pl.mood?" "+MOODS[pl.mood-1]:""}</div>`:"";
       const gym=(pl&&pl.gym)?`<div class="pw-ev" style="border-left-color:${CAL_COLORS.gym};color:${CAL_COLORS.gym};font-weight:700">🏋 gym ✓</div>`
         :((pl&&pl.gymPlanned)?`<div class="pw-ev" style="border-left-color:${CAL_COLORS.gym};color:${CAL_COLORS.gym};font-weight:700;border-style:dashed;opacity:.75">🏋 gym planned</div>`:"");
-      return `<div class="cal-cell ${c.other?"other":""} ${ci===tISO?"today":""}" data-pday="${ci}"><span class="addhint">+</span><div class="cal-num">${c.d}</div>${evHtml}${meets}${gym}${refl}</div>`;
+      const fin=!c.other&&pl&&pl.finalized;
+      const openPast=!c.other&&pl&&!pl.finalized&&ci<tISO&&dayHadActivity(pl);
+      const finMark=fin?`<span class="cal-fin" title="Finalized">✓</span>`:(openPast?`<span class="cal-open" title="Not finalized — still open">◷</span>`:"");
+      return `<div class="cal-cell ${c.other?"other":""} ${ci===tISO?"today":""} ${fin?"finalized":""} ${openPast?"dayopen":""}" data-pday="${ci}"><span class="addhint">+</span><div class="cal-num">${c.d}</div>${finMark}${evHtml}${meets}${gym}${refl}</div>`;
     }).join("")}</div>
     <div class="legend">
       <span><span class="d" style="background:${CAL_COLORS.taskDone}"></span>done task</span>
@@ -3638,6 +3691,7 @@ function renderPOverview(){
     <div class="section-h">Gently, the numbers <span class="line"></span></div>
     <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
       <div class="kpi"><div class="lab">Days closed · this week</div><div class="val">${st.finalizedWeek}<em> / ${st.weekLen}</em></div></div>
+      <div class="kpi"><div class="lab">Days recorded · this month</div><div class="val">${Math.round(st.finalizedMonth/Math.max(1,st.monthLen)*100)}<em>%</em></div></div>
       <div class="kpi"><div class="lab">🔥 Finalize streak</div><div class="val">${st.streak}<em> ${st.streak===1?"day":"days"}</em></div></div>
       <div class="kpi"><div class="lab">For-me days · this week</div><div class="val">${st.meWeek}<em> / ${st.weekLen}</em></div></div>
       <div class="kpi"><div class="lab">For-me days · this month</div><div class="val">${st.meMonth}<em> / ${st.monthLen}</em></div></div>
@@ -3872,18 +3926,19 @@ function renderPPeople(){
     <div class="qadd"><input id="perName" placeholder="Someone you want to keep seeing… press Enter" autocomplete="off" style="flex:1;min-width:160px;border:none;background:transparent;outline:none;font-weight:600;padding:4px 2px">
       <select id="perFreq">${[["0","No target"],["1","Weekly"],["2","Every 2 weeks"],["4","Monthly"],["8","Every 2 months"],["13","Quarterly"]].map(x=>`<option value="${x[0]}">${x[1]}</option>`).join("")}</select>
       <button class="btn primary sm" id="perAdd">Add</button></div>
-    ${P().people.map(p=>`<div class="pi-row" data-per="${p.id}" style="align-items:center;flex-wrap:wrap">
-      <b style="min-width:110px;color:${CAL_COLORS.meet}">${esc(p.name)}</b>
-      ${od.includes(p.id)?`<span class="pi-badge" style="color:${CAL_COLORS.meet};border-color:${CAL_COLORS.meet}">💛 ${p.lastSeen?weeksSince(p.lastSeen)+"w ago":"never logged"}</span>`:`<span class="pi-badge">${p.lastSeen?"last: "+fmtShort(p.lastSeen):"no meetups yet"}</span>`}
-      <select data-pfreq style="padding:4px 6px;border:1px solid var(--border);background:var(--surface)">${[["0","No target"],["1","Weekly"],["2","2 weeks"],["4","Monthly"],["8","2 months"],["13","Quarterly"]].map(x=>`<option value="${x[0]}"${+x[0]===p.freqWeeks?" selected":""}>${x[1]}</option>`).join("")}</select>
-      <input data-pnotes value="${esc(p.notes)}" placeholder="notes" style="flex:1;min-width:120px;border:none;background:transparent;outline:none;font-size:11.5px;color:var(--muted)">
-      <button class="btn sm ghost" data-plog>Log →</button>
-      <button class="tk-del" data-pdel>✕</button>
+    ${P().people.map(p=>`<div class="pi-row" data-per="${p.id}" style="align-items:flex-start;flex-wrap:wrap">
+      <b style="min-width:110px;color:${CAL_COLORS.meet};margin-top:5px">${esc(p.name)}</b>
+      ${od.includes(p.id)?`<span class="pi-badge" style="margin-top:3px;color:${CAL_COLORS.meet};border-color:${CAL_COLORS.meet}">💛 ${p.lastSeen?weeksSince(p.lastSeen)+"w ago":"never logged"}</span>`:`<span class="pi-badge" style="margin-top:3px">${p.lastSeen?"last: "+fmtShort(p.lastSeen):"no meetups yet"}</span>`}
+      <select data-pfreq style="padding:4px 6px;border:1px solid var(--border);background:var(--surface);margin-top:3px">${[["0","No target"],["1","Weekly"],["2","2 weeks"],["4","Monthly"],["8","2 months"],["13","Quarterly"]].map(x=>`<option value="${x[0]}"${+x[0]===p.freqWeeks?" selected":""}>${x[1]}</option>`).join("")}</select>
+      <textarea class="dp-ta write" data-pnotes rows="1" placeholder="notes on them — what matters, what to remember…" style="flex:1;min-width:140px;font-size:11.5px;color:var(--muted)">${esc(p.notes)}</textarea>
+      <button class="btn sm ghost" data-plog style="margin-top:3px">Log →</button>
+      <button class="tk-del" data-pdel style="margin-top:3px">✕</button>
     </div>`).join("")||`<div class="empty"><div>The people you love won't schedule themselves.<br><span style="color:var(--faint)">Add names here, then log meetups on any day's page.</span></div></div>`}`;
   const add=()=>{ const n=($("perName").value||"").trim(); if(!n){ $("perName").focus(); return; }
     P().people.push({id:uid(),name:n,lastSeen:"",freqWeeks:+$("perFreq").value||0,notes:""}); save(); renderPPeople(); };
   $("perAdd").onclick=add;
   $("perName").addEventListener("keydown",e=>{ if(e.key==="Enter") add(); });
+  bindAutoGrow(host);
   host.querySelectorAll("[data-per]").forEach(row=>{
     const p=P().people.find(x=>x.id===row.dataset.per); if(!p) return;
     row.querySelector("[data-pfreq]").onchange=e=>{ p.freqWeeks=+e.target.value||0; save(); renderPPeople(); };
@@ -3923,7 +3978,7 @@ function renderPLog(){
         ${r.doneN?`<span class="pi-badge" style="margin-top:2px;color:var(--s-done)">✓ ${r.doneN} done</span>`:""}
         ${r.pl.gym?`<span class="pi-badge" style="margin-top:2px" title="Gym day">🏋️</span>`:""}
         ${(!r.pl.finalized&&r.dt<todayISO())?`<span class="pi-badge" style="margin-top:2px;color:var(--faint)" title="This day was never finalized">◷ open</span>`:""}
-        <textarea data-lfeel rows="2" placeholder="how did this day feel?" style="flex:1;border:none;background:transparent;outline:none;resize:vertical;font-size:12.5px;line-height:1.5">${esc(r.pl.feeling)}</textarea>
+        <textarea class="dp-ta write" data-lfeel rows="1" placeholder="how did this day feel?" style="flex:1;font-size:12.5px;line-height:1.5">${esc(r.pl.feeling)}</textarea>
         <button class="pi-act" data-lopen title="Open that day">↗</button>
       </div>`;
       const per=P().people.find(p=>p.id===r.mu.personId);
@@ -3931,8 +3986,8 @@ function renderPLog(){
         <span class="pi-badge" style="margin-top:2px">${fmtShort(r.dt)}</span>
         <b style="color:${CAL_COLORS.meet};margin-top:1px">${esc(per?per.name:"?")}</b>
         ${r.mu.status!=="met"?`<span class="pi-badge">${r.mu.status==="missed"?"didn't happen":"planned"}</span>`:""}
-        <input data-lnote value="${esc(r.mu.note)}" placeholder="how it was, how you felt…" style="flex:1;min-width:140px;border:none;background:transparent;outline:none;font-size:12.5px">
-        ${(!pLogPerson||!r.pl.mood)?"":`<span title="Your day overall">${MOODS[r.pl.mood-1]}</span>`}
+        <textarea class="dp-ta write" data-lnote rows="1" placeholder="how it was, how you felt…" style="flex:1;min-width:140px;font-size:12.5px">${esc(r.mu.note)}</textarea>
+        ${(!pLogPerson||!r.pl.mood)?"":`<span style="margin-top:3px" title="Your day overall">${MOODS[r.pl.mood-1]}</span>`}
         <button class="pi-act" data-lopen title="Open that day">↗</button>
       </div>`;
     }).join("")||`<div class="empty"><div>${pLogReflectOnly?"No reflections yet.<br><span style='color:var(--faint)'>Rate a day or write how it felt in the “How I felt” panel on any day's page.</span>":pLogPerson?"No moments logged with them yet — add one from any day's People section.":"Your story collects here.<br><span style='color:var(--faint)'>Write how days felt and log meetups on any day's page.</span>"}</div></div>`}`;
@@ -3947,6 +4002,7 @@ function renderPLog(){
     row.querySelector("[data-lfeel]").addEventListener("input",e=>{ pl.feeling=e.target.value; save(); });
     row.querySelector("[data-lopen]").onclick=()=>openDayModal(pl.date);
   });
+  bindAutoGrow(host);
   host.querySelectorAll("[data-lmeet]").forEach(row=>{
     const [dt,mid]=row.dataset.lmeet.split("|"); const pl=P().dayPlans[dt]; const mu=pl&&pl.meetups.find(x=>x.id===mid); if(!mu) return;
     row.querySelector("[data-lnote]").addEventListener("input",e=>{ mu.note=e.target.value; save(); });
