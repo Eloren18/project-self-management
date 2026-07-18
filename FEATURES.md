@@ -133,18 +133,21 @@ One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both
 ## 5. Personal Life platform — 9 tabs
 
 ### 5.1 Overview (hub) — day flags, overdue people, missed for-me items this week, stats, jump-offs into the other tabs.
-### 5.2 Today
-- Day plan **entries** (time, duration, linked item, done check, freeform label), "first thing" intention, energy level, up to 3 custom **dots** (user-defined trackers), triage flow, plan **templates** (save/apply).
-- **Meetups** (person, met/planned/missed, note), **feeling** text + **mood 1–7**, **gym** done/planned.
-- Responsibilities/for-me items: quick capture bar + full editor (type, time estimate, energy, tags, recurring rule, intention, rest flag, links to person/bucket/project).
-### 5.3 Tomorrow — same planner for tomorrow; **commit** marks the plan as set.
+### 5.2 Today — 4-box layout + collapsible log **[ALWAYS CHECK]**
+- **Top: exactly 4 boxes** (the `.day4` grid): **① First activity** (`firstThing`, set the night before on the Tomorrow page — the "determined from the day prior" flow), **② Tasks for today** (open responsibility entries + add + import-from-Need-To), **③ Things for me 🧡** (open for-me entries + add), **④ Who I'm meeting** (meetups + add).
+- **Below: one collapsible `<details>` panel** ("📓 What happened & how I felt"), **collapsed by default**, whose open/closed state persists across re-renders (`dayLogOpen`). Contains everything retrospective: **habits/dots** (up to 3 trackers), **gym** (plan/went + weekly count), **What happened** (done tasks + done for-me, with "log what you did" inputs), **How I felt** (mood 1–7 + free-text reflection).
+- Day-page entries keep time/duration/note/drag-reorder; responsibilities/for-me items still have the full editor (type, energy, tags, recurring rule, links). Backward day navigation; past days show the same 4-box + log.
+### 5.3 Tomorrow — the SAME 4-box day page fixed on tomorrow (this is where you set tomorrow's **First activity**). Future days hide the retrospective sections — the collapsible only offers gym planning.
 ### 5.4 Calendar (personal) — month view of day plans / items / gym / mood.
 ### 5.5 Focus
 - Pomodoro: editable focus/short/long/long-every settings (clamped sane ranges), sound + notification toggles, **multi-task session selection**, checkbox task completion from BOTH the main tab and the **compact pop-out** (centered, no resize needed, scrollable task list), session counts per item (`focusSessions`).
 ### 5.6 Bucket List — dream capture bar; dreams with **why**, steps checklist, dream → active → done lifecycle, pinned, tags, **memory** attached on completion; bigger **personal projects** (color, notes, lifecycle) that items can link to.
 ### 5.7 People — keep-in-touch list (name, last seen, frequency in weeks, notes); **overdue people** highlighted (drives hub + Log filter); meetups update last-seen.
-### 5.8 Log
-- Reverse-chronological history: **any** day with something (feeling, mood, done items, gym, meetups) appears **[regression: used to show only days with a feeling]** — shows `✓ N done` chip, 🏋️ gym chip, mood, feeling (placeholder if empty); filter by person to see meetup history.
+### 5.8 Journal (internal id still `log`)
+- Reverse-chronological history with an **All / ☀ Reflections** toggle (`.seg`):
+  - **All**: **any** day with something (feeling, mood, done items, gym) appears **[regression: used to show only days with a feeling]** — `✓ N done` chip, 🏋️ gym chip, mood, feeling; plus meetup rows filterable by person.
+  - **☀ Reflections**: only the days you actually **wrote a feeling or set a mood** — meetup rows and the person filter are hidden.
+- "+ log a past day" opens any date. (The tab and page title read **Journal**; the People tab's "Log →" still jumps here for a person's meetups.)
 ### 5.9 Self Notes — notes with folders + rich-text editing.
 
 ### 5.10 Isolation rule (hard requirement)
