@@ -565,7 +565,27 @@
   .finalize-bar .fb-sub{font-size:11px;color:var(--faint);font-weight:500;margin-top:2px;}
   .finalize-bar.done{border-color:color-mix(in srgb,var(--s-done) 45%,var(--border));background:color-mix(in srgb,var(--s-done) 9%,var(--surface));color:var(--s-done);font-weight:700;font-size:12.5px;}
   .first-prep-lab{font-size:9.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--faint);margin:9px 0 3px;}
-  .day-first .first-prep{border-style:dashed !important;font-size:12.5px;font-weight:500;}
+  .hint{text-transform:none;letter-spacing:0;font-weight:600;color:var(--faint);font-size:11px;}
+  .prep-list{display:flex;flex-direction:column;gap:1px;}
+  .prep-row{display:flex;align-items:center;gap:7px;padding:1px 0;}
+  .prep-row .check-sm{width:15px;height:15px;flex:none;}
+  .prep-txt{flex:1;min-width:0;border:1px solid transparent;background:transparent;padding:3px 5px;font-family:inherit;font-size:12px;color:var(--text);outline:none;}
+  .prep-txt:hover{border-color:var(--border-soft);}
+  .prep-txt:focus{border-color:var(--primary);background:var(--surface-2);}
+  .prep-row.done .prep-txt{text-decoration:line-through;color:var(--faint);}
+  .prep-add{width:100%;border:1px dashed var(--border);background:transparent;padding:4px 7px;font-family:inherit;font-size:11.5px;color:var(--muted);outline:none;margin-top:3px;}
+  .prep-add:focus{border-color:var(--primary);border-style:solid;color:var(--text);}
+  .prep-add::placeholder{color:var(--faint);}
+  .first-didit{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  .chip.did{border:1px solid var(--border);background:var(--surface-2);color:var(--muted);cursor:pointer;font-weight:700;padding:5px 12px;}
+  .chip.did.on{background:color-mix(in srgb,var(--s-done) 14%,var(--surface));border-color:var(--s-done);color:var(--s-done);}
+  .first-why{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:11px;color:var(--faint);}
+  .bchip{border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;font-size:11px;padding:3px 8px;}
+  .bchip:hover{border-color:var(--primary);}
+  .bchip.on{background:var(--primary-soft);border-color:var(--primary);color:var(--text);font-weight:700;}
+  .setup-tmw textarea{width:100%;border:1px solid var(--border);background:var(--surface-2);padding:8px 10px;font-size:13px;font-weight:600;color:var(--text);outline:none;resize:none;overflow:hidden;font-family:inherit;line-height:1.4;}
+  .setup-tmw textarea:focus{border-color:#8a63d2;background:var(--surface);}
+  .setup-tmw textarea::placeholder{color:var(--faint);font-weight:500;font-size:12.5px;}
   /* growing writing fields (meetup notes, person notes, journal) — text wraps & extends downward */
   textarea.dp-ta.write{border:1px solid var(--border);background:var(--surface-2);padding:6px 9px;min-height:30px;}
   textarea.dp-ta.write:focus{border-color:var(--primary);background:var(--surface);}
@@ -1161,7 +1181,8 @@ function normalizePersonal(p){
   p.dayPlans = (p.dayPlans && typeof p.dayPlans==="object" && !Array.isArray(p.dayPlans)) ? p.dayPlans : {};
   Object.keys(p.dayPlans).forEach(k=>{ const d=p.dayPlans[k]; d.date=k;
     d.entries = Array.isArray(d.entries)?d.entries:[]; d.entries.forEach(e=>{ e.id ||= uid(); e.itemId ??= ""; e.time ??= ""; e.dur = +e.dur||0; e.done = !!e.done; e.label ??= ""; });
-    d.firstThing ??= ""; d.firstPrep ??= ""; d.committed = !!d.committed; d.committedAt ??= 0; d.bestMoment ??= ""; d.heavy = !!d.heavy;
+    d.firstThing ??= ""; d.firstPrep = normMeetingSteps(d.firstPrep); d.firstDone = !!d.firstDone; d.firstBarrier ??= ""; /* first-activity: what, the prep steps I did, whether I did it, and why not */
+    d.committed = !!d.committed; d.committedAt ??= 0; d.bestMoment ??= ""; d.heavy = !!d.heavy;
     d.finalized = !!d.finalized; d.finalizedAt ??= 0;   /* the day has been deliberately closed/recorded */
     d.energy = ["low","medium","high"].includes(d.energy)?d.energy:"medium";
     if(!Array.isArray(d.dots)) d.dots = [false,false,false]; d.triaged = !!d.triaged;
@@ -3021,6 +3042,30 @@ const MODE_KEY="psm_mode_v1";
 const WD_NAMES=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const MOODS=["😖","😞","🙁","😐","🙂","😊","🤩"];
 const CAL_COLORS={taskDone:"#1d4fb8",forMe:"#2e8b57",meet:"#6b3fb8",refl:"#b89b00",gym:"#2f6fed"};
+/* why a planned first activity didn't happen (feature: barrier tags) */
+const BARRIERS={tired:"😴 tired",notready:"🧰 not ready",interrupted:"⚡ interrupted",forgot:"🌀 forgot",changed:"🔀 changed plans"};
+/* a tiny tick-list used for first-activity prep steps ({id,text,done}); ns scopes the two lists on one page */
+function prepChecklistHTML(steps, ns){
+  return `<div class="prep-list" data-preplist="${ns}">${(steps||[]).map(s=>`
+    <div class="prep-row ${s.done?"done":""}" data-prep="${s.id}">
+      <div class="check-sm ${s.done?"on":""}" data-prepdone title="${s.done?"got it ready":"tick when it's ready"}">${s.done?TICK:""}</div>
+      <input class="prep-txt" data-preptext value="${esc(s.text)}" placeholder="a prep step…" autocomplete="off">
+      <button type="button" class="pi-act" data-prepdel title="remove">✕</button>
+    </div>`).join("")}
+    <input class="prep-add" data-prepadd placeholder="+ add a prep step… Enter" autocomplete="off">
+  </div>`;
+}
+/* getArr() returns the live steps array, creating its backing plan only on first mutation */
+function bindPrepChecklist(container, getArr, onMutate){
+  container.querySelectorAll("[data-prep]").forEach(row=>{
+    const s=(getArr()||[]).find(x=>x.id===row.dataset.prep); if(!s) return;
+    row.querySelector("[data-prepdone]").onclick=()=>{ s.done=!s.done; onMutate(true); };
+    row.querySelector("[data-preptext]").oninput=e=>{ s.text=e.target.value; onMutate(false); };
+    row.querySelector("[data-prepdel]").onclick=()=>{ const a=getArr(); const i=a.indexOf(s); if(i>-1) a.splice(i,1); onMutate(true); };
+  });
+  const add=container.querySelector("[data-prepadd]");
+  if(add) add.addEventListener("keydown",e=>{ if(e.key!=="Enter") return; const v=add.value.trim(); if(!v) return; getArr().push({id:uid(),text:v,done:false}); add.value=""; onMutate(true); });
+}
 function gymCount(fromIso,toIso){ let n=0; Object.keys(P().dayPlans).forEach(k=>{ if(k>=fromIso&&k<=toIso&&P().dayPlans[k].gym) n++; }); return n; }
 const PPROJ_PALETTE=["#d97742","#63886f","#1d4fb8","#6b3fb8","#b83f8e","#0e8f8f","#caa500","#5b6472"];
 /* time-of-day buckets (with an exact-time escape hatch). entry.time stores a slot token, an "HH:MM", or "" */
@@ -3049,7 +3094,7 @@ function curWeekIso(){ return iso(weekStart(new Date())); }
 function planFor(dt,create){
   let d=P().dayPlans[dt];
   if(!d && create){
-    d={date:dt,entries:[],firstThing:"",firstPrep:"",committed:false,committedAt:0,bestMoment:"",heavy:false,energy:"medium",dots:[false,false,false],triaged:false,happened:[],meetups:[],feeling:"",mood:0,gym:false,gymPlanned:false,finalized:false,finalizedAt:0};
+    d={date:dt,entries:[],firstThing:"",firstPrep:[],firstDone:false,firstBarrier:"",committed:false,committedAt:0,bestMoment:"",heavy:false,energy:"medium",dots:[false,false,false],triaged:false,happened:[],meetups:[],feeling:"",mood:0,gym:false,gymPlanned:false,finalized:false,finalizedAt:0};
     const wd=(parseISO(dt).getDay()+6)%7;
     P().items.filter(it=>it.status!=="done" && it.recurringRule && (it.recurringRule.type==="daily" || (it.recurringRule.type==="weekly" && it.recurringRule.weekday===wd)))
       .forEach(it=>d.entries.push({id:uid(),itemId:it.id,time:"",dur:it.timeEstimate||0,done:false,label:""}));
@@ -3170,20 +3215,22 @@ function pStats(){
   const days=(from,to,fn)=>{ let n=0; for(let dt=from; dt<=to; dt=iso(addDays(parseISO(dt),1))) if(fn(dt)) n++; return n; };
   const tISO=todayISO(); const ws=curWeekIso();
   const plans=P().dayPlans;
-  let meets=0, refl=0, habit=0, gymMonth=0, gymWeek=0, finalizedWeek=0, finalizedMonth=0;
+  let meets=0, refl=0, habit=0, gymMonth=0, gymWeek=0, finalizedWeek=0, finalizedMonth=0, firstWinWeek=0, firstSetWeek=0; const barrierTally={};
   Object.keys(plans).forEach(k=>{ if(k<monthStart||k>tISO) return; const pl=plans[k];
     meets+=(pl.meetups||[]).filter(m=>m.status==="met").length;
     if((pl.feeling||"").trim()||pl.mood>0) refl++;
     if(P().dotDefs.length&&pl.dots&&P().dotDefs.every((_,i)=>pl.dots[i])) habit++;
     if(pl.gym){ gymMonth++; if(k>=ws) gymWeek++; }
     if(pl.finalized){ finalizedMonth++; if(k>=ws) finalizedWeek++; }
+    if((pl.firstThing||"").trim()){ if(k>=ws){ firstSetWeek++; if(pl.firstDone) firstWinWeek++; } if(!pl.firstDone && pl.firstBarrier) barrierTally[pl.firstBarrier]=(barrierTally[pl.firstBarrier]||0)+1; }
   });
+  const topBarrier=Object.entries(barrierTally).sort((a,b)=>b[1]-a[1])[0]||null;
   return {
     meWeek:days(ws,tISO,dayHasForMe),
     weekLen:Math.round((d0(new Date())-d0(parseISO(ws)))/864e5)+1,
     meMonth:days(monthStart,tISO,dayHasForMe),
     monthLen:Math.round((d0(new Date())-d0(parseISO(monthStart)))/864e5)+1,
-    meets,refl,habit,gymWeek,gymMonth,finalizedWeek,finalizedMonth,streak:finalizeStreak()
+    meets,refl,habit,gymWeek,gymMonth,finalizedWeek,finalizedMonth,firstWinWeek,firstSetWeek,topBarrier,streak:finalizeStreak()
   };
 }
 
@@ -3246,7 +3293,7 @@ function dayRecapHTML(dt,plan){
   const chip=(txt,cls)=>`<span class="recap-chip ${cls||""}">${txt}</span>`;
   return `<div class="day-recap">
     <div class="recap-head"><span>✓ Day closed${plan.finalizedAt?" · "+new Date(plan.finalizedAt).toLocaleString(undefined,{weekday:"short",hour:"numeric",minute:"2-digit"}):""}</span><span class="grow"></span><button class="btn ghost sm" data-reopen>Reopen to edit</button></div>
-    ${(plan.firstThing||"").trim()?`<div class="recap-first">▶ ${esc(plan.firstThing)}</div>`:""}
+    ${(plan.firstThing||"").trim()?`<div class="recap-first">▶ ${esc(plan.firstThing)} ${plan.firstDone?`<span style="color:var(--s-done)">✓</span>`:(plan.firstBarrier?`<span style="color:var(--faint);font-size:12px;font-weight:600">— ${BARRIERS[plan.firstBarrier]||""}</span>`:"")}</div>`:""}
     <div class="recap-chips">
       ${chip("✔ "+tDone+(rt.length?"/"+rt.length:"")+" task"+(rt.length===1?"":"s"))}
       ${mDone?chip("🧡 "+mDone+" for me","forme"):""}
@@ -3274,13 +3321,20 @@ function dayPageHTML(dt){
       ${type==="responsibility"?(()=>{ const pool=P().items.filter(i=>i.type==="responsibility"&&i.status!=="done"&&!plan.entries.some(e=>e.itemId===i.id));
         return pool.length?`<select data-dpimport style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--border);background:var(--surface-2);font-size:11.5px;color:var(--muted)"><option value="">＋ pick from Need To / project steps…</option>${pool.map(i=>{ const pr=i.projId?P().projects.find(p=>p.id===i.projId):null; return `<option value="${i.id}">${pr?"◆ "+esc(pr.title)+" · ":""}${esc(i.title)}</option>`; }).join("")}</select>`:""; })():""}
     </div>`; };
-  /* Box 1 — the first activity of the day (set the day before, on the Tomorrow page),
-     plus what to prep the night before so the barrier to doing it is low */
+  /* Box 1 — the first activity of the day. Shows the prep steps you set up the night
+     before, a "did it?" toggle, and — if you didn't — why not (barrier tags). */
+  const hasFirst=(plan.firstThing||"").trim()||(plan.firstPrep||[]).length;
   const firstBox=`<div class="lane day-first" style="border-top-color:#e0a100">
-    <h3 style="color:#b98600">▶ First activity${isToday?` <span class="grow"></span><span style="text-transform:none;letter-spacing:0;font-weight:600;color:var(--faint)">set the night before</span>`:``}</h3>
+    <h3 style="color:#b98600">▶ First activity${isToday?` <span class="grow"></span><span class="hint">set the night before</span>`:``}</h3>
     <textarea data-firstthing rows="1" placeholder="${isFuture?"What should this day start with?":"The one thing to start the day with…"}">${esc(plan.firstThing||"")}</textarea>
-    <div class="first-prep-lab">🌙 To make it easy — prep the night before</div>
-    <textarea data-firstprep class="first-prep" rows="1" placeholder="What to set up tonight so it's effortless — clothes out, water ready, the file already open…">${esc(plan.firstPrep||"")}</textarea>
+    ${hasFirst?`
+      <div class="first-prep-lab">✅ Prep I did to make it easy</div>
+      ${prepChecklistHTML(plan.firstPrep,"fp")}
+      ${!isFuture?`<div class="first-didit">
+        <button type="button" class="chip did ${plan.firstDone?"on":""}" data-firstdone>${plan.firstDone?"✓ Did it":"Did it?"}</button>
+        ${!plan.firstDone?`<span class="first-why">didn't happen? ${Object.entries(BARRIERS).map(([k,v])=>`<button type="button" class="bchip ${plan.firstBarrier===k?"on":""}" data-barrier="${k}">${v}</button>`).join("")}</span>`:""}
+      </div>`:""}
+    `:""}
   </div>`;
   /* Box 4 — who I'm meeting */
   const peopleBox=`<div class="lane day-people" style="border-top-color:${CAL_COLORS.meet}">
@@ -3312,6 +3366,14 @@ function dayPageHTML(dt){
   const finalizeBar = plan.finalized
     ? `<div class="finalize-bar done"><span>✓ Day finalized${plan.finalizedAt?" · "+new Date(plan.finalizedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}):""}</span><span class="grow"></span><button class="btn ghost sm" data-reopen>Reopen</button></div>`
     : `<div class="finalize-bar"><div><b>◷ This day isn't closed yet</b><div class="fb-sub">Finalize it to record it in your stats &amp; streak</div></div><span class="grow"></span><button class="btn primary" data-finalize>✓ Finalize day</button></div>`;
+  /* the evening ritual — set & prep TOMORROW's first activity from today's page (edits tomorrow's plan) */
+  const tmwISO=iso(addDays(new Date(),1)); const _tmw=P().dayPlans[tmwISO];
+  const setupTomorrow=`<div class="lane setup-tmw" style="border-top-color:#8a63d2">
+    <h3 style="color:#8a63d2">🌙 Set up tomorrow <span class="grow"></span><span class="hint">lower tomorrow's barrier tonight</span></h3>
+    <textarea data-tmwfirst rows="1" placeholder="Tomorrow's first activity — what will you start with?">${esc(_tmw?_tmw.firstThing:"")}</textarea>
+    <div class="first-prep-lab">🧰 Prep steps — write them, then tick each as you get it ready tonight</div>
+    ${prepChecklistHTML(_tmw?_tmw.firstPrep:[], "tfp")}
+  </div>`;
   const whatHappened=`<div style="margin-top:14px"><div class="section-h" style="margin:0 0 8px">What happened — everything done today <span class="line"></span><span style="text-transform:none;letter-spacing:0;font-weight:600;color:var(--faint)">checked plans + things you just did</span></div>
     <div class="lanes">
       ${[["task","responsibility"],["forMe","forMe"]].map(([kind,ptype])=>{
@@ -3330,6 +3392,7 @@ function dayPageHTML(dt){
   return `
     <div class="day4">${firstBox}${lane("responsibility",isToday?"Tasks for today":"Tasks","")}${lane("forMe","Things for me 🧡","forme")}${peopleBox}</div>
     ${gymPlanStrip}
+    ${isToday?setupTomorrow:""}
     <details class="day-log" ${dayLogOpen?"open":""}>
       <summary><svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>📓 ${isFuture?"Plan the rest":"What happened & how I felt"}<span class="grow"></span><span style="text-transform:none;letter-spacing:0;font-weight:600;color:var(--faint)">${isFuture?"gym":"habits · gym · what I did · reflection"}</span></summary>
       <div class="day-log-body">
@@ -3410,7 +3473,14 @@ function bindDayPage(host,dt,rerender){
   const gp=host.querySelector("[data-gymplan]"); if(gp) gp.onclick=()=>{ plan.gymPlanned=!plan.gymPlanned; save(); rerender(); };
   const fe=host.querySelector("[data-feel]"); if(fe) fe.addEventListener("input",ev=>{ plan.feeling=ev.target.value; save(); });
   const ft=host.querySelector("[data-firstthing]"); if(ft){ autoGrow(ft); ft.addEventListener("input",()=>{ plan.firstThing=ft.value; save(); autoGrow(ft); }); }
-  const fp=host.querySelector("[data-firstprep]"); if(fp){ autoGrow(fp); fp.addEventListener("input",()=>{ plan.firstPrep=fp.value; save(); autoGrow(fp); }); }
+  const fpList=host.querySelector('.prep-list[data-preplist="fp"]'); if(fpList) bindPrepChecklist(fpList, ()=>plan.firstPrep, needR=>{ save(); if(needR) rerender(); });
+  const fd=host.querySelector("[data-firstdone]"); if(fd) fd.onclick=()=>{ plan.firstDone=!plan.firstDone; if(plan.firstDone) plan.firstBarrier=""; save(); rerender(); };
+  host.querySelectorAll("[data-barrier]").forEach(b=>b.onclick=()=>{ plan.firstBarrier=(plan.firstBarrier===b.dataset.barrier)?"":b.dataset.barrier; save(); rerender(); });
+  const tf=host.querySelector("[data-tmwfirst]");
+  if(tf){ const tmwISO=iso(addDays(new Date(),1)); const getTmw=()=>planFor(tmwISO,true); autoGrow(tf);
+    tf.addEventListener("input",()=>{ getTmw().firstThing=tf.value; save(); autoGrow(tf); });
+    const tfpList=host.querySelector('.prep-list[data-preplist="tfp"]'); if(tfpList) bindPrepChecklist(tfpList, ()=>getTmw().firstPrep, needR=>{ save(); if(needR) rerender(); });
+  }
   bindDots(host,plan,rerender);
   const dl=host.querySelector(".day-log"); if(dl) dl.addEventListener("toggle",()=>{ dayLogOpen=dl.open; });
   const fin=host.querySelector("[data-finalize]"); if(fin) fin.onclick=()=>{ plan.finalized=true; plan.finalizedAt=Date.now(); save(); rerender(); const s=finalizeStreak(); toast(s>1?("Day finalized ✓ — "+s+"-day streak 🔥"):"Day finalized ✓"); };
@@ -3692,6 +3762,7 @@ function renderPOverview(){
     <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
       <div class="kpi"><div class="lab">Days closed · this week</div><div class="val">${st.finalizedWeek}<em> / ${st.weekLen}</em></div></div>
       <div class="kpi"><div class="lab">Days recorded · this month</div><div class="val">${Math.round(st.finalizedMonth/Math.max(1,st.monthLen)*100)}<em>%</em></div></div>
+      <div class="kpi"><div class="lab">▶ Morning wins · this week</div><div class="val" style="color:#b98600">${st.firstWinWeek}<em> / ${st.firstSetWeek||0}</em></div></div>
       <div class="kpi"><div class="lab">🔥 Finalize streak</div><div class="val">${st.streak}<em> ${st.streak===1?"day":"days"}</em></div></div>
       <div class="kpi"><div class="lab">For-me days · this week</div><div class="val">${st.meWeek}<em> / ${st.weekLen}</em></div></div>
       <div class="kpi"><div class="lab">For-me days · this month</div><div class="val">${st.meMonth}<em> / ${st.monthLen}</em></div></div>
@@ -3700,7 +3771,8 @@ function renderPOverview(){
       <div class="kpi"><div class="lab">Meetups · this month</div><div class="val">${st.meets}</div></div>
       <div class="kpi"><div class="lab">Reflections · this month</div><div class="val">${st.refl}</div></div>
       <div class="kpi"><div class="lab">Full habit days · this month</div><div class="val">${st.habit}</div></div>
-    </div>`;
+    </div>
+    ${st.topBarrier?`<div style="font-size:11.5px;color:var(--faint);margin-top:8px">▶ Most common first-thing blocker this month: <b>${BARRIERS[st.topBarrier[0]]||st.topBarrier[0]}</b> · ${st.topBarrier[1]}×</div>`:""}`;
   $("pExport").onclick=exportPersonal;
   const cn=$("closeNudge"); if(cn) cn.onclick=()=>{ pDayIso=openRecent[0]; switchPTab("today"); };
   bindFlagBanner(host);

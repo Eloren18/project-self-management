@@ -600,6 +600,26 @@ async function HARNESS() {
     check('re-normalizing keeps steps as a stable 2-item checklist (no re-split)', c2.steps.length === 2 && c2.steps[1].done === true);
   }
 
+  // ============================================================
+  //  S18 — first-activity prep migrates from legacy string to a checklist (never lost)
+  // ============================================================
+  scen('S18 First-activity prep: legacy string → checklist, firstDone/firstBarrier preserved');
+  {
+    const blob = normalize(clone({
+      personal: { dayPlans: {
+        '2026-07-01': { firstThing: 'Write', firstPrep: 'open doc\nphone away', firstDone: true, firstBarrier: '' },
+        '2026-07-02': { firstThing: 'Run', firstPrep: [{ id: 'x', text: 'shoes out', done: true }], firstDone: false, firstBarrier: 'tired' },
+      } },
+    }));
+    const d1 = blob.personal.dayPlans['2026-07-01'];
+    const d2 = blob.personal.dayPlans['2026-07-02'];
+    check('legacy string firstPrep becomes a 2-item checklist', Array.isArray(d1.firstPrep) && d1.firstPrep.length === 2 && d1.firstPrep[0].text === 'open doc' && d1.firstPrep[1].text === 'phone away');
+    check('firstDone and firstBarrier are preserved', d1.firstDone === true && d2.firstDone === false && d2.firstBarrier === 'tired');
+    check('an already-array firstPrep is kept as-is (id/text/done)', d2.firstPrep.length === 1 && d2.firstPrep[0].text === 'shoes out' && d2.firstPrep[0].done === true);
+    const twice = normalize(clone(blob));
+    check('re-normalizing keeps the checklist stable (no re-split, no loss)', twice.personal.dayPlans['2026-07-01'].firstPrep.length === 2);
+  }
+
   // ===== report =====
   __log.push('\n' + '─'.repeat(60));
   __log.push('  ' + __pass + ' passed, ' + __fail + ' failed');
