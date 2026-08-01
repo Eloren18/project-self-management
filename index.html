@@ -597,6 +597,7 @@
   .recap-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px;}
   .recap-chip{font-size:12px;font-weight:600;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);padding:5px 10px;}
   .recap-chip.forme{color:#2e8b57;} .recap-chip.meet{color:#6b3fb8;}
+  .pi-badge.carry{color:#b98600;border-color:color-mix(in srgb,#b98600 40%,var(--border));background:color-mix(in srgb,#b98600 8%,transparent);font-weight:700;}
   .recap-feel{margin-top:12px;font-size:13px;line-height:1.6;color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere;border-left:3px solid #e9c400;padding:2px 0 2px 12px;}
   .recap-meets{margin-top:10px;display:flex;flex-direction:column;gap:5px;}
   .recap-meet{font-size:12px;color:var(--muted);overflow-wrap:anywhere;}
@@ -676,6 +677,7 @@
     <div class="lbl">Personal Life</div>
     <button class="tab" data-ptab="hub">Overview</button>
     <button class="tab" data-ptab="today">Today</button>
+    <button class="tab" data-ptab="todo">To-Do</button>
     <button class="tab" data-ptab="tomorrow">Tomorrow</button>
     <button class="tab" data-ptab="pcal">Calendar</button>
     <button class="tab" data-ptab="focus">Focus</button>
@@ -802,6 +804,7 @@
 
   <!-- ============ PERSONAL LIFE PAGES ============ -->
   <section class="page hidden" id="ppage-today"><div id="pTodayBody"></div></section>
+  <section class="page hidden" id="ppage-todo"><div id="pToDoBody"></div></section>
   <section class="page hidden" id="ppage-tomorrow"><div id="pTomorrowBody"></div></section>
   <section class="page hidden" id="ppage-pcal"><div id="pCalBody"></div></section>
   <section class="page hidden" id="ppage-focus"><div id="pFocusBody"></div></section>
@@ -1181,7 +1184,8 @@ function normalizePersonal(p){
   p.projects.forEach(pr=>{ pr.id ||= uid(); pr.title ??= ""; pr.notes ??= ""; pr.color ??= PPROJ_PALETTE[0]; pr.status = pr.status==="done"?"done":"active"; pr.createdAt ??= Date.now(); pr.completedAt ??= 0; });
   p.dayPlans = (p.dayPlans && typeof p.dayPlans==="object" && !Array.isArray(p.dayPlans)) ? p.dayPlans : {};
   Object.keys(p.dayPlans).forEach(k=>{ const d=p.dayPlans[k]; d.date=k;
-    d.entries = Array.isArray(d.entries)?d.entries:[]; d.entries.forEach(e=>{ e.id ||= uid(); e.itemId ??= ""; e.time ??= ""; e.dur = +e.dur||0; e.done = !!e.done; e.label ??= ""; });
+    d.entries = Array.isArray(d.entries)?d.entries:[]; d.entries.forEach(e=>{ e.id ||= uid(); e.itemId ??= ""; e.time ??= ""; e.dur = +e.dur||0; e.done = !!e.done; e.label ??= ""; e.since ??= k; });
+    d.rolledCount = +d.rolledCount||0; /* how many unfinished actionable things rolled off this day when it was finalized */
     d.firstThing ??= ""; d.firstPrep = normMeetingSteps(d.firstPrep); d.firstDone = !!d.firstDone; d.firstBarrier ??= ""; /* first-activity: what, the prep steps I did, whether I did it, and why not */
     d.committed = !!d.committed; d.committedAt ??= 0; d.bestMoment ??= ""; d.heavy = !!d.heavy;
     d.finalized = !!d.finalized; d.finalizedAt ??= 0;   /* the day has been deliberately closed/recorded */
@@ -1195,7 +1199,7 @@ function normalizePersonal(p){
     }
     d.happened=[];
     d.meetups = Array.isArray(d.meetups)?d.meetups:[];
-    d.meetups.forEach(mu=>{ mu.id ||= uid(); mu.personId ??= ""; mu.note ??= ""; mu.status = ["met","planned","missed"].includes(mu.status)?mu.status:"met"; mu.createdAt ??= Date.now(); });
+    d.meetups.forEach(mu=>{ mu.id ||= uid(); mu.personId ??= ""; mu.note ??= ""; mu.status = ["met","planned","missed"].includes(mu.status)?mu.status:"met"; mu.createdAt ??= Date.now(); mu.since ??= k; });
     d.feeling ??= ""; d.mood = (+d.mood>=1&&+d.mood<=7)?+d.mood:0; d.gym = !!d.gym; d.gymPlanned = !!d.gymPlanned; });
   p.bucket = Array.isArray(p.bucket) ? p.bucket : [];
   p.bucket.forEach(b=>{ b.id ||= uid(); b.title ??= ""; b.why ??= "";
@@ -3095,7 +3099,7 @@ function curWeekIso(){ return iso(weekStart(new Date())); }
 function planFor(dt,create){
   let d=P().dayPlans[dt];
   if(!d && create){
-    d={date:dt,entries:[],firstThing:"",firstPrep:[],firstDone:false,firstBarrier:"",committed:false,committedAt:0,bestMoment:"",heavy:false,energy:"medium",dots:[false,false,false],triaged:false,happened:[],meetups:[],feeling:"",mood:0,gym:false,gymPlanned:false,finalized:false,finalizedAt:0};
+    d={date:dt,entries:[],rolledCount:0,firstThing:"",firstPrep:[],firstDone:false,firstBarrier:"",committed:false,committedAt:0,bestMoment:"",heavy:false,energy:"medium",dots:[false,false,false],triaged:false,happened:[],meetups:[],feeling:"",mood:0,gym:false,gymPlanned:false,finalized:false,finalizedAt:0};
     const wd=(parseISO(dt).getDay()+6)%7;
     P().items.filter(it=>it.status!=="done" && it.recurringRule && (it.recurringRule.type==="daily" || (it.recurringRule.type==="weekly" && it.recurringRule.weekday===wd)))
       .forEach(it=>d.entries.push({id:uid(),itemId:it.id,time:"",dur:it.timeEstimate||0,done:false,label:""}));
@@ -3106,7 +3110,7 @@ function planFor(dt,create){
 function addToPlan(dt,itemId,opts){
   const plan=planFor(dt,true); opts=opts||{};
   if(plan.entries.some(e=>e.itemId===itemId)){ toast("Already on that day"); return null; }
-  const it=pItem(itemId); const e={id:uid(),itemId,time:opts.time||"",dur:opts.dur!==undefined?opts.dur:(it&&it.timeEstimate||0),done:false,label:""};
+  const it=pItem(itemId); const e={id:uid(),itemId,time:opts.time||"",dur:opts.dur!==undefined?opts.dur:(it&&it.timeEstimate||0),done:false,label:"",since:dt};
   plan.entries.push(e); save(); return e;
 }
 function completeItemEffects(it){
@@ -3122,6 +3126,53 @@ function blockAwareComplete(e,it){
     if(openElsewhere){ it.completedAt=Date.now(); toast("Block done — more blocks remain ⧉"); }
     else completeItemEffects(it);
   } else uncompleteItemEffects(it);
+}
+/* ---- carry-over + To-Do plumbing ---- */
+function agoLabel(sinceISO, refISO){
+  const a=parseISO(sinceISO), b=parseISO(refISO||todayISO()); if(!a||!b) return "";
+  const d=Math.round((d0(b)-d0(a))/864e5);
+  if(d<=0) return ""; if(d===1) return "from yesterday";
+  if(d<7) return d+" days ago"; if(d<14) return "1 week ago";
+  if(d<21) return "2 weeks ago"; if(d<28) return "3 weeks ago";
+  const m=Math.round(d/30.4); return (m<=1?"1 month":m+" months")+" ago";
+}
+/* on finalize, carry unfinished actionable things (tasks + for-me + planned meetups; not recurring)
+   from a finalized day onto the next day. The old day remembers how many rolled off (rolledCount). */
+function rollOverDay(dt){
+  const plan=P().dayPlans[dt]; if(!plan) return 0;
+  const next=iso(addDays(parseISO(dt),1)); const np=planFor(next,true);
+  let rolled=0; const keep=[];
+  plan.entries.forEach(e=>{ const it=pItem(e.itemId);
+    if(!it || e.done || it.recurringRule){ keep.push(e); return; }
+    if(np.entries.some(x=>x.itemId===e.itemId)){ keep.push(e); return; }   /* already on tomorrow */
+    np.entries.push({id:uid(),itemId:e.itemId,time:"",dur:e.dur||0,done:false,label:"",since:e.since||dt});
+    rolled++;
+  });
+  plan.entries=keep;
+  const mkeep=[];
+  (plan.meetups||[]).forEach(mu=>{ if(mu.status!=="planned"){ mkeep.push(mu); return; }
+    np.meetups.push({id:uid(),personId:mu.personId,note:mu.note||"",status:"planned",createdAt:Date.now(),since:mu.since||dt}); rolled++;
+  });
+  plan.meetups=mkeep;
+  plan.rolledCount=(plan.rolledCount||0)+rolled;
+  return rolled;
+}
+function itemEntries(itemId){ const out=[]; Object.keys(P().dayPlans).forEach(dt=>{ (P().dayPlans[dt].entries||[]).forEach(e=>{ if(e.itemId===itemId) out.push({dt,e}); }); }); return out; }
+function latestItemEntry(itemId){ return itemEntries(itemId).sort((a,b)=>(b.dt||"").localeCompare(a.dt||""))[0]||null; }
+/* a task disappears from To-Do only once it's checked off AND its day is finalized */
+function todoCleared(it){ const es=itemEntries(it.id);
+  if(!es.length) return it.status==="done";          /* no-day: cleared once done (checking files it to today) */
+  return es.every(({dt,e})=> e.done && P().dayPlans[dt] && P().dayPlans[dt].finalized);
+}
+function todoToggle(it){
+  const latest=latestItemEntry(it.id);
+  if(latest){ latest.e.done=!latest.e.done; blockAwareComplete(latest.e,it); }
+  else { /* un-scheduled task: file it as a completed task on today, then it clears when today is finalized */
+    const today=todayISO(); const plan=planFor(today,true);
+    plan.entries.push({id:uid(),itemId:it.id,time:"",dur:0,done:true,label:"",since:iso(new Date(it.createdAt||Date.now()))});
+    completeItemEffects(it);
+  }
+  save();
 }
 function overduePeople(){
   const t0=d0(new Date());
@@ -3257,11 +3308,11 @@ function switchPTab(t){
   $("page-project").classList.add("hidden");
   document.querySelectorAll("#mainArea > .page").forEach(s=>s.classList.toggle("hidden", s.id!=="ppage-"+t));
   $("personalTabs").querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.ptab===t));
-  $("viewTitle").textContent=({hub:"Overview",today:"Today",tomorrow:"Tomorrow",pcal:"Calendar",focus:"Focus",bucket:"Bucket List",people:"People",log:"Journal",pnotes:"Self Notes"})[t]||"Today";
+  $("viewTitle").textContent=({hub:"Overview",today:"Today",todo:"To-Do",tomorrow:"Tomorrow",pcal:"Calendar",focus:"Focus",bucket:"Bucket List",people:"People",log:"Journal",pnotes:"Self Notes"})[t]||"Today";
   pR(); window.scrollTo(0,0);
 }
 function renderPHub(){ renderPOverview(); renderPProjects(); renderPResp(); }
-function pR(){ if(appMode!=="personal") return; if(["overview","resp","pprojects"].includes(pTab)) pTab="hub"; ({hub:renderPHub,today:renderPToday,tomorrow:renderPTomorrow,pcal:renderPCal,focus:renderPFocus,bucket:renderPBucket,people:renderPPeople,log:renderPLog,pnotes:renderPNotes}[pTab]||renderPToday)(); }
+function pR(){ if(appMode!=="personal") return; if(["overview","resp","pprojects"].includes(pTab)) pTab="hub"; ({hub:renderPHub,today:renderPToday,todo:renderPToDo,tomorrow:renderPTomorrow,pcal:renderPCal,focus:renderPFocus,bucket:renderPBucket,people:renderPPeople,log:renderPLog,pnotes:renderPNotes}[pTab]||renderPToday)(); }
 
 /* ---- the day page (shared by Today, Tomorrow, and the calendar's day view) ---- */
 function projChipHTML(it){ if(!it.projId) return ""; const pr=P().projects.find(p=>p.id===it.projId); if(!pr) return ""; return `<span class="pproj-chip" data-goproj="${pr.id}" style="background:${pr.color}" title="Project: ${esc(pr.title)}">◆ ${esc(pr.title)}</span>`; }
@@ -3274,6 +3325,7 @@ function dpRowHTML(plan,e){
       <div class="dp-title-disp">${esc(it.title)||'<span style="color:var(--faint);font-weight:500">Untitled — tap to edit</span>'}</div>
       <div class="pi-sub">
         ${projChipHTML(it)}
+        ${(e.since&&plan.date&&e.since<plan.date)?`<span class="pi-badge carry" title="carried from ${esc(e.since)}">↪ ${agoLabel(e.since,plan.date)}</span>`:""}
         ${e.label?`<span class="pi-badge">${esc(e.label)}</span>`:""}
         ${e.time?`<span class="pi-badge">${esc(slotLabel(e.time))}${e.dur?" · "+fmtMin(e.dur):""}</span>`:(e.dur?`<span class="pi-badge">${fmtMin(e.dur)}</span>`:"")}
         ${it.recurringRule?`<span class="pi-badge">↻</span>`:""}
@@ -3296,8 +3348,9 @@ function dayRecapHTML(dt,plan){
     <div class="recap-head"><span>✓ Day closed${plan.finalizedAt?" · "+new Date(plan.finalizedAt).toLocaleString(undefined,{weekday:"short",hour:"numeric",minute:"2-digit"}):""}</span><span class="grow"></span><button class="btn ghost sm" data-reopen>Reopen to edit</button></div>
     ${(plan.firstThing||"").trim()?`<div class="recap-first">▶ ${esc(plan.firstThing)} ${plan.firstDone?`<span style="color:var(--s-done)">✓</span>`:(plan.firstBarrier?`<span style="color:var(--faint);font-size:12px;font-weight:600">— ${BARRIERS[plan.firstBarrier]||""}</span>`:"")}</div>`:""}
     <div class="recap-chips">
-      ${chip("✔ "+tDone+(rt.length?"/"+rt.length:"")+" task"+(rt.length===1?"":"s"))}
+      ${chip("✔ "+tDone+" task"+(tDone===1?"":"s")+" done")}
       ${mDone?chip("🧡 "+mDone+" for me","forme"):""}
+      ${plan.rolledCount?chip("↪ "+plan.rolledCount+" rolled over"):""}
       ${chip(plan.gym?"🏋 went":(plan.gymPlanned?"🏋 planned · skipped":"🏋 —"))}
       ${plan.mood?chip(MOODS[plan.mood-1]+" mood"):""}
       ${habits.length?chip("✓ "+esc(habits.join(", "))):""}
@@ -3446,7 +3499,7 @@ function bindDayPage(host,dt,rerender){
     if(ev.key!=="Enter") return; const t=(inp.value||"").trim(); if(!t) return;
     const type=inp.dataset.dpadd;
     const it={id:uid(),title:t,notes:"",type,timeEstimate:0,energy:"medium",tags:[],status:"open",createdAt:Date.now(),completedAt:0,recurringRule:null,intention:"",isRest:false,personId:"",bucketId:"",stepId:"",focusSessions:0};
-    P().items.push(it); plan.entries.push({id:uid(),itemId:it.id,time:"",dur:0,done:false,label:""});
+    P().items.push(it); plan.entries.push({id:uid(),itemId:it.id,time:"",dur:0,done:false,label:"",since:dt});
     save(); rerender();
     const again=host.querySelector(`[data-dpadd="${type}"]`); if(again) again.focus();
   }));
@@ -3455,7 +3508,7 @@ function bindDayPage(host,dt,rerender){
     const type=ha.dataset.hapadd==="forMe"?"forMe":"responsibility";
     /* logged-as-done = a real completed task, so it behaves exactly like a checked plan */
     const it={id:uid(),title:t,notes:"",type,timeEstimate:0,energy:"medium",tags:[],status:"done",createdAt:Date.now(),completedAt:Date.now(),recurringRule:null,intention:"",isRest:false,personId:"",bucketId:"",stepId:"",projId:"",focusSessions:0};
-    P().items.push(it); plan.entries.push({id:uid(),itemId:it.id,time:"",dur:0,done:true,label:""});
+    P().items.push(it); plan.entries.push({id:uid(),itemId:it.id,time:"",dur:0,done:true,label:"",since:dt});
     save(); rerender(); const again=host.querySelector(`[data-hapadd="${ha.dataset.hapadd}"]`); if(again) again.focus();
   }));
   host.querySelectorAll("[data-meet]").forEach(row=>{
@@ -3481,7 +3534,7 @@ function bindDayPage(host,dt,rerender){
   }
   bindDots(host,plan,rerender);
   const dl=host.querySelector(".day-log"); if(dl) dl.addEventListener("toggle",()=>{ dayLogOpen=dl.open; });
-  const fin=host.querySelector("[data-finalize]"); if(fin) fin.onclick=()=>{ plan.finalized=true; plan.finalizedAt=Date.now(); save(); rerender(); const s=finalizeStreak(); toast(s>1?("Day finalized ✓ — "+s+"-day streak 🔥"):"Day finalized ✓"); };
+  const fin=host.querySelector("[data-finalize]"); if(fin) fin.onclick=()=>{ plan.finalized=true; plan.finalizedAt=Date.now(); const rolled=rollOverDay(dt); save(); rerender(); const s=finalizeStreak(); toast((rolled?rolled+" carried to tomorrow · ":"")+(s>1?("Finalized ✓ — "+s+"-day streak 🔥"):"Day finalized ✓")); };
   const rop=host.querySelector("[data-reopen]"); if(rop) rop.onclick=()=>{ plan.finalized=false; plan.finalizedAt=0; save(); rerender(); };
   bindAutoGrow(host);
 }
@@ -3562,6 +3615,59 @@ function renderPToday(){
   if(isToday) maybeShowFlag();
 }
 
+/* ---- To-Do: every open actionable thing across all days, with how long it's been carried ---- */
+function renderPToDo(){
+  const host=$("pToDoBody"); if(!host) return;
+  const tISO=todayISO();
+  const rows=[];
+  P().items.forEach(it=>{
+    if(it.recurringRule) return;
+    if(todoCleared(it)) return;
+    const latest=latestItemEntry(it.id);
+    rows.push({kind:"item",it,done:latest?latest.e.done:(it.status==="done"),dayISO:latest?latest.dt:"",since:latest?(latest.e.since||latest.dt):iso(new Date(it.createdAt||Date.now()))});
+  });
+  Object.keys(P().dayPlans).forEach(dt=>{ (P().dayPlans[dt].meetups||[]).forEach(mu=>{ if(mu.status!=="planned") return;
+    rows.push({kind:"meet",mu,dt,per:P().people.find(p=>p.id===mu.personId),since:mu.since||dt}); }); });
+  const open=rows.filter(r=>!r.done).sort((a,b)=>(a.since||"").localeCompare(b.since||""));
+  const done=rows.filter(r=>r.done).sort((a,b)=>(b.since||"").localeCompare(a.since||""));
+  const agoBadge=since=>{ const l=agoLabel(since,tISO); return l?`<span class="pi-badge carry" title="on your plate since ${esc(since)}">↪ ${l}</span>`:""; };
+  const rowHTML=r=>{
+    if(r.kind==="meet") return `<div class="pi-row" data-tdmeet="${r.dt}|${r.mu.id}" style="align-items:center;border-left-color:${CAL_COLORS.meet}">
+      <span style="min-width:16px;text-align:center">👥</span><b style="color:${CAL_COLORS.meet}">${esc(r.per?r.per.name:"someone")}</b>
+      <span class="pi-badge">planned</span>${agoBadge(r.since)}<span class="grow"></span><button class="btn sm" data-tdmet>met ✓</button></div>`;
+    const it=r.it;
+    return `<div class="pi-row ${it.type==="forMe"?"forme":""} ${r.done?"done":""}" data-tditem="${it.id}" style="align-items:center">
+      <div class="check-sm ${r.done?"on":""}" data-tddone>${r.done?TICK:""}</div>
+      <div style="flex:1;min-width:0">
+        <div class="dp-title-disp">${esc(it.title)||"Untitled"}</div>
+        <div class="pi-sub">
+          ${it.type==="forMe"?`<span class="pi-badge" style="color:${CAL_COLORS.forMe}">🧡 for me</span>`:""}
+          ${projChipHTML(it)}
+          <span class="pi-badge">${r.dayISO?(r.dayISO===tISO?"today":(r.dayISO>tISO?"tomorrow":fmtShort(r.dayISO))):"unscheduled"}</span>
+          ${agoBadge(r.since)}
+          ${r.done?`<span class="pi-badge" style="color:var(--s-done)">✓ clears when you finalize its day</span>`:""}
+        </div>
+      </div>
+      <button class="pi-act" data-tdopen title="Open its day">↗</button>
+    </div>`;
+  };
+  host.innerHTML=`
+    <div class="toolbar"><h1 class="page-title">To-Do</h1><span style="color:var(--faint);font-size:12.5px;font-weight:600">${open.length} open</span><div class="grow"></div></div>
+    <div class="qadd"><input id="tdCapture" placeholder="A task for the list… press Enter" autocomplete="off" style="flex:1;min-width:180px;border:none;background:transparent;outline:none;font-weight:600;padding:4px 2px"><button class="btn primary sm" id="tdAdd">Add</button></div>
+    ${open.length?open.map(rowHTML).join(""):`<div class="empty"><div>Nothing on your plate — you're clear ✨<br><span style="color:var(--faint)">Anything you add on a day shows here until it's checked off and that day is finalized.</span></div></div>`}
+    ${done.length?`<div class="section-h" style="margin-top:18px">Done — clears when you close their day <span class="line"></span><span style="font-weight:700">${done.length}</span></div>${done.map(rowHTML).join("")}`:""}`;
+  const add=()=>{ const t=($("tdCapture").value||"").trim(); if(!t) return;
+    P().items.push({id:uid(),title:t,notes:"",type:"responsibility",timeEstimate:0,energy:"medium",tags:[],status:"open",createdAt:Date.now(),completedAt:0,recurringRule:null,intention:"",isRest:false,personId:"",bucketId:"",stepId:"",projId:"",focusSessions:0});
+    save(); renderPToDo(); const c=$("tdCapture"); if(c) c.focus(); };
+  $("tdAdd").onclick=add; $("tdCapture").addEventListener("keydown",e=>{ if(e.key==="Enter") add(); });
+  host.querySelectorAll("[data-tditem]").forEach(row=>{ const it=pItem(row.dataset.tditem); if(!it) return;
+    row.querySelector("[data-tddone]").onclick=()=>{ todoToggle(it); renderPToDo(); };
+    const op=row.querySelector("[data-tdopen]"); if(op) op.onclick=()=>{ const l=latestItemEntry(it.id); if(!l){ toast("This one isn't on a day yet — check it off to file it on today"); return; } if(l.dt>tISO){ switchPTab("tomorrow"); } else { pDayIso=l.dt; switchPTab("today"); } };
+  });
+  host.querySelectorAll("[data-tdmeet]").forEach(row=>{ const [dt,mid]=row.dataset.tdmeet.split("|"); const pl=P().dayPlans[dt]; const mu=pl&&(pl.meetups||[]).find(x=>x.id===mid); if(!mu) return;
+    row.querySelector("[data-tdmet]").onclick=()=>{ mu.status="met"; syncLastSeen(mu.personId); save(); renderPToDo(); };
+  });
+}
 /* ---- Tomorrow (same simple day page, fixed on tomorrow) ---- */
 function renderPTomorrow(){
   const host=$("pTomorrowBody"); if(!host) return;

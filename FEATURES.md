@@ -130,7 +130,7 @@ One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both
 
 ---
 
-## 5. Personal Life platform — 9 tabs
+## 5. Personal Life platform — 10 tabs
 
 ### 5.1 Overview (hub) — day flags, overdue people, missed for-me items this week, weekly main things, stats, jump-offs into the other tabs.
 - **Finalization stats [ALWAYS CHECK]**: a "◷ N recent days still open" nudge (jumps to the latest unclosed day), plus **Days closed · this week**, **Days recorded · this month %**, **🔥 Finalize streak**, and **▶ Morning wins · this week** KPI tiles, and a "most common first-thing blocker this month" line (barrier-tag patterns).
@@ -143,6 +143,11 @@ One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both
 - **Locked recap** — a finalized day renders a **read-only recap card** (first activity, tasks/for-me done, gym, mood, habits, people + their notes, the feeling) instead of the editable planner; **Reopen to edit** returns to editing.
 - **Growing write-fields**: meetup notes (day page + Journal), the day-feeling, and People notes are all auto-growing textareas — text wraps and extends **downward**, never overflowing sideways.
 - Day-page entries keep time/duration/note/drag-reorder; responsibilities/for-me items still have the full editor (type, energy, tags, recurring rule, links). Backward day navigation; past days show the same 4-box + log + finalize.
+### 5.2b To-Do tab **[ALWAYS CHECK]**
+- A cross-day list of **every open actionable thing** — tasks, for-me items, and **planned (unmet) meetups** — each tagged with **how long it's been on your plate** (↪ from yesterday / N days ago / 1 week ago / 1 month ago, from the entry's `since`). Sorted oldest-first; a quick-add creates an unscheduled task.
+- **Removal rule:** an item leaves only once it's **checked off AND its day is finalized**; done-but-not-yet-closed items sit in a "Done — clears when you close their day" group. **Un-scheduled tasks:** checking one **files it as a completed task on today** (so it's recorded), then it clears when today is finalized. Recurring items are excluded.
+- **Carry-over [ALWAYS CHECK]:** when a day is finalized, its unfinished tasks/for-me/planned-meetups **auto-move to the next day** (`rollOverDay`), preserving each item's `since` (so the age keeps counting). The finalized day's recap shows **"↪ N rolled over"** and an honest done-count; carried tasks show the age badge on the day page too. Model migration (entry `since`, dayPlan `rolledCount`, meetup `since`) is guarded by S19.
+
 ### 5.3 Tomorrow — the SAME 4-box day page fixed on tomorrow (this is where you set tomorrow's **First activity**). Future days hide the retrospective sections — the collapsible only offers gym planning.
 ### 5.4 Calendar (personal) — month view of day plans / items / gym / mood; **finalization heatmap** (finalized days get a green inset bar + ✓; past days left open are faded with a ◷) and a "✓ N closed" month header.
 ### 5.5 Focus

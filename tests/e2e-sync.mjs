@@ -620,6 +620,24 @@ async function HARNESS() {
     check('re-normalizing keeps the checklist stable (no re-split, no loss)', twice.personal.dayPlans['2026-07-01'].firstPrep.length === 2);
   }
 
+  // ============================================================
+  //  S19 — carry-over model: entries get a `since` origin; dayPlans get rolledCount
+  // ============================================================
+  scen('S19 Carry-over model: entry `since` origin date + dayPlan rolledCount');
+  {
+    const blob = normalize(clone({
+      personal: { dayPlans: {
+        '2026-07-10': { entries: [{ id: 'e1', itemId: 'i1', done: false }, { id: 'e2', itemId: 'i2', done: false, since: '2026-07-05' }] },
+        '2026-07-11': { meetups: [{ id: 'm', personId: 'p', status: 'planned' }] },
+      } },
+    }));
+    const d = blob.personal.dayPlans['2026-07-10'];
+    check('an entry with no `since` defaults to its own day', d.entries[0].since === '2026-07-10');
+    check('an entry with an existing `since` is preserved (age origin never lost)', d.entries[1].since === '2026-07-05');
+    check('every dayPlan gains rolledCount:0', d.rolledCount === 0);
+    check('meetups also get a `since`', blob.personal.dayPlans['2026-07-11'].meetups[0].since === '2026-07-11');
+  }
+
   // ===== report =====
   __log.push('\n' + '─'.repeat(60));
   __log.push('  ' + __pass + ' passed, ' + __fail + ' failed');
