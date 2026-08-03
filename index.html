@@ -466,6 +466,8 @@
   .pi-sub{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;align-items:center;}
   .pi-badge{font-size:9.5px;font-weight:700;padding:2px 7px;background:var(--surface-2);border:1px solid var(--border-soft);color:var(--muted);letter-spacing:.3px;white-space:nowrap;}
   .pi-act{border:none;background:transparent;color:var(--faint);padding:1px 3px;cursor:pointer;font-size:12px;}
+  .td-assign{padding:4px 6px;border:1px solid var(--border);background:var(--surface-2);font-size:11px;color:var(--muted);outline:none;max-width:130px;flex:none;cursor:pointer;}
+  .td-assign:hover{border-color:var(--primary);color:var(--text);}
   .pi-act:hover{color:var(--primary);}
   .dots-row{display:flex;align-items:center;gap:16px;background:var(--surface);border:1px solid var(--border);padding:12px 16px;margin-bottom:14px;flex-wrap:wrap;}
   .dot-big{width:20px;height:20px;border-radius:50%;border:2px solid var(--border);background:var(--surface-2);cursor:pointer;display:grid;place-items:center;font-size:10px;color:#fff;transition:.15s;padding:0;}
@@ -811,7 +813,6 @@
   <section class="page hidden" id="ppage-hub">
     <div id="pOverviewBody"></div>
     <div id="pProjectsBody" style="margin-top:26px"></div>
-    <div id="pRespBody" style="margin-top:26px"></div>
   </section>
   <section class="page hidden" id="ppage-bucket"><div id="pBucketBody"></div></section>
   <section class="page hidden" id="ppage-people"><div id="pPeopleBody"></div></section>
@@ -1179,7 +1180,8 @@ function normalizePersonal(p){
   p.items.forEach(it=>{ it.id ||= uid(); it.title ??= ""; it.notes ??= ""; it.type = it.type==="forMe"?"forMe":"responsibility";
     it.timeEstimate = +it.timeEstimate||0; it.energy = ["low","medium","high"].includes(it.energy)?it.energy:"medium";
     if(!Array.isArray(it.tags)) it.tags = []; it.status = it.status==="done"?"done":"open"; it.createdAt ??= Date.now(); it.completedAt ??= 0;
-    it.recurringRule ??= null; it.intention ??= ""; it.isRest = !!it.isRest; it.personId ??= ""; it.bucketId ??= ""; it.stepId ??= ""; it.projId ??= ""; it.focusSessions ??= 0; });
+    it.recurringRule ??= null; it.intention ??= ""; it.isRest = !!it.isRest; it.personId ??= ""; it.bucketId ??= ""; it.stepId ??= ""; it.projId ??= ""; it.focusSessions ??= 0;
+    it.period = (it.period && typeof it.period==="object" && it.period.start && it.period.end) ? {start:""+it.period.start, end:""+it.period.end} : null; }); /* "anytime in this span" scheduling */
   p.projects = Array.isArray(p.projects) ? p.projects : [];
   p.projects.forEach(pr=>{ pr.id ||= uid(); pr.title ??= ""; pr.notes ??= ""; pr.color ??= PPROJ_PALETTE[0]; pr.status = pr.status==="done"?"done":"active"; pr.createdAt ??= Date.now(); pr.completedAt ??= 0; });
   p.dayPlans = (p.dayPlans && typeof p.dayPlans==="object" && !Array.isArray(p.dayPlans)) ? p.dayPlans : {};
@@ -3174,6 +3176,78 @@ function todoToggle(it){
   }
   save();
 }
+/* ---- schedule a To-Do task: a single day, a whole period (anytime in a span), or nothing ---- */
+function periodLabel(p){
+  if(!p) return "";
+  const ws=iso(weekStart(new Date())), we=iso(addDays(parseISO(ws),6));
+  const nws=iso(addDays(parseISO(ws),7)), nwe=iso(addDays(parseISO(nws),6));
+  const sat=iso(addDays(parseISO(ws),5));
+  if(p.start===ws&&p.end===we) return "this week";
+  if(p.start===nws&&p.end===nwe) return "next week";
+  if(p.start===sat&&p.end===we) return "this weekend";
+  if(p.start===p.end) return fmtShort(p.start);
+  return fmtShort(p.start)+"–"+fmtShort(p.end);
+}
+function periodActive(it){ return !!(it.period && it.period.end>=todayISO()); }  /* still has today or a future day left */
+function clearOpenScheduling(it){ /* drop unfinished day-entries; keep completed ones as history */
+  Object.keys(P().dayPlans).forEach(dt=>{ const pl=P().dayPlans[dt]; pl.entries=(pl.entries||[]).filter(e=> e.itemId!==it.id || e.done); });
+}
+function reopenIfDone(it){ if(it.status==="done"){ it.status="open"; it.completedAt=0; } }
+function assignSingleDay(it,dt){ clearOpenScheduling(it); it.period=null; reopenIfDone(it);
+  const plan=planFor(dt,true); if(!plan.entries.some(e=>e.itemId===it.id&&!e.done)) plan.entries.push({id:uid(),itemId:it.id,time:"",dur:it.timeEstimate||0,done:false,label:"",since:dt}); save(); }
+function assignPeriod(it,start,end){ clearOpenScheduling(it); reopenIfDone(it); it.period={start,end}; save(); }
+function assignSomeday(it){ clearOpenScheduling(it); it.period=null; save(); }
+async function assignFromMenu(it,val){
+  const ws=weekStart(new Date());
+  if(val==="today") assignSingleDay(it,todayISO());
+  else if(val==="tomorrow") assignSingleDay(it,iso(addDays(new Date(),1)));
+  else if(val==="week") assignPeriod(it,iso(ws),iso(addDays(ws,6)));
+  else if(val==="nextweek"){ const n=addDays(ws,7); assignPeriod(it,iso(n),iso(addDays(n,6))); }
+  else if(val==="weekend") assignPeriod(it,iso(addDays(ws,5)),iso(addDays(ws,6)));
+  else if(val==="someday") assignSomeday(it);
+  else if(val==="date"){ const v=await pickOneDate(); if(v) assignSingleDay(it,v); }
+  else if(val==="range"){ const r=await pickRange(); if(r) assignPeriod(it,r.start,r.end); }
+}
+function pickOneDate(){ return new Promise(res=>{
+  openMini(`<h3>Pick a day</h3><div class="field"><label>Day</label><input type="date" id="pdDay" value="${todayISO()}"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn ghost" id="pdCancel">Cancel</button><button class="btn primary" id="pdGo">Assign</button></div>`);
+  $("pdCancel").onclick=()=>{ closePM("qpModal"); res(null); };
+  $("pdGo").onclick=()=>{ const v=$("pdDay").value; if(!parseISO(v)){ toast("Pick a day"); return; } closePM("qpModal"); res(v); };
+}); }
+function pickRange(){ return new Promise(res=>{
+  openMini(`<h3>Custom period</h3><p class="sub">The task shows on every day in this range until you do it.</p>
+    <div class="grid2"><div class="field"><label>From</label><input type="date" id="prFrom" value="${todayISO()}"></div><div class="field"><label>To</label><input type="date" id="prTo" value="${iso(addDays(new Date(),6))}"></div></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn ghost" id="prCancel">Cancel</button><button class="btn primary" id="prGo">Assign</button></div>`);
+  $("prCancel").onclick=()=>{ closePM("qpModal"); res(null); };
+  $("prGo").onclick=()=>{ const a=$("prFrom").value,b=$("prTo").value; if(!parseISO(a)||!parseISO(b)||b<a){ toast("Pick a valid range (To on/after From)"); return; } closePM("qpModal"); res({start:a,end:b}); };
+}); }
+async function deleteItemFromTodo(it){
+  if(!await uiConfirm("Delete “"+(it.title||"this task")+"”? It's removed from every day.",{title:"Delete task?"})) return false;
+  P().items=P().items.filter(x=>x.id!==it.id);
+  Object.keys(P().dayPlans).forEach(dt=>{ const pl=P().dayPlans[dt]; pl.entries=(pl.entries||[]).filter(e=>e.itemId!==it.id); });
+  save(); return true;
+}
+/* complete a period task on ONE day → file a done entry there + finish it, so it clears from the other days */
+function completePeriodOnDay(it,dt){
+  const plan=planFor(dt,true); let e=plan.entries.find(x=>x.itemId===it.id);
+  if(!e){ e={id:uid(),itemId:it.id,time:"",dur:it.timeEstimate||0,done:true,label:"",since:(it.period&&it.period.start)||dt}; plan.entries.push(e); } else e.done=true;
+  completeItemEffects(it); it.period=null; save();
+}
+/* period tasks that should appear on a given day's plan (today onward, within the span, not already placed) */
+function periodItemsForDay(dt,type){
+  const plan=P().dayPlans[dt], t=todayISO();
+  return P().items.filter(it=> it.type===type && it.status!=="done" && it.period && it.period.start && it.period.end
+    && dt>=it.period.start && dt<=it.period.end && dt>=t
+    && !(plan && (plan.entries||[]).some(e=>e.itemId===it.id)) );
+}
+function perRowHTML(it){
+  return `<div class="pi-row ${it.type==="forMe"?"forme":""}" data-peritem="${it.id}" style="align-items:center">
+    <div class="check-sm" data-perdone title="Do it now — clears from the rest of ${esc(periodLabel(it.period))}"></div>
+    <div style="flex:1;min-width:0"><div class="dp-title-disp">${esc(it.title)||"Untitled"}</div>
+      <div class="pi-sub"><span class="pi-badge" style="color:#8a6116;border-color:#e0a10066">◷ ${esc(periodLabel(it.period))}</span>${projChipHTML(it)}</div></div>
+    <button class="pi-act" data-perdel title="Take off the calendar (back to the To-Do list)">✕</button>
+  </div>`;
+}
 function overduePeople(){
   const t0=d0(new Date());
   return P().people.filter(p=>{ if(!p.freqWeeks) return false; if(!p.lastSeen) return true; const d=parseISO(p.lastSeen); return d && (t0-d0(d))/864e5 > p.freqWeeks*7; });
@@ -3311,7 +3385,7 @@ function switchPTab(t){
   $("viewTitle").textContent=({hub:"Overview",today:"Today",todo:"To-Do",tomorrow:"Tomorrow",pcal:"Calendar",focus:"Focus",bucket:"Bucket List",people:"People",log:"Journal",pnotes:"Self Notes"})[t]||"Today";
   pR(); window.scrollTo(0,0);
 }
-function renderPHub(){ renderPOverview(); renderPProjects(); renderPResp(); }
+function renderPHub(){ renderPOverview(); renderPProjects(); }
 function pR(){ if(appMode!=="personal") return; if(["overview","resp","pprojects"].includes(pTab)) pTab="hub"; ({hub:renderPHub,today:renderPToday,todo:renderPToDo,tomorrow:renderPTomorrow,pcal:renderPCal,focus:renderPFocus,bucket:renderPBucket,people:renderPPeople,log:renderPLog,pnotes:renderPNotes}[pTab]||renderPToday)(); }
 
 /* ---- the day page (shared by Today, Tomorrow, and the calendar's day view) ---- */
@@ -3368,9 +3442,11 @@ function dayPageHTML(dt){
   const lane=(type,label,cls)=>{
     const rows=plan.entries.map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it&&x.it.type===type);
     const open=rows.filter(x=>!x.e.done);
+    const per=periodItemsForDay(dt,type);   /* "anytime this period" tasks that land on this day */
     return `<div class="lane ${cls}" data-lane="${type}">
-      <h3>${label} <span class="grow"></span><span>${open.length}</span></h3>
+      <h3>${label} <span class="grow"></span><span>${open.length+per.length}</span></h3>
       ${open.map(x=>dpRowHTML(plan,x.e)).join("")}
+      ${per.map(perRowHTML).join("")}
       <div class="dp-add"><input data-dpadd="${type}" placeholder="${type==="forMe"?"+ add something for me… Enter":"+ add a task… Enter"}" autocomplete="off"></div>
       ${type==="responsibility"?(()=>{ const pool=P().items.filter(i=>i.type==="responsibility"&&i.status!=="done"&&!plan.entries.some(e=>e.itemId===i.id));
         return pool.length?`<select data-dpimport style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--border);background:var(--surface-2);font-size:11.5px;color:var(--muted)"><option value="">＋ pick from Need To / project steps…</option>${pool.map(i=>{ const pr=i.projId?P().projects.find(p=>p.id===i.projId):null; return `<option value="${i.id}">${pr?"◆ "+esc(pr.title)+" · ":""}${esc(i.title)}</option>`; }).join("")}</select>`:""; })():""}
@@ -3492,6 +3568,10 @@ function bindDayPage(host,dt,rerender){
       const r=row.getBoundingClientRect(); if(ev.clientY>r.top+r.height/2) to++;
       plan.entries.splice(to,0,moved); save(); rerender();
     });
+  });
+  host.querySelectorAll(".pi-row[data-peritem]").forEach(row=>{ const it=pItem(row.dataset.peritem); if(!it) return;
+    row.querySelector("[data-perdone]").onclick=()=>{ completePeriodOnDay(it,dt); rerender(); };
+    row.querySelector("[data-perdel]").onclick=()=>{ it.period=null; save(); rerender(); toast("Back on the To-Do list — pick a new day when you like"); };
   });
   const di=host.querySelector("[data-dpimport]");
   if(di) di.onchange=()=>{ if(!di.value) return; addToPlan(dt,di.value); rerender(); };
@@ -3643,12 +3723,21 @@ function renderPToDo(){
         <div class="pi-sub">
           ${it.type==="forMe"?`<span class="pi-badge" style="color:${CAL_COLORS.forMe}">🧡 for me</span>`:""}
           ${projChipHTML(it)}
-          <span class="pi-badge">${r.dayISO?(r.dayISO===tISO?"today":(r.dayISO>tISO?"tomorrow":fmtShort(r.dayISO))):"unscheduled"}</span>
+          ${r.dayISO?`<span class="pi-badge">${r.dayISO===tISO?"today":esc(fmtShort(r.dayISO))}</span>`:(periodActive(it)?`<span class="pi-badge" style="color:#8a6116;border-color:#e0a10066">◷ ${esc(periodLabel(it.period))}</span>`:`<span class="pi-badge">unscheduled</span>`)}
           ${agoBadge(r.since)}
           ${r.done?`<span class="pi-badge" style="color:var(--s-done)">✓ clears when you finalize its day</span>`:""}
         </div>
       </div>
+      ${r.done?"":`<select class="td-assign" data-tdassign title="Put it on a day, or a whole period">
+        <option value="">📅 plan…</option>
+        <option value="today">Today</option><option value="tomorrow">Tomorrow</option>
+        <option value="week">This week (period)</option><option value="nextweek">Next week (period)</option>
+        <option value="weekend">This weekend</option>
+        <option value="date">Pick a date…</option><option value="range">Custom period…</option>
+        <option value="someday">Someday (no day)</option>
+      </select>`}
       <button class="pi-act" data-tdopen title="Open its day">↗</button>
+      <button class="pi-act" data-tddel title="Delete this task">✕</button>
     </div>`;
   };
   host.innerHTML=`
@@ -3662,7 +3751,9 @@ function renderPToDo(){
   $("tdAdd").onclick=add; $("tdCapture").addEventListener("keydown",e=>{ if(e.key==="Enter") add(); });
   host.querySelectorAll("[data-tditem]").forEach(row=>{ const it=pItem(row.dataset.tditem); if(!it) return;
     row.querySelector("[data-tddone]").onclick=()=>{ todoToggle(it); renderPToDo(); };
-    const op=row.querySelector("[data-tdopen]"); if(op) op.onclick=()=>{ const l=latestItemEntry(it.id); if(!l){ toast("This one isn't on a day yet — check it off to file it on today"); return; } if(l.dt>tISO){ switchPTab("tomorrow"); } else { pDayIso=l.dt; switchPTab("today"); } };
+    const asg=row.querySelector("[data-tdassign]"); if(asg) asg.onchange=async e=>{ const v=e.target.value; if(!v) return; await assignFromMenu(it,v); renderPToDo(); };
+    const del=row.querySelector("[data-tddel]"); if(del) del.onclick=async()=>{ if(await deleteItemFromTodo(it)) renderPToDo(); };
+    const op=row.querySelector("[data-tdopen]"); if(op) op.onclick=()=>{ const l=latestItemEntry(it.id); if(!l){ toast("Not on a day yet — pick one from the 📅 plan menu"); return; } if(l.dt>tISO){ switchPTab("tomorrow"); } else { pDayIso=l.dt; switchPTab("today"); } };
   });
   host.querySelectorAll("[data-tdmeet]").forEach(row=>{ const [dt,mid]=row.dataset.tdmeet.split("|"); const pl=P().dayPlans[dt]; const mu=pl&&(pl.meetups||[]).find(x=>x.id===mid); if(!mu) return;
     row.querySelector("[data-tdmet]").onclick=()=>{ mu.status="met"; syncLastSeen(mu.personId); save(); renderPToDo(); };
