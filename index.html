@@ -3505,8 +3505,14 @@ function dayPageHTML(dt){
     <div class="lanes">
       ${[["task","responsibility"],["forMe","forMe"]].map(([kind,ptype])=>{
         const doneEntries=plan.entries.map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it&&x.it.type===ptype&&x.e.done);
+        /* a completed First activity shows here too, as a done task */
+        const firstRow=(kind==="task"&&plan.firstDone&&(plan.firstThing||"").trim())?`<div class="pi-row done" style="align-items:center">
+          <div class="check-sm on" data-firstundone title="First activity of the day — click to unmark">${TICK}</div>
+          <div style="flex:1;min-width:0"><div class="dp-title-disp">▶ ${esc(plan.firstThing)}</div><div class="pi-sub"><span class="pi-badge" style="color:#b98600;border-color:#e0a10066">first activity</span></div></div>
+        </div>`:"";
         return `<div class="lane ${kind==="forMe"?"forme":""}" style="border-top-color:${kind==="forMe"?CAL_COLORS.forMe:CAL_COLORS.taskDone}">
-        <h3 style="color:${kind==="forMe"?CAL_COLORS.forMe:CAL_COLORS.taskDone}">${kind==="forMe"?"For me — done 🧡":"Tasks — done ✔"} <span class="grow"></span><span>${doneEntries.length}</span></h3>
+        <h3 style="color:${kind==="forMe"?CAL_COLORS.forMe:CAL_COLORS.taskDone}">${kind==="forMe"?"For me — done 🧡":"Tasks — done ✔"} <span class="grow"></span><span>${doneEntries.length+(firstRow?1:0)}</span></h3>
+        ${firstRow}
         ${doneEntries.map(x=>dpRowHTML(plan,x.e)).join("")}
         <div class="dp-add"><input data-hapadd="${kind}" placeholder="${kind==="forMe"?"+ something you did for you… Enter":"+ a task you got done… Enter"}" autocomplete="off"></div>
       </div>`; }).join("")}
@@ -3606,6 +3612,7 @@ function bindDayPage(host,dt,rerender){
   const ft=host.querySelector("[data-firstthing]"); if(ft){ autoGrow(ft); ft.addEventListener("input",()=>{ plan.firstThing=ft.value; const box=ft.closest(".day-first"); if(box) box.classList.toggle("has-activity", !!ft.value.trim()); save(); autoGrow(ft); }); }
   const fpList=host.querySelector('.prep-list[data-preplist="fp"]'); if(fpList) bindPrepChecklist(fpList, ()=>plan.firstPrep, needR=>{ save(); if(needR) rerender(); });
   const fd=host.querySelector("[data-firstdone]"); if(fd) fd.onclick=()=>{ plan.firstDone=!plan.firstDone; if(plan.firstDone) plan.firstBarrier=""; save(); rerender(); };
+  const fu=host.querySelector("[data-firstundone]"); if(fu) fu.onclick=()=>{ plan.firstDone=false; save(); rerender(); };
   host.querySelectorAll("[data-barrier]").forEach(b=>b.onclick=()=>{ plan.firstBarrier=(plan.firstBarrier===b.dataset.barrier)?"":b.dataset.barrier; save(); rerender(); });
   const tf=host.querySelector("[data-tmwfirst]");
   if(tf){ const tmwISO=iso(addDays(new Date(),1)); const getTmw=()=>planFor(tmwISO,true); autoGrow(tf);
