@@ -166,6 +166,12 @@ One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both
 - "+ log a past day" opens any date. (The tab and page title read **Journal**; the People tab's "Log →" still jumps here for a person's meetups.)
 ### 5.9 Self Notes — notes with folders + rich-text editing.
 
+### 5.11 Detox (addiction / dopamine-detox) **[ALWAYS CHECK]**
+- **Three rule tiers**, each an editable list (add via input+Enter, inline edit, ✕ delete): **🚫 Never do**, **⚠️ Try to avoid**, **〜 Not ideal**. Stored in `data.personal.detox.rules.{never,avoid,notideal}`.
+- **One shared 30-day counter** (`detoxCleanDays`): **days clean since the last "Never do" slip** (or since `detox.startedAt` if none) — counts **up and keeps going** past 30; the Detox tab shows the big number + a "N days to your 30-day milestone" line (🏆 once cleared) + a progress bar.
+- **Daily tracker on Today**, right next to the mini-habits (`detoxTrackHTML`, in the collapsible log): defaults to "🔥 N days clean · ＋ log a slip". Logging asks for a **free-text note** (a "Never do" infraction on that day) → resets the counter; an **undo** removes today's slip. Works on past days too (retroactive).
+- **Addiction journal** — the infraction log (`detox.log`: `{id,ts,date,tier,note}`), reverse-chron in the Detox tab, each row date + tier badge + note + ✕ delete. **Avoid / Not-ideal are also loggable** (a "＋ log a slip" per tier) — tagged in the journal but they **never reset the 30-day counter** (only "Never do" does). `detox` is normalized/synced.
+
 ### 5.10 Isolation rule (hard requirement)
 Work code never reads `data.personal`; personal code never reads work keys.
 A bug in one namespace must never take the other down (enforced by

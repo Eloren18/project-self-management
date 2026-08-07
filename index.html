@@ -468,6 +468,31 @@
   .pi-act{border:none;background:transparent;color:var(--faint);padding:1px 3px;cursor:pointer;font-size:12px;}
   .td-assign{padding:4px 6px;border:1px solid var(--border);background:var(--surface-2);font-size:11px;color:var(--muted);outline:none;max-width:130px;flex:none;cursor:pointer;}
   .td-assign:hover{border-color:var(--primary);color:var(--text);}
+  /* ===== addiction / dopamine-detox ===== */
+  .detox-track{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--p-asap);padding:8px 12px;margin-top:10px;flex-wrap:wrap;}
+  .detox-track.slipped{border-left-color:#c76a00;background:color-mix(in srgb,#c76a00 8%,var(--surface));}
+  .detox-lab{font-size:10px;font-weight:800;letter-spacing:.6px;color:var(--p-asap);text-transform:uppercase;flex:none;}
+  .detox-track.slipped .detox-lab{color:#c76a00;}
+  .detox-streak{font-size:12.5px;font-weight:700;color:var(--text);}
+  .detox-sliptxt{font-size:11.5px;color:#c76a00;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;}
+  .detox-counter{text-align:center;border:1px solid var(--border);background:var(--surface);padding:18px;margin-bottom:16px;}
+  .detox-counter.win{border-color:color-mix(in srgb,var(--s-done) 50%,var(--border));background:color-mix(in srgb,var(--s-done) 7%,var(--surface));}
+  .dc-num{font-size:44px;font-weight:800;line-height:1;color:var(--p-asap);}
+  .detox-counter.win .dc-num{color:var(--s-done);}
+  .dc-lab{font-size:11px;font-weight:800;color:var(--muted);margin-top:5px;text-transform:uppercase;letter-spacing:.5px;}
+  .dc-milestone{font-size:12px;color:var(--faint);margin-top:8px;}
+  .dc-bar{height:6px;background:var(--border-soft);margin-top:10px;overflow:hidden;max-width:340px;margin-left:auto;margin-right:auto;}
+  .dc-bar i{display:block;height:100%;background:var(--p-asap);transition:width .3s;}
+  .detox-counter.win .dc-bar i{background:var(--s-done);}
+  .detox-tier{border:1px solid var(--border);background:var(--surface);padding:10px 12px;margin-bottom:10px;border-left:3px solid var(--border);}
+  .detox-tier.never{border-left-color:var(--p-asap);} .detox-tier.avoid{border-left-color:#c76a00;} .detox-tier.notideal{border-left-color:#858b99;}
+  .detox-tier-h{display:flex;align-items:center;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;}
+  .detox-rule{display:flex;align-items:center;gap:6px;margin-bottom:2px;}
+  .detox-rule-txt{flex:1;min-width:0;border:1px solid transparent;background:transparent;padding:4px 6px;font-family:inherit;font-size:12.5px;color:var(--text);outline:none;}
+  .detox-rule-txt:hover{border-color:var(--border-soft);} .detox-rule-txt:focus{border-color:var(--primary);background:var(--surface-2);}
+  .detox-add{width:100%;border:1px dashed var(--border);background:transparent;padding:5px 8px;font-family:inherit;font-size:11.5px;color:var(--muted);outline:none;margin-top:4px;}
+  .detox-add:focus{border-color:var(--primary);border-style:solid;color:var(--text);}
+  .detox-b.never{color:var(--p-asap);} .detox-b.avoid{color:#c76a00;} .detox-b.notideal{color:#858b99;}
   .pi-act:hover{color:var(--primary);}
   .dots-row{display:flex;align-items:center;gap:16px;background:var(--surface);border:1px solid var(--border);padding:12px 16px;margin-bottom:14px;flex-wrap:wrap;}
   .dot-big{width:20px;height:20px;border-radius:50%;border:2px solid var(--border);background:var(--surface-2);cursor:pointer;display:grid;place-items:center;font-size:10px;color:#fff;transition:.15s;padding:0;}
@@ -686,6 +711,7 @@
     <button class="tab" data-ptab="bucket">Bucket List</button>
     <button class="tab" data-ptab="people">People</button>
     <button class="tab" data-ptab="log">Journal</button>
+    <button class="tab" data-ptab="detox">Detox</button>
     <button class="tab" data-ptab="pnotes">Self Notes</button>
   </nav>
   <div class="sidefoot"><span class="av" id="sideAvatar">?</span><div><div class="nm" id="sideName">Local workspace</div><div class="ro">Workspace owner</div></div></div>
@@ -817,6 +843,7 @@
   <section class="page hidden" id="ppage-bucket"><div id="pBucketBody"></div></section>
   <section class="page hidden" id="ppage-people"><div id="pPeopleBody"></div></section>
   <section class="page hidden" id="ppage-log"><div id="pLogBody"></div></section>
+  <section class="page hidden" id="ppage-detox"><div id="pDetoxBody"></div></section>
   <section class="page hidden" id="ppage-pnotes"><div id="pNotesBody"></div></section>
 </main>
 </div><!-- /maincol -->
@@ -1228,6 +1255,13 @@ function normalizePersonal(p){
   po.long=Math.min(90,Math.max(5,Math.round(+po.long)||15)); po.longEvery=Math.min(8,Math.max(2,Math.round(+po.longEvery)||4));
   po.sound = po.sound!==false; po.notify = po.notify!==false;
   p.noteFolders = Array.isArray(p.noteFolders) ? p.noteFolders.filter(x=>typeof x==="string"&&x.trim()) : [];
+  /* addiction / dopamine-detox: three tiers of rules + an infraction log (the journal) */
+  p.detox = (p.detox && typeof p.detox==="object") ? p.detox : {};
+  p.detox.rules = (p.detox.rules && typeof p.detox.rules==="object") ? p.detox.rules : {};
+  ["never","avoid","notideal"].forEach(k=>{ const a=p.detox.rules; a[k]=Array.isArray(a[k])?a[k]:[]; a[k].forEach(r=>{ r.id ||= uid(); r.text ??= ""; }); });
+  p.detox.log = Array.isArray(p.detox.log) ? p.detox.log : [];
+  p.detox.log.forEach(x=>{ x.id ||= uid(); x.date ??= ""; x.ts ??= 0; x.tier=["never","avoid","notideal"].includes(x.tier)?x.tier:"never"; x.note ??= ""; });
+  p.detox.startedAt ??= "";
   return p;
 }
 function load(){
@@ -3382,11 +3416,80 @@ function switchPTab(t){
   $("page-project").classList.add("hidden");
   document.querySelectorAll("#mainArea > .page").forEach(s=>s.classList.toggle("hidden", s.id!=="ppage-"+t));
   $("personalTabs").querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.ptab===t));
-  $("viewTitle").textContent=({hub:"Overview",today:"Today",todo:"To-Do",tomorrow:"Tomorrow",pcal:"Calendar",focus:"Focus",bucket:"Bucket List",people:"People",log:"Journal",pnotes:"Self Notes"})[t]||"Today";
+  $("viewTitle").textContent=({hub:"Overview",today:"Today",todo:"To-Do",tomorrow:"Tomorrow",pcal:"Calendar",focus:"Focus",bucket:"Bucket List",people:"People",log:"Journal",detox:"Detox",pnotes:"Self Notes"})[t]||"Today";
   pR(); window.scrollTo(0,0);
 }
 function renderPHub(){ renderPOverview(); renderPProjects(); }
-function pR(){ if(appMode!=="personal") return; if(["overview","resp","pprojects"].includes(pTab)) pTab="hub"; ({hub:renderPHub,today:renderPToday,todo:renderPToDo,tomorrow:renderPTomorrow,pcal:renderPCal,focus:renderPFocus,bucket:renderPBucket,people:renderPPeople,log:renderPLog,pnotes:renderPNotes}[pTab]||renderPToday)(); }
+function pR(){ if(appMode!=="personal") return; if(["overview","resp","pprojects"].includes(pTab)) pTab="hub"; ({hub:renderPHub,today:renderPToday,todo:renderPToDo,tomorrow:renderPTomorrow,pcal:renderPCal,focus:renderPFocus,bucket:renderPBucket,people:renderPPeople,log:renderPLog,detox:renderPDetox,pnotes:renderPNotes}[pTab]||renderPToday)(); }
+/* ============ ADDICTION / DOPAMINE-DETOX ============ */
+const DETOX_GOAL=30;
+function detoxCleanDays(){
+  const dx=P().detox; if(!dx) return 0;
+  const slips=(dx.log||[]).filter(x=>x.tier==="never"&&x.date).map(x=>x.date).sort();
+  const anchor = slips.length ? slips[slips.length-1] : (dx.startedAt||"");
+  if(!anchor||!parseISO(anchor)) return 0;
+  return Math.max(0, Math.round((d0(new Date())-d0(parseISO(anchor)))/864e5));
+}
+function detoxSlipOn(dt){ const dx=P().detox; return dx&&(dx.log||[]).find(x=>x.tier==="never"&&x.date===dt)||null; }
+function detoxLog(tier,dt,note){ const dx=P().detox; dx.log.push({id:uid(),ts:Date.now(),date:dt,tier,note:(note||"").trim()}); if(!dx.startedAt) dx.startedAt=todayISO(); save(); }
+const DETOX_TIERS=[["never","🚫 Never do","never-do"],["avoid","⚠️ Try to avoid","try-to-avoid"],["notideal","〜 Not ideal","not-ideal"]];
+function detoxTierColor(k){ return k==="never"?"var(--p-asap)":k==="avoid"?"#c76a00":"#858b99"; }
+/* the daily tracker that sits next to the mini-habits on the day page */
+function detoxTrackHTML(dt){
+  const days=detoxCleanDays(); const slip=detoxSlipOn(dt);
+  return `<div class="detox-track ${slip?"slipped":""}">
+    <span class="detox-lab">🛡 Detox</span>
+    <span class="detox-streak">🔥 ${days} day${days===1?"":"s"} clean</span>
+    <span class="grow"></span>
+    ${slip?`<span class="detox-sliptxt" title="${esc(slip.note)}">⚠ slip logged${slip.note?": "+esc(slip.note):""}</span><button class="btn sm ghost" data-detoxundo>undo</button>`
+      :`<button class="btn sm" data-detoxlog>＋ log a slip</button>`}
+  </div>`;
+}
+function renderPDetox(){
+  const host=$("pDetoxBody"); if(!host) return;
+  const dx=P().detox;
+  if(!dx.startedAt){ dx.startedAt=todayISO(); save(); }
+  const days=detoxCleanDays();
+  const win=days>=DETOX_GOAL;
+  const milestone = win ? `🏆 30-day milestone cleared — ${days} days and counting` : `${DETOX_GOAL-days} day${DETOX_GOAL-days===1?"":"s"} to your 30-day milestone`;
+  const tierBlock=([k,lab,phk])=>{ const rules=dx.rules[k]||[];
+    return `<div class="detox-tier ${k}">
+      <div class="detox-tier-h"><span>${lab}</span><span class="grow"></span><button class="btn sm" data-slip="${k}">＋ log a slip</button></div>
+      <div class="detox-rules">${rules.map(r=>`<div class="detox-rule" data-rule="${k}|${r.id}"><input class="detox-rule-txt" data-ruletxt value="${esc(r.text)}" placeholder="Write a rule…" autocomplete="off"><button class="pi-act" data-ruledel title="Remove">✕</button></div>`).join("")}</div>
+      <input class="detox-add" data-ruleadd="${k}" placeholder="＋ add a ${phk} rule… Enter" autocomplete="off">
+    </div>`; };
+  const journal=(dx.log||[]).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
+  host.innerHTML=`
+    <div class="toolbar"><h1 class="page-title">Detox</h1><div class="grow"></div></div>
+    <div class="detox-counter ${win?"win":""}">
+      <div class="dc-num">${days}</div>
+      <div class="dc-lab">day${days===1?"":"s"} clean${detoxSlipOn(todayISO())?" · slip logged today":""}</div>
+      <div class="dc-milestone">${milestone}</div>
+      <div class="dc-bar"><i style="width:${Math.min(100,Math.round(days/DETOX_GOAL*100))}%"></i></div>
+    </div>
+    <div class="section-h">Your rules <span class="line"></span></div>
+    ${DETOX_TIERS.map(tierBlock).join("")}
+    <div class="section-h">Addiction journal <span class="line"></span></div>
+    ${journal.length?journal.map(x=>`<div class="pi-row" data-jrow="${x.id}" style="align-items:flex-start;border-left-color:${detoxTierColor(x.tier)}">
+        <span class="pi-badge" style="margin-top:2px">${esc(fmtShort(x.date))}</span>
+        <span class="pi-badge detox-b ${x.tier}" style="margin-top:2px">${x.tier==="never"?"never":x.tier==="avoid"?"avoid":"not ideal"}</span>
+        <span style="flex:1;min-width:0;font-size:12.5px;line-height:1.5">${esc(x.note)||'<span style="color:var(--faint)">(no note)</span>'}</span>
+        <button class="pi-act" data-jdel title="Remove this entry">✕</button>
+      </div>`).join(""):`<div style="font-size:12.5px;color:var(--faint)">No infractions logged. One day at a time.</div>`}`;
+  DETOX_TIERS.forEach(([k])=>{
+    const addI=host.querySelector(`[data-ruleadd="${k}"]`);
+    if(addI) addI.addEventListener("keydown",e=>{ if(e.key!=="Enter") return; const t=(addI.value||"").trim(); if(!t) return; dx.rules[k].push({id:uid(),text:t}); save(); renderPDetox(); const a=host.querySelector(`[data-ruleadd="${k}"]`); if(a) a.focus(); });
+    const slipB=host.querySelector(`[data-slip="${k}"]`);
+    if(slipB) slipB.onclick=async()=>{ const note=await uiPrompt("What happened?",{sub:k==="never"?"This resets your 30-day counter.":"Logged in the journal (won't reset the counter).",placeholder:"a line on what happened…",yes:"Log it"}); if(note===null) return; detoxLog(k,todayISO(),note); renderPDetox(); if(pTab==="detox"){} };
+  });
+  host.querySelectorAll("[data-rule]").forEach(row=>{ const [k,id]=row.dataset.rule.split("|"); const r=(dx.rules[k]||[]).find(x=>x.id===id); if(!r) return;
+    row.querySelector("[data-ruletxt]").addEventListener("input",e=>{ r.text=e.target.value; save(); });
+    row.querySelector("[data-ruledel]").onclick=()=>{ dx.rules[k]=dx.rules[k].filter(x=>x.id!==id); save(); renderPDetox(); };
+  });
+  host.querySelectorAll("[data-jrow]").forEach(row=>{ const id=row.dataset.jrow;
+    row.querySelector("[data-jdel]").onclick=async()=>{ if(!await uiConfirm("Remove this journal entry?",{title:"Remove entry?"})) return; dx.log=dx.log.filter(x=>x.id!==id); save(); renderPDetox(); };
+  });
+}
 
 /* ---- the day page (shared by Today, Tomorrow, and the calendar's day view) ---- */
 function projChipHTML(it){ if(!it.projId) return ""; const pr=P().projects.find(p=>p.id===it.projId); if(!pr) return ""; return `<span class="pproj-chip" data-goproj="${pr.id}" style="background:${pr.color}" title="Project: ${esc(pr.title)}">◆ ${esc(pr.title)}</span>`; }
@@ -3530,6 +3633,7 @@ function dayPageHTML(dt){
       <summary><svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>📓 ${isFuture?"Plan the rest":"What happened & how I felt"}<span class="grow"></span><span style="text-transform:none;letter-spacing:0;font-weight:600;color:var(--faint)">${isFuture?"gym":"habits · gym · what I did · reflection"}</span></summary>
       <div class="day-log-body">
         ${!isFuture?dotsRowHTML(plan,isToday?yplan:null):""}
+        ${!isFuture?detoxTrackHTML(dt):""}
         ${gymRow}
         ${!isFuture?whatHappened:""}
         ${!isFuture?howFelt:""}
@@ -3613,6 +3717,8 @@ function bindDayPage(host,dt,rerender){
   const fpList=host.querySelector('.prep-list[data-preplist="fp"]'); if(fpList) bindPrepChecklist(fpList, ()=>plan.firstPrep, needR=>{ save(); if(needR) rerender(); });
   const fd=host.querySelector("[data-firstdone]"); if(fd) fd.onclick=()=>{ plan.firstDone=!plan.firstDone; if(plan.firstDone) plan.firstBarrier=""; save(); rerender(); };
   const fu=host.querySelector("[data-firstundone]"); if(fu) fu.onclick=()=>{ plan.firstDone=false; save(); rerender(); };
+  const dxl=host.querySelector("[data-detoxlog]"); if(dxl) dxl.onclick=async()=>{ const note=await uiPrompt("What happened?",{sub:"This resets your 30-day counter.",placeholder:"a line on what happened…",yes:"Log it"}); if(note===null) return; detoxLog("never",dt,note); rerender(); };
+  const dxu=host.querySelector("[data-detoxundo]"); if(dxu) dxu.onclick=()=>{ const dx=P().detox; dx.log=dx.log.filter(x=>!(x.tier==="never"&&x.date===dt)); save(); rerender(); };
   host.querySelectorAll("[data-barrier]").forEach(b=>b.onclick=()=>{ plan.firstBarrier=(plan.firstBarrier===b.dataset.barrier)?"":b.dataset.barrier; save(); rerender(); });
   const tf=host.querySelector("[data-tmwfirst]");
   if(tf){ const tmwISO=iso(addDays(new Date(),1)); const getTmw=()=>planFor(tmwISO,true); autoGrow(tf);
