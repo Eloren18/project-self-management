@@ -29,7 +29,10 @@ A feature is "passing" only when its listed behaviors all work.
 ## 1. Sync & data safety — THE MOST IMPORTANT SYSTEM
 
 One JSON blob holds **work + personal**. Sync is whole-blob **last-write-wins**
-on `data.updatedAt` via InstantDB (`workspaces` row, owner-linked).
+on `data.updatedAt` via **Convex** (`workspaces` row keyed by email; the blob is a JSON
+string; `workspace:get` is a live subscription, `workspace:save` an LWW mutation that
+returns `{accepted, updatedAt}` so the sync pill's "Synced" is a real acknowledgement).
+Backend code lives in `convex/` (see `SETUP-Convex.txt`); prod `cheerful-rat-350`, dev `hearty-jay-608`.
 
 | # | Behavior | Verified by |
 |---|----------|-------------|
@@ -60,7 +63,7 @@ on `data.updatedAt` via InstantDB (`workspaces` row, owner-linked).
 
 | # | Behavior |
 |---|----------|
-| 2.1 | Sign-in gate: Google Sign-In only, locked to the single `ADMIN_EMAIL`; any other Google account is denied (client UI + **server-side rules**) |
+| 2.1 | Sign-in gate: **email + 6-digit code** (Convex action `auth:requestCode` → Resend email → `auth:verifyCode` → session token in localStorage `psmSession_v1`), locked to the single `ADMIN_EMAIL` **server-side**; codes hashed, 10-min TTL, 5 tries, 30s cooldown, 15/day; sessions ~6 months. The email field is prefilled; "← different email / resend" goes back. A remembered device boots straight in; if the session is gone the server answers `null` and the gate reappears with "Your sign-in expired". Offline with a remembered session: after 6s the local copy opens and syncs when back online. **[ALWAYS CHECK]** |
 | 2.2 | Unconfigured/local mode: "Continue without sync" → `Local only` pill, everything works locally |
 | 2.3 | Device trust: first device bootstraps as trusted; every new browser/device becomes **pending** and must be approved from an already-trusted device; pending devices see a waiting screen |
 | 2.4 | **The Security modal opens from BOTH the 🛡 shield button AND the account/email button** (they share `openSec`). **[ALWAYS CHECK — signed in!]** Regression: a schema error in the cloud-snapshots query once killed `openSec` for signed-in users only — both buttons appeared dead (fixed + hardened: `openSec` try/catches its renderers, `queryOnceSafe` can never throw; guarded by S15/S16) |
@@ -69,7 +72,7 @@ on `data.updatedAt` via InstantDB (`workspaces` row, owner-linked).
 | 2.7 | **Security log**: append-only, newest 30 (sign-ins, device events, `data_restored`, `data_shrunk`) with friendly labels |
 | 2.8 | **Backups**: ⤓ Download full backup (one JSON = work + personal, records `_lastdl`); ⤒ Restore from backup file (styled confirm shows the backup's exact counts first); ⛅ Snapshot to cloud now |
 | 2.9 | **Restore points list**: merges 💾 weekday backups + 🛟 all stash families + ⛅ cloud snapshots, sorted newest-first, each with timestamp/label/counts and a one-click **Restore** (goes through the same guarded `restoreData` path) |
-| 2.10 | InstantDB entities are locked to owner+admin by server rules — `workspaces`, `devices`, `securityLog` (append-only), `snapshots` (immutable, owner-prunable). **All four schema/perms layers must list every entity**: index.html inline schema, `instant.schema.ts`, `instant.perms.ts`, SETUP.txt dashboard JSON (S16 enforces) |
+| 2.10 | **Server-side authorization (Convex)**: every data function takes `token` + `deviceId`; `workspace:*`, `snapshots:*`, `securityLog:list` answer only a valid session on a **trusted** device (`requireTrusted` / `trustedOrNull`); `devices:setStatus/remove/revokeOthers` require a trusted *caller*; `devices:list` shows a pending device only itself. Tables: `workspaces`, `snapshots` (server-pruned to 30), `securityLog`, `devices`, `otps`, `sessions`. **Every `"module:function"` the app calls must exist in `convex/<module>.ts`** and `ADMIN_EMAIL` must match between index.html and `convex/lib.ts` (S16 enforces). Migration history: `legacy-instantdb/`. |
 
 ---
 
@@ -184,7 +187,8 @@ A bug in one namespace must never take the other down (enforced by
 
 | # | Behavior |
 |---|----------|
-| 6.1 | Single-file app: everything in `index.html` (no build step) |
+| 6.1 | Single-file frontend: everything in `index.html` (no build step); the Convex browser client (`convex@1.45.0/browser`) is loaded from esm.sh with CDN fallbacks |
+| 6.0 | **Backend = Convex** (`convex/` folder, TypeScript): `npx convex dev --once` pushes to dev, `npx convex deploy -y` (or `Deploy-Backend.bat`) to prod; `npx convex run admin:stats --prod` = safe summary, never contents. Secrets (`RESEND_API_KEY`) live in Convex env, never in the repo. CSP allows only `*.convex.cloud` (+ localhost for testing) as connect targets. |
 | 6.2 | Deploy: push to `main` → GitHub Actions Pages workflow (`deploy.yml`, publishes repo root, auto-retry after 90s on Pages flakes) → https://eloren18.github.io/project-self-management/ |
 | 6.3 | Preview: `.claude/launch.json` → `self-management` server on port 8742 (`http-server`, no cache); `window.__psmPreview()` bypasses the gate for UI checks |
 | 6.4 | Tests: `tests/e2e-sync.mjs` extracts the REAL sync functions from `index.html` (never a reimplementation) — see `tests/README.md` |

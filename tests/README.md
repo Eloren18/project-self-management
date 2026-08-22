@@ -36,8 +36,11 @@ change shape, the test follows automatically.
 | S12 | `normalize` is idempotent — sync round-trips never drift item counts |
 | S13 | A full local disk (quota exceeded) still syncs to the cloud and warns the user |
 | S14 | The sync indicator tells the truth: "Synced" only after the cloud acknowledges (else "could be lost") |
-| S15 | A throwing cloud query can never kill a UI path (the dead shield/account-buttons regression) |
-| S16 | *Static:* every InstantDB entity used in code exists in ALL 4 schema/perms layers (index.html, instant.schema.ts, instant.perms.ts, SETUP.txt) |
+| S15 | A throwing cloud call (`cloudQuery`, `maybeCloudSnapshot`, `push`) can never kill a UI path (the dead shield/account-buttons regression) |
+| S16 | *Static:* every `"module:function"` the app calls exists as an export in `convex/<module>.ts`; every table is in `convex/schema.ts`; `ADMIN_EMAIL` matches index.html ↔ `convex/lib.ts`; data functions require a trusted device; no InstantDB code/CSP remains; the fresh-device seed guard is present |
+| S20 | Plain-text smart lists (textareas): Enter continues bullets/numbers (+renumber), Tab/Shift+Tab indent, Backspace clears an empty marker |
+
+The harness's "cloud" is a **Convex-shaped mock** (`convex.mutation/query/action/onUpdate`) that mirrors the server's rules — whole-blob LWW on `updatedAt`, snapshots pruned to 30, a subscription that fires immediately with the current value — so the real `push`/`startWorkspaceSync`/`maybeCloudSnapshot`/`cloudQuery` code runs unchanged.
 | S17 | Meeting-notes migration: legacy free-text moves into "What was discussed?" and is never dropped, overwritten, or duplicated |
 
 Re-run this after any change to `seed`, `save`, `adoptRemote`, `normalize`,

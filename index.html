@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <!-- Content-Security-Policy: only code / styles / connections from these exact
-     origins may run. Whitelist = InstantDB, the 4 SDK CDNs, Google Fonts, and
-     Google Identity Services (sign-in). If you add any new external service,
-     add its origin here or the browser will block it. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.sh https://cdn.jsdelivr.net https://esm.run https://unpkg.com https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https://*.googleusercontent.com https://accounts.google.com; frame-src https://accounts.google.com; connect-src 'self' https://*.instantdb.com wss://*.instantdb.com https://esm.sh https://cdn.jsdelivr.net https://esm.run https://unpkg.com https://accounts.google.com; base-uri 'self'; object-src 'none'; form-action 'self'">
+     origins may run. Whitelist = Convex (the backend: database + sign-in), the SDK
+     CDNs, Google Fonts, and localhost (local testing only). If you add any new
+     external service, add its origin here or the browser will block it. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.sh https://cdn.jsdelivr.net https://esm.run https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self' https://*.convex.cloud wss://*.convex.cloud https://esm.sh https://cdn.jsdelivr.net https://esm.run https://unpkg.com http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:*; base-uri 'self'; object-src 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='2' fill='%23E4002B'/%3E%3Cpath d='M7 5.5h7l3.5 3.5V18a.5.5 0 0 1-.5.5H7a.5.5 0 0 1-.5-.5V6a.5.5 0 0 1 .5-.5Z' fill='none' stroke='white' stroke-width='1.4'/%3E%3Cpath d='M9 11h6M9 14h6M9 8h3' stroke='white' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E">
@@ -902,10 +902,18 @@
   <div class="gate-card">
     <div class="gate-logo"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/><path d="M9 13h6M9 17h6"/></svg></div>
     <h1>Project Self-Management</h1>
-    <p>This is a private workspace. Sign in with the authorized Google account to continue.</p>
-    <div id="gbtn"></div>
+    <p id="authLead">This is a private workspace. Enter the authorized email and we'll send you a 6-digit sign-in code.</p>
+    <div id="authStep1" style="display:flex;flex-direction:column;gap:10px;width:min(320px,100%);margin:0 auto">
+      <input id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" style="padding:11px 13px;border:1px solid var(--border);background:var(--surface);outline:none;font-size:14px;font-weight:600;text-align:center">
+      <button class="btn primary" id="authSend">Email me a code</button>
+    </div>
+    <div id="authStep2" style="display:none;flex-direction:column;gap:10px;width:min(320px,100%);margin:0 auto">
+      <input id="authCode" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" maxlength="6" style="padding:11px 13px;border:1px solid var(--border);background:var(--surface);outline:none;font-size:20px;font-weight:800;letter-spacing:.35em;text-align:center">
+      <button class="btn primary" id="authVerify">Sign in</button>
+      <button class="btn ghost sm" id="authBack">← different email / resend</button>
+    </div>
     <div id="authErr" style="color:var(--p-asap);font-size:13px;margin-top:14px;font-weight:600;display:none"></div>
-    <div class="fineprint">🔒 Access is restricted to a single Google account and to devices you approve. All data is encrypted in transit and protected by server-side rules.</div>
+    <div class="fineprint">🔒 Access is restricted to a single email address and to devices you approve. Codes expire in 10 minutes; all data is encrypted in transit and protected by server-side rules.</div>
   </div>
 </div>
 
@@ -945,11 +953,10 @@
   <div class="gate-card" style="width:min(520px,100%)">
     <div class="gate-logo"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-2.82 1.17V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15H4.5a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 6 8.6l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 12 4.6V4.5a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 2.82 1.17l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 8.6v.09a2 2 0 1 1 0 4h-.09Z"/></svg></div>
     <h1>Finish setup</h1>
-    <p>The app needs two IDs before it can sign you in. Paste them near the top of <code>index.html</code>:</p>
+    <p>The app needs its backend address before it can sign you in. Set it near the top of <code>index.html</code>:</p>
     <div class="setup-list">
-      1. <b>InstantDB App ID</b> → <code>INSTANT_APP_ID</code><br>
-      2. <b>Google Client ID</b> → <code>GOOGLE_CLIENT_ID</code><br>
-      <span style="color:var(--faint)">Full step-by-step in <code>SETUP.txt</code> (InstantDB + Google + hosting).</span>
+      1. <b>Convex deployment URL</b> → <code>CONVEX_URL</code><br>
+      <span style="color:var(--faint)">Full step-by-step in <code>SETUP-Convex.txt</code> (Convex + Resend + hosting).</span>
     </div>
     <div style="font-size:12px;color:var(--faint)">Until then the app runs locally with your seeded projects, but nothing syncs or is protected.</div>
     <button class="btn primary" id="setupContinue" style="margin-top:18px">Continue locally</button>
@@ -973,59 +980,32 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script type="module">
 /* ============================================================
-   Load InstantDB SDK from whichever CDN the network allows.
+   Load the Convex browser client from whichever CDN the network allows.
+   (The backend — database + sign-in — lives in ./convex, see SETUP-Convex.txt.)
    ============================================================ */
 function _imp(url, ms){ return Promise.race([ import(url), new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),ms)) ]); }
-let _instant;
-for (const _u of ["https://esm.sh/@instantdb/core","https://cdn.jsdelivr.net/npm/@instantdb/core/+esm","https://esm.run/@instantdb/core","https://unpkg.com/@instantdb/core?module"]){
-  try{ const _m = await _imp(_u,6000); if(_m && _m.init){ _instant = _m; break; } }
-  catch(_e){ console.warn("InstantDB CDN unavailable:", _u, _e && _e.message); }
+let _convexMod;
+for (const _u of ["https://esm.sh/convex@1.45.0/browser","https://esm.run/convex@1.45.0/browser","https://cdn.jsdelivr.net/npm/convex@1.45.0/browser/+esm"]){
+  try{ const _m = await _imp(_u,7000); if(_m && _m.ConvexClient){ _convexMod = _m; break; } }
+  catch(_e){ console.warn("Convex CDN unavailable:", _u, _e && _e.message); }
 }
-if(!_instant) throw new Error("Could not load the database library from any CDN.");
-const { init, i, id } = _instant;
+if(!_convexMod) throw new Error("Could not load the sync library from any CDN.");
+const { ConvexClient } = _convexMod;
 
 /* ============================================================
-   CONFIG  —  fill these in (see SETUP.txt)
+   CONFIG
    ============================================================ */
-const INSTANT_APP_ID   = "62048635-507a-4feb-9d3b-69941179a9fc";
-const GOOGLE_CLIENT_ID = "562486430006-r2s862hggh2nisbs1b9nss3tn7c34mkq.apps.googleusercontent.com";            // <-- from Google Cloud Console (OAuth Web client)
-const GOOGLE_CLIENT_NAME = "google-web"; // <-- the client name you set in the InstantDB dashboard
-const ADMIN_EMAIL = "keremladkeholland@gmail.com"; // the ONLY account allowed in
-
-/* ---- schema (mirrored in instant.schema.ts) ---- */
-const schema = i.schema({
-  entities: {
-    $users: i.entity({ email: i.string().unique().indexed() }),
-    workspaces: i.entity({ data: i.json(), updatedAt: i.number().indexed() }),
-    devices: i.entity({
-      deviceId: i.string().unique().indexed(),
-      label: i.string(), platform: i.string(),
-      status: i.string().indexed(),          // trusted | pending | revoked
-      firstSeen: i.number().indexed(), lastSeen: i.number().indexed(),
-      approvedBy: i.string(), approvedAt: i.number(),
-    }),
-    securityLog: i.entity({
-      ts: i.number().indexed(), event: i.string(), detail: i.string(), deviceId: i.string(),
-    }),
-    /* full-workspace safety copies (cloud snapshot history — see maybeCloudSnapshot).
-       Missing from the schema once = the typed client threw on every snapshots query,
-       which killed openSec() for signed-in users (dead shield/account buttons). */
-    snapshots: i.entity({
-      ts: i.number().indexed(), updatedAt: i.number(), label: i.string(), data: i.json(),
-    }),
-  },
-  links: {
-    workspaceOwner: { forward:{on:"workspaces",has:"one",label:"owner"}, reverse:{on:"$users",has:"one",label:"workspace"} },
-    deviceOwner:    { forward:{on:"devices",has:"one",label:"owner"},    reverse:{on:"$users",has:"many",label:"devices"} },
-    logOwner:       { forward:{on:"securityLog",has:"one",label:"owner"},reverse:{on:"$users",has:"many",label:"logs"} },
-    snapshotOwner:  { forward:{on:"snapshots",has:"one",label:"owner"},  reverse:{on:"$users",has:"many",label:"snapshots"} },
-  },
-});
-const CONFIGURED = !!(INSTANT_APP_ID && GOOGLE_CLIENT_ID);
-const db = INSTANT_APP_ID ? init({ appId: INSTANT_APP_ID, schema }) : null;
+/* The backend deployment. Local testing can point elsewhere via localStorage "psmConvexUrl" (never needed normally). */
+const CONVEX_URL = localStorage.getItem("psmConvexUrl") || "https://cheerful-rat-350.convex.cloud"; // production (dev: hearty-jay-608)
+const ADMIN_EMAIL = "keremladkeholland@gmail.com"; // the ONLY account allowed in (mirrored in convex/lib.ts)
+const SESSION_KEY = "psmSession_v1"; // where this device keeps its sign-in token
+const CONFIGURED = !!CONVEX_URL;
+const convex = CONFIGURED ? new ConvexClient(CONVEX_URL, { unsavedChangesWarning:false }) : null;
+let sessionToken = localStorage.getItem(SESSION_KEY) || "";
+/* Convex errors thrown on purpose carry their message in e.data */
+function errText(e, fallback){ const d=e&&e.data; if(typeof d==="string"&&d) return d; if(d&&typeof d.message==="string") return d.message; const m=e&&e.message||""; return (/ConvexError|Uncaught|Server Error/i.test(m)||!m)?fallback:m; }
 
 /* ============================================================
    CONSTANTS + HELPERS
@@ -1391,14 +1371,24 @@ async function mirrorRestoreIfNewer(){
   }catch(e){}
 }
 function push(){
-  if(booting || !granted || !db || !authedUser || !workspaceId) return;
+  if(booting || !granted || !convex || !sessionToken) return;
   const target = data.updatedAt;
   syncErr=false; renderSync(); /* pending until the cloud confirms → shows "Saving…" (or "Not synced · offline") */
-  try{
-    Promise.resolve(db.transact(db.tx.workspaces[workspaceId].update({ data, updatedAt: target }).link({ owner: authedUser.id })))
-      .then(()=>{ if(granted){ lastSyncedUp=Math.max(lastSyncedUp, target); syncErr=false; renderSync(); } })
-      .catch(e=>{ console.warn("push failed",e); if(granted){ syncErr=true; renderSync(); setTimeout(()=>{ if(granted) push(); },5000); } });
-  }catch(e){ console.warn("push threw",e); if(granted){ syncErr=true; renderSync(); setTimeout(()=>{ if(granted) push(); },5000); } }
+  let json; try{ json=JSON.stringify(data); }catch(e){ console.warn("push: could not serialize",e); return; }
+  convex.mutation("workspace:save", { token:sessionToken, deviceId, data:json, updatedAt:target })
+    .then(r=>{
+      if(!granted) return;
+      /* accepted → the cloud now holds `target`; rejected (accepted:false) → the cloud has something newer
+         and the live subscription is about to hand it to us — either way the cloud's stamp is confirmed */
+      lastSyncedUp=Math.max(lastSyncedUp, (r&&typeof r.updatedAt==="number")?r.updatedAt:target);
+      syncErr=false; renderSync();
+    })
+    .catch(e=>{
+      console.warn("push failed",e); if(!granted) return;
+      syncErr=true; renderSync();
+      if(/approved|signed in/i.test(errText(e,""))) return; /* an auth problem — the session/device gates handle it; don't hammer */
+      setTimeout(()=>{ if(granted) push(); },5000);
+    });
 }
 function adoptRemote(remote){
   let next;
@@ -1417,56 +1407,50 @@ function adoptRemote(remote){
   booting=true; data = next; applyTheme(); renderAll(); booting=false;
 }
 function startWorkspaceSync(){
-  if(!db || !authedUser) return;
-  if(workspaceSub){ workspaceSub(); workspaceSub=null; }
-  workspaceSub = db.subscribeQuery({ workspaces:{ $:{ where:{ "owner.id": authedUser.id } } } }, (res)=>{
-    if(res.error){ syncErr=true; renderSync(); return; }
-    const rows = (res.data && res.data.workspaces) || [];
-    if(rows.length){
-      const row = rows[0]; workspaceId = row.id;
-      const remoteUp = (row.data && row.data.updatedAt) || 0, localUp = data.updatedAt || 0;
+  if(!convex || !sessionToken) return;
+  if(workspaceSub){ try{ workspaceSub(); }catch(e){} workspaceSub=null; }
+  /* live subscription: fires immediately with the current cloud copy, then on every change (any device) */
+  workspaceSub = convex.onUpdate("workspace:get", { token:sessionToken, deviceId }, (row)=>{
+    if(row===null) return; /* not a trusted device (yet) / session gone — the device gate handles that */
+    syncErr=false;
+    if(row.data!==null && row.data!==undefined){
+      let remote; try{ remote=JSON.parse(row.data); }
+      catch(e){ console.error("cloud copy unreadable — keeping current data",e); try{ stash("badremote", String(row.data)); }catch(_e){} syncErr=true; renderSync(); return; }
+      const remoteUp = row.updatedAt || (remote&&remote.updatedAt) || 0, localUp = data.updatedAt || 0;
       if(remoteUp) lastSyncedUp = Math.max(lastSyncedUp, remoteUp); /* the cloud is confirmed to hold remoteUp */
-      if(row.data && remoteUp > localUp) adoptRemote(row.data);
+      if(remoteUp > localUp) adoptRemote(remote);
       else if(localUp > remoteUp && localUp > 0){
         /* offline edits: local is genuinely newer → upload it, but never silently destroy a larger cloud copy */
-        try{ if(row.data && shrunk(blobCounts(row.data), blobCounts(data))){ stash("lost", JSON.stringify(row.data)); toast("⚠ The cloud copy was larger — a safety copy of it was kept (Security → Restore points)"); } }catch(e){}
+        try{ if(shrunk(blobCounts(remote), blobCounts(data))){ stash("lost", JSON.stringify(remote)); toast("⚠ The cloud copy was larger — a safety copy of it was kept (Security → Restore points)"); } }catch(e){}
         push();
       }
-      syncErr=false; renderSync();
+      renderSync();
       maybeCloudSnapshot();
       backupReminder();
     } else {
-      // first sign-in on a fresh account: seed the cloud with local data
-      const nid=id(); workspaceId=nid; const up = data.updatedAt||Date.now();
-      Promise.resolve(db.transact(db.tx.workspaces[nid].update({ data, updatedAt:up }).link({ owner:authedUser.id })))
-        .then(()=>{ if(granted){ lastSyncedUp=Math.max(lastSyncedUp, up); syncErr=false; renderSync(); } })
-        .catch(()=>{ if(granted){ syncErr=true; renderSync(); } });
-      renderSync();
+      /* the cloud holds nothing yet: seed it from this device — but ONLY with real data. An untouched
+         seed (updatedAt 0) is never pushed, so a fresh device can't overwrite or pollute anything. */
+      if((data.updatedAt||0) > 0) push(); else renderSync();
     }
-  });
+  }, (err)=>{ console.warn("workspace subscription error", err); syncErr=true; renderSync(); });
 }
-/* ---- cloud snapshot history: periodic full copies in their own collection.
-        Overwriting the live workspace row can no longer destroy history. ---- */
+/* ---- cloud snapshot history: periodic full copies in their own table (the server keeps
+        the newest 30). Overwriting the live workspace row can no longer destroy history. ---- */
 const SNAP_EVERY = 4*3600*1000, SNAP_KEEP = 30;
-function queryOnceSafe(q){ /* must NEVER throw — a cloud/schema error can't be allowed to kill UI paths */
+function cloudQuery(name, args){ /* must NEVER throw — a cloud error can't be allowed to kill UI paths */
   try{
-    if(db && db.queryOnce) return db.queryOnce(q).then(r=>r.data).catch(e=>{ console.warn("cloud query failed",e); return null; });
-    return new Promise(res=>{ const un=db.subscribeQuery(q, r=>{ if(r.data){ try{un();}catch(e){} res(r.data); } else if(r.error){ try{un();}catch(e){} res(null); } }); });
-  }catch(e){ console.warn("cloud query failed",e); return Promise.resolve(null); }
+    if(!convex || !sessionToken) return Promise.resolve(null);
+    return convex.query(name, Object.assign({ token:sessionToken, deviceId }, args||{})).catch(e=>{ console.warn("cloud query failed",name,e); return null; });
+  }catch(e){ console.warn("cloud query failed",name,e); return Promise.resolve(null); }
 }
 async function maybeCloudSnapshot(force){
-  if(!granted || !db || !authedUser) return false;
+  if(!granted || !convex || !sessionToken) return false;
   let last=0; try{ last=+localStorage.getItem(STORAGE_KEY+"_snapat")||0; }catch(e){}
   if(!force && Date.now()-last < SNAP_EVERY) return false;
   if(!(data.updatedAt>0)) return false; /* never snapshot an untouched seed */
   try{
-    const nid=id();
-    const p = db.transact(db.tx.snapshots[nid].update({ ts:Date.now(), updatedAt:data.updatedAt, label:countsLabel(blobCounts(data)), data }).link({ owner:authedUser.id }));
+    await convex.mutation("snapshots:add", { token:sessionToken, deviceId, ts:Date.now(), updatedAt:data.updatedAt, label:countsLabel(blobCounts(data)), data:JSON.stringify(data) });
     try{ localStorage.setItem(STORAGE_KEY+"_snapat", ""+Date.now()); }catch(e){}
-    await p;
-    const got = await queryOnceSafe({ snapshots:{ $:{ where:{ "owner.id": authedUser.id } } } });
-    const rows = ((got&&got.snapshots)||[]).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
-    if(rows.length>SNAP_KEEP) await db.transact(rows.slice(SNAP_KEEP).map(r=>db.tx.snapshots[r.id].delete()));
     return true;
   }catch(e){ console.warn("cloud snapshot failed", e); return false; }
 }
@@ -1510,7 +1494,7 @@ function renderSync(){
 function setSync(cls, txt, title){ const p=$("syncPill"); if(!p) return; p.className=""; if(cls) p.classList.add(cls); $("syncText").textContent=txt; p.title=title||""; }
 
 /* ============================================================
-   AUTH  (Google Sign-In, locked to ADMIN_EMAIL)
+   AUTH  (email code via Convex + Resend, locked to ADMIN_EMAIL)
    ============================================================ */
 function showGate(which){
   ["authGate","bootGate","pendingGate","deniedGate","revokedGate","setupGate"].forEach(g=>$(g).classList.toggle("hidden", g!==which));
@@ -1519,28 +1503,43 @@ function showGate(which){
   $("topbar").style.display = show ? "none" : "flex";
   $("mainArea").style.display = show ? "none" : "block";
 }
-function waitForGoogle(cb){ if(window.google && google.accounts && google.accounts.id) return cb(); let n=0; const t=setInterval(()=>{ if(window.google && google.accounts && google.accounts.id){ clearInterval(t); cb(); } else if(++n>60){ clearInterval(t); } },100); }
-let gsiInit=false;
-function renderGoogleButton(){
-  if(!GOOGLE_CLIENT_ID) return;
-  waitForGoogle(()=>{
-    const nonce = uid();
-    if(!gsiInit){
-      google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID, nonce,
-        callback: async (resp)=>{
-          try{ await db.auth.signInWithIdToken({ clientName: GOOGLE_CLIENT_NAME, idToken: resp.credential, nonce }); }
-          catch(e){ authErr(e && e.body && e.body.message || e.message || "Sign-in failed."); }
-        },
-      });
-      gsiInit=true;
-    }
-    const box=$("gbtn"); box.innerHTML="";
-    google.accounts.id.renderButton(box, { theme: document.documentElement.getAttribute("data-theme")==="dark"?"filled_black":"outline", size:"large", shape:"pill", text:"signin_with", width:300 });
-  });
+let pendingEmail="";
+function authErr(m){ const e=$("authErr"); if(e){ e.textContent=m||""; e.style.display=m?"block":"none"; } }
+function authStep(n){
+  $("authStep1").style.display = n===1 ? "flex" : "none";
+  $("authStep2").style.display = n===2 ? "flex" : "none";
+  $("authLead").textContent = n===1 ? "This is a private workspace. Enter the authorized email and we'll send you a 6-digit sign-in code."
+                                    : "We emailed a 6-digit code to "+pendingEmail+" — enter it below (check spam if it takes a minute).";
+  authErr("");
+  setTimeout(()=>{ const f=$(n===1?"authEmail":"authCode"); if(f) f.focus(); },60);
 }
-function authErr(m){ const e=$("authErr"); if(e){ e.textContent=m; e.style.display="block"; } }
-
+async function requestSignInCode(){
+  const email=($("authEmail").value||"").trim().toLowerCase();
+  if(!email){ authErr("Enter your email address."); return; }
+  const b=$("authSend"); b.disabled=true; const was=b.textContent; b.textContent="Sending…";
+  try{ await convex.action("auth:requestCode",{ email }); pendingEmail=email; authStep(2); }
+  catch(e){ authErr(errText(e,"Couldn't send the code — try again in a minute.")); }
+  finally{ b.disabled=false; b.textContent=was; }
+}
+async function verifySignInCode(){
+  const code=($("authCode").value||"").trim();
+  if(!/^\d{6}$/.test(code)){ authErr("Enter the 6-digit code from the email."); return; }
+  const b=$("authVerify"); b.disabled=true;
+  try{
+    const r=await convex.action("auth:verifyCode",{ email:pendingEmail, code });
+    sessionToken=r.token; try{ localStorage.setItem(SESSION_KEY, r.token); }catch(e){}
+    $("authCode").value="";
+    onSignedIn({ email:r.email });
+  }
+  catch(e){ authErr(errText(e,"That code didn't work — try again.")); }
+  finally{ b.disabled=false; }
+}
+function doSignOut(){ /* local data stays on this device (it's yours); the cloud is the source of truth */
+  const t=sessionToken;
+  sessionToken=""; try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
+  if(convex && t) convex.mutation("auth:signOut",{ token:t }).catch(()=>{});
+  onSignedOut();
+}
 function onSignedIn(user){
   authedUser = user;
   if((user.email||"").toLowerCase() !== ADMIN_EMAIL.toLowerCase()){
@@ -1551,39 +1550,48 @@ function onSignedIn(user){
   startDeviceGate();
 }
 function onSignedOut(){
-  authedUser=null; granted=false; workspaceId=null;
-  if(workspaceSub){ workspaceSub(); workspaceSub=null; }
-  if(devicesSub){ devicesSub(); devicesSub=null; }
+  authedUser=null; granted=false;
+  if(workspaceSub){ try{ workspaceSub(); }catch(e){} workspaceSub=null; }
+  if(devicesSub){ try{ devicesSub(); }catch(e){} devicesSub=null; }
+  if(logSub){ try{ logSub(); }catch(e){} logSub=null; }
+  clearTimeout(bootTimer); deviceRows=[]; _touched=false; registering=false;
   if(deniedShown) return; // keep the denied screen until they choose another account
-  showGate("authGate"); renderGoogleButton();
+  showGate("authGate"); authStep(1); renderSync();
 }
 
 /* ============================================================
-   DEVICE TRUST
+   DEVICE TRUST  (server-enforced: data functions only answer trusted devices)
    ============================================================ */
+let bootTimer=null, registering=false, _touched=false;
 function startDeviceGate(){
-  if(devicesSub){ devicesSub(); devicesSub=null; }
-  devicesSub = db.subscribeQuery({ devices:{ $:{ where:{ "owner.id": authedUser.id } } } }, (res)=>{
-    if(res.error){ console.warn(res.error); return; }
-    deviceRows = (res.data && res.data.devices) || [];
+  if(devicesSub){ try{ devicesSub(); }catch(e){} devicesSub=null; }
+  clearTimeout(bootTimer);
+  /* offline with a remembered session: don't trap the user behind a spinner — open this device's
+     copy; the subscription grants real access (and syncs) the moment the cloud answers */
+  bootTimer=setTimeout(()=>{
+    if(granted) return;
+    const bg=$("bootGate"); if(!bg || bg.classList.contains("hidden")) return;
+    showGate(null); applyTheme(); renderAll(); updateAccount(); renderSync();
+    toast("Can't reach the cloud — showing this device's copy; it syncs as soon as you're back online");
+  },6000);
+  devicesSub = convex.onUpdate("devices:list", { token:sessionToken, deviceId }, (rows)=>{
+    clearTimeout(bootTimer);
+    if(rows===null){ /* the session is gone (expired, or revoked from another device) */
+      sessionToken=""; try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
+      onSignedOut(); authErr("Your sign-in expired — please sign in again."); return;
+    }
+    deviceRows = rows || [];
     evaluateDevice();
     if(granted){ renderSecurity(); updateSecDot(); }
-  });
+  }, (err)=>{ console.warn("devices subscription error", err); });
 }
 function evaluateDevice(){
   const mine = deviceRows.find(d=>d.deviceId===deviceId);
   if(!mine){
-    // register this device
-    const isFirst = deviceRows.length===0;
-    const now=Date.now();
-    const nid=id();
-    db.transact(db.tx.devices[nid].update({
-      deviceId, label:deviceLabel(), platform:navigator.platform||"",
-      status: isFirst?"trusted":"pending",
-      firstSeen:now, lastSeen:now,
-      approvedBy: isFirst?"bootstrap":"", approvedAt: isFirst?now:0,
-    }).link({ owner:authedUser.id }));
-    logSec(isFirst?"device_bootstrap":"device_requested", deviceLabel());
+    if(registering) return; registering=true; // register this device (first one is trusted automatically)
+    convex.mutation("devices:register",{ token:sessionToken, deviceId, label:deviceLabel(), platform:navigator.platform||"" })
+      .then(r=>{ registering=false; logSec((r&&r.bootstrap)?"device_bootstrap":"device_requested", deviceLabel()); })
+      .catch(e=>{ registering=false; console.warn("device registration failed",e); });
     return; // subscription refires with the new row
   }
   if(mine.status==="trusted"){
@@ -1596,8 +1604,7 @@ function evaluateDevice(){
     granted=false; showGate("revokedGate");
   }
 }
-let _touched=false;
-function touchDevice(mine){ if(_touched) return; _touched=true; try{ db.transact(db.tx.devices[mine.id].update({ lastSeen:Date.now() })); }catch(e){} }
+function touchDevice(mine){ if(_touched) return; _touched=true; convex.mutation("devices:touch",{ token:sessionToken, deviceId }).catch(()=>{}); }
 function grantAccess(){
   granted=true;
   showGate(null);
@@ -1608,19 +1615,20 @@ function grantAccess(){
   renderSync();
 }
 function logSec(event, detail){
-  if(!db || !authedUser) return;
-  try{ const nid=id(); db.transact(db.tx.securityLog[nid].update({ ts:Date.now(), event, detail:detail||"", deviceId }).link({ owner:authedUser.id })); }catch(e){}
+  if(!convex || !sessionToken) return;
+  convex.mutation("securityLog:add",{ token:sessionToken, deviceId, event, detail:detail||"" }).catch(()=>{});
 }
-function approveDevice(row){ db.transact(db.tx.devices[row.id].update({ status:"trusted", approvedBy:deviceId, approvedAt:Date.now() })); logSec("device_approved", row.label); toast("Device approved"); }
-function rejectDevice(row){ db.transact(db.tx.devices[row.id].delete()); logSec("device_rejected", row.label); toast("Request rejected"); }
-function revokeDevice(row){ db.transact(db.tx.devices[row.id].update({ status:"revoked" })); logSec("device_revoked", row.label); toast("Device revoked"); }
-function removeDevice(row){ db.transact(db.tx.devices[row.id].delete()); logSec("device_removed", row.label); }
+const devAct=(p,okMsg)=>p.then(()=>{ if(okMsg) toast(okMsg); }).catch(e=>toast(errText(e,"That didn't work — only a trusted device can change devices.")));
+function approveDevice(row){ devAct(convex.mutation("devices:setStatus",{ token:sessionToken, byDeviceId:deviceId, id:row.id, status:"trusted" }),"Device approved"); logSec("device_approved", row.label); }
+function rejectDevice(row){ devAct(convex.mutation("devices:remove",{ token:sessionToken, byDeviceId:deviceId, id:row.id }),"Request rejected"); logSec("device_rejected", row.label); }
+function revokeDevice(row){ devAct(convex.mutation("devices:setStatus",{ token:sessionToken, byDeviceId:deviceId, id:row.id, status:"revoked" }),"Device revoked"); logSec("device_revoked", row.label); }
+function removeDevice(row){ devAct(convex.mutation("devices:remove",{ token:sessionToken, byDeviceId:deviceId, id:row.id })); logSec("device_removed", row.label); }
 async function signOutOthers(){
   const others = deviceRows.filter(d=>d.deviceId!==deviceId && d.status!=="revoked");
   if(!others.length){ toast("No other devices"); return; }
   if(!await uiConfirm("Sign out and revoke all "+others.length+" other device(s)? They'll need re-approval.",{title:"Sign out other devices?",yes:"Sign them out"})) return;
-  others.forEach(d=>db.transact(db.tx.devices[d.id].update({ status:"revoked" })));
-  logSec("signout_others", others.length+" device(s)"); toast("Other devices signed out");
+  devAct(convex.mutation("devices:revokeOthers",{ token:sessionToken, byDeviceId:deviceId }),"Other devices signed out");
+  logSec("signout_others", others.length+" device(s)");
 }
 
 /* ============================================================
@@ -3096,13 +3104,14 @@ function renderSecurity(){
 }
 let logSub=null;
 function loadSecLog(){
-  if(!db||!authedUser) return;
-  if(logSub){ logSub(); logSub=null; }
-  logSub=db.subscribeQuery({ securityLog:{ $:{ where:{"owner.id":authedUser.id}, order:{ ts:"desc" }, limit:30 } } }, res=>{
-    const rows=(res.data&&res.data.securityLog)||[];
+  if(!convex || !sessionToken || !granted) return;
+  if(logSub){ try{ logSub(); }catch(e){} logSub=null; }
+  logSub=convex.onUpdate("securityLog:list",{ token:sessionToken, deviceId, limit:30 }, rows=>{
+    rows=rows||[];
     const nice={sign_in:"Signed in",device_bootstrap:"First device trusted",device_requested:"New device requested access",device_approved:"Device approved",device_rejected:"Device request rejected",device_revoked:"Device revoked",device_removed:"Device removed",signout_others:"Signed out other devices",data_restored:"Data restored from a backup",data_shrunk:"Large data removal detected (safety copy kept)"};
-    $("secLog").innerHTML = rows.length? rows.map(l=>`<div class="log-row"><span class="lt">${new Date(l.ts).toLocaleString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span><span><span class="le">${esc(nice[l.event]||l.event)}</span>${l.detail?" · "+esc(l.detail):""}</span></div>`).join("") : `<div style="font-size:12.5px;color:var(--faint)">No activity yet.</div>`;
-  });
+    const el=$("secLog"); if(!el) return;
+    el.innerHTML = rows.length? rows.map(l=>`<div class="log-row"><span class="lt">${new Date(l.ts).toLocaleString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span><span><span class="le">${esc(nice[l.event]||l.event)}</span>${l.detail?" · "+esc(l.detail):""}</span></div>`).join("") : `<div style="font-size:12.5px;color:var(--faint)">No activity yet.</div>`;
+  }, e=>console.warn("security log error",e));
 }
 /* ---- restore points: every automatic safety copy, local + cloud, in one list ---- */
 let restorePoints={};
@@ -3132,16 +3141,17 @@ function renderRestorePoints(){
   const paint=()=>{
     pts.sort((a,b)=>b.ts-a.ts);
     box.innerHTML = pts.length ? pts.map((p,i)=>{
-      const key="rp"+i; restorePoints[key]={when:rpWhen(p.ts), data:p.data};
-      return rpRow(key, p.icon, p.ts, p.tag+" — "+countsLabel(blobCounts(p.data)));
+      const key="rp"+i; restorePoints[key]={when:rpWhen(p.ts), data:p.data||null, cloudId:p.cloudId||null};
+      const desc = p.data ? countsLabel(blobCounts(p.data)) : ((p.label||"")+(p.bytes?" · "+Math.round(p.bytes/1024)+" KB":""));
+      return rpRow(key, p.icon, p.ts, p.tag+" — "+desc);
     }).join("") : `<div style="font-size:12px;color:var(--faint)">No restore points yet — they appear automatically as you use the app.</div>`;
   };
   paint();
-  /* cloud snapshots load async and merge in */
-  if(granted && db && authedUser){
-    queryOnceSafe({ snapshots:{ $:{ where:{ "owner.id": authedUser.id } } } }).then(got=>{
-      const rows=((got&&got.snapshots)||[]).filter(r=>r&&r.data);
-      rows.forEach(r=>pts.push({ts:r.ts||0, icon:"⛅", tag:"cloud snapshot", data:r.data}));
+  /* cloud snapshots load async and merge in (metadata only — the blob is fetched when you restore) */
+  if(granted && convex && sessionToken){
+    cloudQuery("snapshots:list").then(rows=>{
+      rows=(rows||[]).filter(r=>r&&r.id);
+      rows.forEach(r=>pts.push({ts:r.ts||0, icon:"⛅", tag:"cloud snapshot", cloudId:r.id, label:r.label||"", bytes:r.bytes||0}));
       if(rows.length) paint();
     }).catch(()=>{});
   }
@@ -3162,7 +3172,7 @@ function updateAccount(){
   $("sideAvatar").textContent = (em[0]||"?").toUpperCase();
 }
 function applyTheme(){ document.documentElement.setAttribute("data-theme", data.settings.theme||"light"); const dark=(data.settings.theme==="dark"); $("themeIco").innerHTML = dark?'<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>':'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'; }
-function toggleTheme(){ data.settings.theme = (data.settings.theme==="dark")?"light":"dark"; applyTheme(); save(); renderGoogleButton(); }
+function toggleTheme(){ data.settings.theme = (data.settings.theme==="dark")?"light":"dark"; applyTheme(); save(); }
 
 /* ---- tabs ---- */
 function switchTab(t){
@@ -4899,7 +4909,7 @@ $("themeBtn").onclick=toggleTheme;
 $("secBtn").onclick=openSec; $("secClose").onclick=closeSec;
 $("secModal").addEventListener("click",e=>{ if(e.target.id==="secModal") closeSec(); });
 $("acctBtn").onclick=openSec;
-$("signOutBtn").onclick=async()=>{ if(db && await uiConfirm("Sign out of this device?",{title:"Sign out?",yes:"Sign out"})) db.auth.signOut(); };
+$("signOutBtn").onclick=async()=>{ if(convex && await uiConfirm("Sign out of this device?",{title:"Sign out?",yes:"Sign out"})) doSignOut(); };
 $("backupBtn").onclick=()=>{
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="self-management-backup-"+todayISO()+".json"; a.click();
@@ -4933,16 +4943,25 @@ $("snapNowBtn").onclick=async()=>{
 $("secSnaps").addEventListener("click",async e=>{
   const b=e.target.closest("[data-rp]"); if(!b) return;
   const rp=restorePoints[b.dataset.rp]; if(!rp) return;
-  if(!await uiConfirm("Go back to this copy from "+rp.when+"?\n\nIt contains: "+countsLabel(blobCounts(rp.data))+"\n\nCurrent data will be replaced everywhere (but kept as a restore point).",{title:"Restore this point?",yes:"Restore"})) return;
-  if(await restoreData(rp.data, "restore point: "+rp.when)){
+  let payload=rp.data;
+  if(!payload && rp.cloudId){ /* cloud snapshot: the blob is fetched on demand */
+    b.disabled=true; const was=b.textContent; b.textContent="Loading…";
+    const got=await cloudQuery("snapshots:get",{ id:rp.cloudId });
+    b.disabled=false; b.textContent=was;
+    if(!got || !got.data){ toast("Couldn't load that cloud snapshot — check your connection"); return; }
+    try{ payload=JSON.parse(got.data); }catch(err){ toast("That cloud snapshot is unreadable"); return; }
+  }
+  if(!payload) return;
+  if(!await uiConfirm("Go back to this copy from "+rp.when+"?\n\nIt contains: "+countsLabel(blobCounts(payload))+"\n\nCurrent data will be replaced everywhere (but kept as a restore point).",{title:"Restore this point?",yes:"Restore"})) return;
+  if(await restoreData(payload, "restore point: "+rp.when)){
     if(appMode==="personal") switchPTab(pTab); else switchTab(curTab==="project"?"projects":curTab);
     closeSec();
   }
 });
 $("signOutOthers").onclick=signOutOthers;
-$("pendingSignOut").onclick=()=>{ if(db) db.auth.signOut(); };
-$("deniedSignOut").onclick=()=>{ deniedShown=false; if(db) db.auth.signOut(); showGate("authGate"); renderGoogleButton(); };
-$("revokedSignOut").onclick=()=>{ if(db) db.auth.signOut(); };
+$("pendingSignOut").onclick=()=>doSignOut();
+$("deniedSignOut").onclick=()=>{ deniedShown=false; doSignOut(); };
+$("revokedSignOut").onclick=()=>doSignOut();
 $("setupContinue").onclick=()=>{ showGate(null); applyTheme(); renderAll(); setSync("","Local only"); };
 document.addEventListener("keydown",e=>{ if(e.key==="Escape"){
   if(!$("uiDialog").classList.contains("hidden")) uiClose(false);
@@ -4975,19 +4994,18 @@ window.addEventListener("storage",(e)=>{ /* another tab saved newer data → fol
 });
 window.addEventListener("online",()=>{ if(granted) push(); renderSync(); }); /* connection back → flush pending state to the cloud */
 window.addEventListener("offline",()=>{ renderSync(); }); /* went offline → warn that any unsynced changes could be lost */
+$("authSend").onclick=requestSignInCode; $("authVerify").onclick=verifySignInCode; $("authBack").onclick=()=>authStep(1);
+$("authEmail").addEventListener("keydown",e=>{ if(e.key==="Enter") requestSignInCode(); });
+$("authCode").addEventListener("keydown",e=>{ if(e.key==="Enter") verifySignInCode(); });
 if(!CONFIGURED){
-  // No IDs yet → local-only preview so Kerem can see it working.
+  // No backend configured → local-only preview.
   showGate("setupGate");
   booting=false;
 } else {
-  showGate("authGate");
-  renderGoogleButton();
   booting=false;
-  db.subscribeAuth((auth)=>{
-    if(auth.error){ authErr((auth.error.body&&auth.error.body.message)||auth.error.message||"Sign-in error."); showGate("authGate"); renderGoogleButton(); return; }
-    if(auth.user){ onSignedIn(auth.user); }
-    else { onSignedOut(); }
-  });
+  $("authEmail").value=ADMIN_EMAIL; /* single-user app — save the typing */
+  if(sessionToken){ onSignedIn({ email:ADMIN_EMAIL }); } /* remembered device: the server is the authority — devices:list → null means the session is gone */
+  else { showGate("authGate"); authStep(1); renderSync(); }
 }
 window.__PSM_OK = true;
 /* Local UI preview (no cloud). Inert unless explicitly called; shows only this

@@ -52,6 +52,7 @@ const consts = [
   fullLine(/const GLOSSARY_SOURCES = /),
   fullLine(/const PPROJ_PALETTE=/),
   fullLine(/const uid = \(\) =>/),
+  fullLine(/function errText\(e, fallback\)\{/),
   slice('const SEED_PROJECTS = [', '\n];', true),
 ].join('\n');
 
@@ -66,8 +67,9 @@ async function HARNESS() {
   /*__REAL__*/
 
   // ===== harness state / spies =====
-  let data = null, booting = false, granted = true, authedUser = { id: 'kerem' },
-      workspaceId = null, workspaceSub = null, devicesSub = null;
+  let data = null, booting = false, granted = true, authedUser = { email: 'keremladkeholland@gmail.com' },
+      workspaceId = null, workspaceSub = null, devicesSub = null, logSub = null;
+  let sessionToken = 'tok_test'; const deviceId = 'dev_test';   // a signed-in, trusted test device
   let __toasts = [], __sec = [];
   const __clock = { t: 1000 };
   Date.now = () => __clock.t;                       // deterministic, tie-free virtual clock
@@ -128,43 +130,37 @@ async function HARNESS() {
   let window = { indexedDB };
   let navigator = { onLine: true };                 // drives the sync indicator's offline state
 
-  // ---- InstantDB "cloud" mock (shared across devices) ----
-  const cloud = { workspaces: {}, snapshots: {} };
-  let __idc = 0;
-  const id = () => 'gid_' + (++__idc);
-  const txProxy = coll => new Proxy({}, {
-    get: (_, rowId) => ({
-      __coll: coll, __id: String(rowId), __op: null, __payload: null, __link: null,
-      update(p) { this.__op = 'update'; this.__payload = p; return this; },
-      delete() { this.__op = 'delete'; return this; },
-      link(r) { this.__link = r; return this; },
-    }),
-  });
-  const db = {
-    tx: { workspaces: txProxy('workspaces'), snapshots: txProxy('snapshots') },
-    transact(ops) {
-      ops = Array.isArray(ops) ? ops : [ops];
-      for (const op of ops) {
-        const store = cloud[op.__coll];
-        if (op.__op === 'delete') { delete store[op.__id]; continue; }
-        const row = store[op.__id] || { id: op.__id };
-        Object.assign(row, op.__payload);
-        if (op.__link && op.__link.owner) row.owner = op.__link.owner;
-        if (row.data) row.data = clone(row.data);   // cloud keeps its own copy
-        store[op.__id] = row;
-      }
-      return Promise.resolve();
+  // ---- Convex "cloud" mock (shared across devices; mirrors the server's rules:
+  //      whole-blob LWW on updatedAt, snapshots pruned to 30, one workspace row) ----
+  const cloud = { workspace: null, snapshots: [], devices: [], securityLog: [] };
+  let __idc = 0; const newId = p => p + '_' + (++__idc);
+  const wsRow = () => cloud.workspace ? { data: cloud.workspace.data, updatedAt: cloud.workspace.updatedAt } : { data: null, updatedAt: 0 };
+  const convex = {
+    mutation(name, args) {
+      try {
+        if (name === 'workspace:save') {
+          const row = cloud.workspace;
+          if (!row) { cloud.workspace = { data: args.data, updatedAt: args.updatedAt }; return Promise.resolve({ accepted: true, updatedAt: args.updatedAt }); }
+          if (args.updatedAt >= row.updatedAt) { row.data = args.data; row.updatedAt = args.updatedAt; return Promise.resolve({ accepted: true, updatedAt: args.updatedAt }); }
+          return Promise.resolve({ accepted: false, updatedAt: row.updatedAt });   // stale write ignored, like the server
+        }
+        if (name === 'snapshots:add') { cloud.snapshots.push({ id: newId('snap'), ts: args.ts, updatedAt: args.updatedAt, label: args.label, data: args.data }); cloud.snapshots.sort((a, b) => b.ts - a.ts); cloud.snapshots = cloud.snapshots.slice(0, 30); return Promise.resolve({ kept: cloud.snapshots.length }); }
+        if (name === 'securityLog:add') { cloud.securityLog.push({ id: newId('log'), ts: Date.now(), event: args.event, detail: args.detail, deviceId: args.deviceId }); return Promise.resolve(); }
+        return Promise.resolve();
+      } catch (e) { return Promise.reject(e); }
     },
-    subscribeQuery(q, cb) {
-      const coll = Object.keys(q)[0];
-      const rows = Object.values(cloud[coll]).map(r => ({ ...r, data: r.data ? clone(r.data) : r.data }));
-      cb({ data: { [coll]: rows } });
+    query(name, args) {
+      if (name === 'workspace:get') return Promise.resolve(wsRow());
+      if (name === 'snapshots:list') return Promise.resolve(cloud.snapshots.map(s => ({ id: s.id, ts: s.ts, updatedAt: s.updatedAt, label: s.label, bytes: s.data.length })));
+      if (name === 'snapshots:get') { const s = cloud.snapshots.find(x => x.id === (args && args.id)); return Promise.resolve(s ? { data: s.data, ts: s.ts, updatedAt: s.updatedAt, label: s.label } : null); }
+      return Promise.resolve(null);
+    },
+    action() { return Promise.resolve({}); },
+    onUpdate(name, args, cb) {   // a real subscription fires immediately with the current value
+      if (name === 'workspace:get') cb(wsRow());
+      else if (name === 'devices:list') cb(cloud.devices.slice());
+      else if (name === 'securityLog:list') cb(cloud.securityLog.slice());
       return () => {};
-    },
-    queryOnce(q) {
-      const coll = Object.keys(q)[0];
-      const rows = Object.values(cloud[coll]).map(r => ({ ...r, data: r.data ? clone(r.data) : r.data }));
-      return Promise.resolve({ data: { [coll]: rows } });
     },
   };
 
@@ -178,7 +174,7 @@ async function HARNESS() {
   function useDevice(d) { data = d.data; localStorage = d.ls; indexedDB = d.idb; window.indexedDB = d.idb; workspaceId = d.workspaceId; workspaceSub = null; booting = false; granted = true; authedUser = { id: 'kerem' }; }
   function saveDevice(d) { d.data = data; d.workspaceId = workspaceId; }
   function boot(d) { useDevice(d); data = load(); d.data = data; }
-  const cloudWs = () => Object.values(cloud.workspaces)[0];
+  const cloudWs = () => cloud.workspace ? { data: JSON.parse(cloud.workspace.data), updatedAt: cloud.workspace.updatedAt } : undefined;
   const stashCount = (d, tag) => Object.keys(d.ls).filter(k => k.startsWith(STORAGE_KEY + '_' + tag + '_')).length;
   const wScore = d => scoreWork(blobCounts(d));
   const pScore = d => scorePersonal(blobCounts(d));
@@ -203,7 +199,7 @@ async function HARNESS() {
 
   // a laptop that already holds REAL data, pushed to a populated cloud
   function setupSynced() {
-    cloud.workspaces = {}; cloud.snapshots = {};
+    cloud.workspace = null; cloud.snapshots = [];
     const laptop = newDevice('laptop');
     __clock.t += 1000; boot(laptop); startWorkspaceSync();          // cloud seeded with laptop's seed
     __clock.t += 1000; data = normalize(clone(REAL)); save();       // cloud <- REAL (authoritative)
@@ -225,7 +221,7 @@ async function HARNESS() {
   //  S1 — THE phone-login bug: a fresh device must never overwrite the cloud
   // ============================================================
   scen('S1  Fresh phone login adopts the cloud instead of wiping it');
-  cloud.workspaces = {}; cloud.snapshots = {};
+  cloud.workspace = null; cloud.snapshots = [];
   const lap = newDevice('laptop');
   __clock.t += 1000; boot(lap); startWorkspaceSync();
   __clock.t += 1000; data = normalize(clone(REAL)); save(); saveDevice(lap);
@@ -248,7 +244,7 @@ async function HARNESS() {
   //     personal data present the personal guard would keep a 'lost' copy, but the
   //     work-only path is exactly the one that bit, which is why updatedAt:0 is the fix.)
   scen('S1b Reproduce the ORIGINAL bug to prove updatedAt:0 is the essential fix');
-  cloud.workspaces = {}; cloud.snapshots = {};
+  cloud.workspace = null; cloud.snapshots = [];
   const REALwork = clone(REAL); delete REALwork.personal;          // work-only, like the lost glossary/tasks/meetings
   const lap2 = newDevice('laptop2');
   __clock.t += 1000; boot(lap2); startWorkspaceSync();
@@ -538,31 +534,34 @@ async function HARNESS() {
   //   so queryOnce threw synchronously inside openSec → the Security modal never
   //   opened → the shield AND account buttons both appeared dead when signed in)
   // ============================================================
-  scen('S15 A throwing cloud query can never kill a UI path (dead shield/account buttons)');
+  scen('S15 A throwing cloud call can never kill a UI path (dead shield/account buttons regression)');
   {
     const { laptop } = setupSynced();
     useDevice(laptop);
-    const orig = db.queryOnce;
-    db.queryOnce = () => { throw new Error('validation: could not find entity "snapshots" in schema'); };
+    const origQ = convex.query;
+    convex.query = () => { throw new Error('validation: could not find function "snapshots:list"'); };
     let threw = false, result = 'unset';
-    try { result = await queryOnceSafe({ snapshots: { $: { where: { 'owner.id': authedUser.id } } } }); }
-    catch (e) { threw = true; }
-    check('queryOnceSafe does NOT throw when the underlying query throws synchronously', !threw);
+    try { result = await cloudQuery('snapshots:list'); } catch (e) { threw = true; }
+    check('cloudQuery does NOT throw when the underlying query throws synchronously', !threw);
     check('…and resolves to null so callers degrade gracefully', result === null, String(result));
-    db.queryOnce = () => Promise.reject(new Error('permission denied'));
+    convex.query = () => Promise.reject(new Error('Not signed in.'));
     let threw2 = false, result2 = 'unset';
-    try { result2 = await queryOnceSafe({ snapshots: { $: {} } }); } catch (e) { threw2 = true; }
-    check('queryOnceSafe also absorbs async rejections (e.g. permission denied)', !threw2 && result2 === null);
-    db.queryOnce = orig;
-    // and a snapshot attempt against a broken cloud must fail soft, not crash
+    try { result2 = await cloudQuery('snapshots:list'); } catch (e) { threw2 = true; }
+    check('cloudQuery also absorbs async rejections (e.g. permission denied)', !threw2 && result2 === null);
+    convex.query = origQ;
+    // a snapshot attempt against a broken cloud must fail soft, not crash
     const okBefore = wScore(data);
-    const origTx = db.transact;
-    db.transact = () => { throw new Error('validation: unknown entity snapshots'); };
+    const origM = convex.mutation;
+    convex.mutation = () => { throw new Error('validation: unknown function snapshots:add'); };
     let snapThrew = false, snapOk = 'unset';
     try { snapOk = await maybeCloudSnapshot(true); } catch (e) { snapThrew = true; }
-    db.transact = origTx;
     check('maybeCloudSnapshot fails SOFT when the cloud rejects it', !snapThrew && snapOk === false);
     check('…and the working data is untouched', wScore(data) === okBefore);
+    // and push() against a failing cloud never throws (the pill just shows "retrying")
+    convex.mutation = () => Promise.reject(new Error('boom'));
+    let pushThrew = false; try { push(); await flush(); } catch (e) { pushThrew = true; }
+    convex.mutation = origM;
+    check('push() against a failing cloud never throws', !pushThrew);
   }
 
   // ============================================================
@@ -679,28 +678,33 @@ const ctx = vm.createContext({
 vm.runInContext('var __run = (' + body + ')();', ctx, { filename: 'e2e-harness.js' });
 const res = await ctx.__run;
 
-/* ---- S16 (static): every InstantDB entity the app uses must exist in ALL schema/perms layers.
-        Regression guard for the missing-`snapshots` incident (dead shield/account buttons). ---- */
-console.log('\nS16 Static: schema & perms layers stay consistent (index.html / instant.schema.ts / instant.perms.ts / SETUP.txt)');
+/* ---- S16 (static): every "module:function" the app calls must exist as an export in convex/<module>.ts,
+        every table the backend uses must be in convex/schema.ts, and the UI hardening that ended the
+        dead-buttons incident must stay. (Replaces the old 4-layer InstantDB schema/perms check.) ---- */
+console.log('\nS16 Static: frontend ↔ backend consistency (index.html calls ↔ convex/*.ts exports, schema, hardening)');
 let sPass = 0, sFail = 0;
 const sCheck = (n, c) => { if (c) { sPass++; console.log('  ✓ ' + n); } else { sFail++; console.log('  ✗ FAIL: ' + n); } };
-const schemaTs = readFileSync(join(__dirname, '..', 'instant.schema.ts'), 'utf8');
-const permsTs = readFileSync(join(__dirname, '..', 'instant.perms.ts'), 'utf8');
-const setupTxt = readFileSync(join(__dirname, '..', 'SETUP.txt'), 'utf8');
-// every entity referenced via db.tx.<entity> or queried in index.html
-const used = [...new Set([
-  ...[...src.matchAll(/db\.tx\.([A-Za-z_$][\w$]*)/g)].map(m => m[1]),
-  ...[...src.matchAll(/(?:queryOnce|queryOnceSafe|subscribeQuery)\(\{\s*([A-Za-z_$][\w$]*)\s*:/g)].map(m => m[1]),
-])];
-const inlineSchema = src.slice(src.indexOf('const schema = i.schema({'), src.indexOf('const CONFIGURED'));
-for (const ent of used) {
-  sCheck(`entity "${ent}" is declared in index.html's inline schema`, new RegExp(ent + ':\\s*i\\.entity\\(').test(inlineSchema));
-  sCheck(`entity "${ent}" is mirrored in instant.schema.ts`, new RegExp(ent + ':\\s*i\\.entity\\(').test(schemaTs));
-  sCheck(`entity "${ent}" has server rules in instant.perms.ts`, new RegExp('\\b' + ent + ':\\s*\\{').test(permsTs));
-  sCheck(`entity "${ent}" is in SETUP.txt's dashboard permissions JSON`, setupTxt.includes('"' + ent + '"'));
+const calls = [...new Set([
+  ...[...src.matchAll(/convex\.(?:mutation|query|action|onUpdate)\(\s*"([a-zA-Z]+):([a-zA-Z]+)"/g)].map(m => m[1] + ':' + m[2]),
+  ...[...src.matchAll(/cloudQuery\(\s*"([a-zA-Z]+):([a-zA-Z]+)"/g)].map(m => m[1] + ':' + m[2]),
+])].sort();
+sCheck('the app calls a realistic number of backend functions (≥ 12)', calls.length >= 12);
+const modCache = {};
+const modSrc = m => (modCache[m] ??= (() => { try { return readFileSync(join(__dirname, '..', 'convex', m + '.ts'), 'utf8'); } catch { return ''; } })());
+for (const fn of calls) {
+  const [mod, name] = fn.split(':');
+  sCheck(`"${fn}" is exported by convex/${mod}.ts`, new RegExp('export const ' + name + '\\s*=\\s*(query|mutation|action)\\(').test(modSrc(mod)));
 }
+const schemaTs = readFileSync(join(__dirname, '..', 'convex', 'schema.ts'), 'utf8');
+for (const t of ['workspaces', 'snapshots', 'securityLog', 'devices', 'otps', 'sessions']) sCheck(`table "${t}" is defined in convex/schema.ts`, new RegExp(t + ':\\s*defineTable\\(').test(schemaTs));
+const libTs = readFileSync(join(__dirname, '..', 'convex', 'lib.ts'), 'utf8');
+sCheck('ADMIN_EMAIL matches between index.html and convex/lib.ts', (src.match(/const ADMIN_EMAIL = "([^"]+)"/) || [])[1] === (libTs.match(/ADMIN_EMAIL = "([^"]+)"/) || [])[1]);
+sCheck('data functions require a TRUSTED device server-side (requireTrusted/trustedOrNull in workspace.ts & snapshots.ts)', /requireTrusted|trustedOrNull/.test(modSrc('workspace')) && /requireTrusted|trustedOrNull/.test(modSrc('snapshots')));
+sCheck('no InstantDB client code remains in index.html', !/\bdb\.(transact|subscribeQuery|queryOnce|auth)\b|instantdb\.com|i\.schema\(|INSTANT_APP_ID/.test(src));
+sCheck('CSP allows the Convex backend and no longer InstantDB/Google', /connect-src[^"]*https:\/\/\*\.convex\.cloud wss:\/\/\*\.convex\.cloud/.test(src) && !/instantdb\.com|accounts\.google\.com/.test(src.slice(0, 3000)));
 sCheck('openSec() is hardened (renderers wrapped in try/catch)', src.includes('try{ renderSecurity(); }catch') && src.includes('try{ renderRestorePoints(); }catch'));
-sCheck('queryOnceSafe is hardened (synchronous throws absorbed)', /function queryOnceSafe\(q\)\{[^]*?try\{/.test(src));
+sCheck('cloudQuery is hardened (synchronous throws absorbed)', /function cloudQuery\(name, args\)\{[^]*?try\{/.test(src));
+sCheck('a fresh device never seeds the cloud with an untouched seed (updatedAt 0 guard in startWorkspaceSync)', /if\(\(data\.updatedAt\|\|0\) > 0\) push\(\); else renderSync\(\);/.test(src));
 console.log('  ' + sPass + ' passed, ' + sFail + ' failed');
 
 const totalPass = res.pass + sPass, totalFail = res.fail + sFail;
