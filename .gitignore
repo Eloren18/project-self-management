@@ -1,3 +1,12 @@
 Deploy.bat
+*.bat
 Thumbs.db
 .DS_Store
+# Convex backend: local deployment config + secrets (never publish)
+node_modules/
+.env
+.env.local
+# personal data: backups, the InstantDB export and the converted import files — never publish
+*backup*.json
+instantdb-export-*.json
+migration/

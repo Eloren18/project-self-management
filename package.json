@@ -1,0 +1,9 @@
+{
+  "name": "project-self-management",
+  "private": true,
+  "description": "Project Self-Management — static frontend (index.html) + Convex backend (convex/)",
+  "devDependencies": {
+    "convex": "^1.17.0",
+    "@instantdb/admin": "latest"
+  }
+}
