@@ -57,8 +57,9 @@ const consts = [
 
 const dataLayer = slice('function seed(){', 'let data = load();'); // seed, normTask, normalize, normalizePersonal, load
 const syncBlock = slice('const STASH_FAMILIES=', 'function setSync'); // counts, shrink guards, save, mirror, adopt, sync, restore
+const listBlock = slice('/* ---- plain-text smart lists', '/* ---- end smart lists ---- */'); // pure textarea list helpers (listEnter/listTab/listBackspace)
 
-const REAL_CODE = consts + '\n' + dataLayer + '\n' + syncBlock;
+const REAL_CODE = consts + '\n' + dataLayer + '\n' + syncBlock + '\n' + listBlock;
 
 /* ---- the harness: prelude shims + scenarios; real code injected at the marker ---- */
 async function HARNESS() {
@@ -636,6 +637,27 @@ async function HARNESS() {
     check('an entry with an existing `since` is preserved (age origin never lost)', d.entries[1].since === '2026-07-05');
     check('every dayPlan gains rolledCount:0', d.rolledCount === 0);
     check('meetups also get a `since`', blob.personal.dayPlans['2026-07-11'].meetups[0].since === '2026-07-11');
+  }
+
+  // ============================================================
+  //  S20 — plain-text smart lists (meeting notes / project notes / week prep textareas)
+  // ============================================================
+  scen('S20 Plain-text smart lists: Enter continues + renumbers, Tab indents, Backspace removes an empty marker');
+  {
+    const r1 = listEnter('- apple', 7);           check('bullet continues on Enter', !!r1 && r1.value === '- apple\n- ' && r1.pos === 10, r1 && JSON.stringify(r1));
+    const r2 = listEnter('1. one', 6);            check('numbered list increments (1. → 2.)', !!r2 && r2.value === '1. one\n2. ');
+    const r3 = listEnter('1) one', 6);            check('"1)" style increments too', !!r3 && r3.value === '1) one\n2) ');
+    const r4 = listEnter('- ', 2);                check('Enter on an empty item ends the list', !!r4 && r4.value === '' && r4.pos === 0);
+    const r5 = listEnter('1. a\n2. b\n3. c', 4);  check('inserting mid-list renumbers the lines below', !!r5 && r5.value === '1. a\n2. \n3. b\n4. c', r5 && JSON.stringify(r5.value));
+    const r6 = listEnter('  - x', 5);             check('indentation is preserved on the new item', !!r6 && r6.value === '  - x\n  - ');
+    const r7 = listEnter('- hello world', 7);     check('splitting mid-line moves the rest onto the new item', !!r7 && r7.value === '- hello\n- world' && r7.pos === 10, r7 && JSON.stringify(r7));
+    check('a normal line is left alone on Enter', listEnter('plain text', 10) === null);
+    const t1 = listTab('- a', 3, 3, false);        check('Tab indents a list line', !!t1 && t1.value === '  - a' && t1.selStart === 5);
+    const t2 = listTab('  - a', 5, 5, true);       check('Shift+Tab outdents', !!t2 && t2.value === '- a' && t2.selStart === 3);
+    check('Tab on a non-list line is not intercepted', listTab('plain', 5, 5, false) === null);
+    const t3 = listTab('- a\n- b', 0, 7, false);   check('Tab with a multi-line selection indents every line', !!t3 && t3.value === '  - a\n  - b', t3 && JSON.stringify(t3.value));
+    const b1 = listBackspace('- ', 2);             check('Backspace on an empty item removes the marker', !!b1 && b1.value === '' && b1.pos === 0);
+    check('Backspace inside a real item behaves normally', listBackspace('- a', 3) === null);
   }
 
   // ===== report =====

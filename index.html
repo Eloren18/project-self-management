@@ -373,6 +373,10 @@
   .doc-body h2{font-size:15px;font-weight:800;margin:16px 0 5px;text-transform:uppercase;letter-spacing:.5px;}
   .doc-body p,.doc-body div{margin:0 0 4px;}
   .doc-body ul,.doc-body ol{margin:6px 0;padding-left:24px;}
+  .doc-body li{margin:2px 0;}
+  .doc-body ul ul{list-style:circle;} .doc-body ul ul ul{list-style:square;}
+  .doc-body ol ol{list-style:lower-alpha;} .doc-body ol ol ol{list-style:lower-roman;}
+  .doc-body h3{font-size:13.5px;font-weight:800;margin:12px 0 4px;}
   .doc-body blockquote{margin:4px 0;padding-left:16px;border-left:2px solid var(--border);}
   .doc-body [style*="background-color"],.doc-body mark{color:#141519;padding:0 2px;}
 
@@ -1845,6 +1849,7 @@ function renderProjectPage(){
   $("ppDone").onclick=()=>toggleProjectDone(p);
   $("ppName").addEventListener("input",()=>{ p.name=$("ppName").value; save(); renderProjects(); });
   $("projectPageBody").querySelectorAll("[data-f]").forEach(el=>{ const f=el.dataset.f; const ev=(el.tagName==="SELECT")?"change":"input"; el.addEventListener(ev,()=>{ p[f]=el.value; save(); if(["progress","priority","category"].includes(f)){ renderProjects(); populateCategoryFilter(); } }); });
+  const ppNotes=$("projectPageBody").querySelector('textarea[data-f="notes"]'); if(ppNotes) bulletKeys(ppNotes, v=>{ p.notes=v; save(); }); /* smart lists in the project notes too */
   $("ppDeadline").onclick=()=>openPicker($("ppDeadline"),{deadline:p.deadline,isWk:p.deadlineWeek},sel=>{ p.deadline=sel.deadline; p.deadlineWeek=sel.isWk; save(); renderProjectPage(); renderProjects(); renderCalendar(); renderYear(); });
   bindColorField($("projectPageBody"), ()=>p, renderProjectPage);
   renderPPTasks(p);
@@ -1869,20 +1874,74 @@ const MNOTE_SECTIONS = [
   { k:"jumps",     label:"Next Jumps",          ph:"The bigger leaps this unlocks — where this is heading next" },
 ];
 /* Enter continues a "- " list; Enter on an empty bullet ends it */
+/* ---- plain-text smart lists (textareas): pure helpers + binder ----
+   Recognises bullet lines ("- ", "* ", "• ", "– ") and numbered lines ("1. ", "1) ").
+   Enter continues the list (numbers increment and the lines below renumber), Enter on
+   an empty item ends the list, Tab / Shift+Tab indent / outdent, Backspace on an empty
+   item removes the marker. Shift+Enter is always a plain newline. Pure functions return
+   null when the key should behave normally. */
+const LIST_RE=/^(\s*)(?:([-•*–])|(\d+)([.)]))([ \t]+)(.*)$/;
+function listLineStart(v,pos){ return v.lastIndexOf("\n",pos-1)+1; }
+function listLineEnd(v,pos){ const e=v.indexOf("\n",pos); return e<0?v.length:e; }
+function listRenumber(v,from,indent,delim,startNum){ /* renumber consecutive numbered lines at this indent, starting at `from` */
+  let i=from, n=startNum, out=v;
+  while(i<=out.length){
+    const e=listLineEnd(out,i); const line=out.slice(i,e);
+    const m=line.match(/^(\s*)(\d+)([.)])([ \t]+)/);
+    if(!m || m[1]!==indent || m[3]!==delim) break;
+    const fixed=indent+n+delim+m[4]+line.slice(m[0].length);
+    out=out.slice(0,i)+fixed+out.slice(e);
+    i=i+fixed.length+1; n++;
+    if(i>out.length) break;
+  }
+  return out;
+}
+function listEnter(v,pos){
+  const ls=listLineStart(v,pos);
+  const m=v.slice(ls,pos).match(LIST_RE); if(!m) return null;
+  const indent=m[1], bullet=m[2], num=m[3], delim=m[4], content=m[6];
+  if(!content.trim()) return { value:v.slice(0,ls)+v.slice(pos), pos:ls };        /* empty item → leave the list */
+  const marker = bullet ? bullet : (+num+1)+delim;
+  const rest=v.slice(pos).replace(/^[ \t]+/,"");                                   /* splitting mid-line: don't carry the space */
+  const ins="\n"+indent+marker+" ";
+  let value=v.slice(0,pos)+ins+rest; const np=pos+ins.length;
+  if(num){ const nextLine=listLineEnd(value,np)+1; if(nextLine<=value.length) value=listRenumber(value,nextLine,indent,delim,+num+2); }
+  return { value, pos:np };
+}
+function listTab(v,selStart,selEnd,shift){
+  const first=listLineStart(v,selStart);
+  if(!LIST_RE.test(v.slice(first,listLineEnd(v,first)))) return null;             /* only act on list lines */
+  const last=listLineStart(v,Math.max(selStart,selEnd>selStart?selEnd-1:selEnd));
+  let cursor=first, s2=selStart, e2=selEnd, firstDelta=0;
+  const lines=[]; while(cursor<=last){ const e=listLineEnd(v,cursor); lines.push([cursor,e]); if(e>=v.length) break; cursor=e+1; }
+  let acc=v; let shiftTotal=0;
+  lines.forEach(([a,b],idx)=>{
+    const start=a+shiftTotal, end=b+shiftTotal; const line=acc.slice(start,end);
+    let nl, d;
+    if(shift){ const rm=line.match(/^( {1,2}|\t)/); d=rm?-rm[0].length:0; nl=rm?line.slice(rm[0].length):line; }
+    else { d=2; nl="  "+line; }
+    acc=acc.slice(0,start)+nl+acc.slice(end); shiftTotal+=d;
+    if(idx===0) firstDelta=d;
+  });
+  if(selStart===selEnd){ s2=e2=Math.max(first,selStart+firstDelta); }
+  else { s2=first; e2=selEnd+shiftTotal; }
+  return { value:acc, selStart:s2, selEnd:e2 };
+}
+function listBackspace(v,pos){
+  const ls=listLineStart(v,pos);
+  const m=v.slice(ls,pos).match(LIST_RE); if(!m || m[6].length) return null;     /* only an empty item, caret right after the marker */
+  return { value:v.slice(0,ls)+v.slice(pos), pos:ls };
+}
 function bulletKeys(ta, onChange){
+  const apply=(r,s,e)=>{ ta.value=r.value; ta.selectionStart=s; ta.selectionEnd=e; autoGrow(ta); onChange(ta.value); };
   ta.addEventListener("keydown",e=>{
-    if(e.key!=="Enter" || e.shiftKey) return;
-    const v=ta.value, pos=ta.selectionStart;
-    if(pos!==ta.selectionEnd) return;
-    const ls=v.lastIndexOf("\n",pos-1)+1;
-    const m=v.slice(ls,pos).match(/^(\s*)([-•*])(\s+)(.*)$/);
-    if(!m) return;
-    e.preventDefault();
-    if(!m[4].trim()){ ta.value=v.slice(0,ls)+v.slice(pos); ta.selectionStart=ta.selectionEnd=ls; }
-    else { const ins="\n"+m[1]+m[2]+" "; ta.value=v.slice(0,pos)+ins+v.slice(pos); ta.selectionStart=ta.selectionEnd=pos+ins.length; }
-    autoGrow(ta); onChange(ta.value);
+    const v=ta.value, s=ta.selectionStart, en=ta.selectionEnd;
+    if(e.key==="Enter" && !e.shiftKey && s===en){ const r=listEnter(v,s); if(r){ e.preventDefault(); apply(r,r.pos,r.pos); } }
+    else if(e.key==="Tab"){ const r=listTab(v,s,en,e.shiftKey); if(r){ e.preventDefault(); apply(r,r.selStart,r.selEnd); } }
+    else if(e.key==="Backspace" && s===en){ const r=listBackspace(v,s); if(r){ e.preventDefault(); apply(r,r.pos,r.pos); } }
   });
 }
+/* ---- end smart lists ---- */
 /* "Next steps" checklist helpers ({id,text,done}) */
 function stepOpen(steps){ return (steps||[]).filter(s=>!s.done && (s.text||"").trim()); }
 function stepsText(steps){ return (steps||[]).map(s=>s.text).filter(t=>(t||"").trim()).join("\n"); } /* for search + snippet */
@@ -2341,6 +2400,7 @@ function renderWeekPrep(){
   $("wpThisBtn").onclick=()=>{ prepWeekStart=nowWs; renderWeekPrep(); };
   $("wpNextBtn").onclick=()=>{ prepWeekStart=nextWs; renderWeekPrep(); };
   $("wpNotes").addEventListener("input",e=>{ const p=ensurePrep(prepWeekStart); p.notes=e.target.value; p.updatedAt=Date.now(); save(); });
+  bulletKeys($("wpNotes"), v=>{ const p=ensurePrep(prepWeekStart); p.notes=v; p.updatedAt=Date.now(); save(); });
   const addItem=()=>{ const inp=$("wpNewItem"); const txt=(inp.value||"").trim(); if(!txt){ inp.focus(); return; } const p=ensurePrep(prepWeekStart); p.items.push({id:uid(),text:txt,done:false}); p.updatedAt=Date.now(); save(); renderWeekPrep(); $("wpNewItem").focus(); };
   $("wpAddItem").onclick=addItem;
   $("wpNewItem").addEventListener("keydown",e=>{ if(e.key==="Enter") addItem(); });
@@ -2380,6 +2440,79 @@ function sanitizeDocHTML(html){
 }
 function docHTML(dd){ return dd.rich ? sanitizeDocHTML(dd.body) : esc(dd.body).replace(/\n/g,"<br>"); }
 function docText(dd){ if(!dd.rich) return dd.body||""; const t=document.createElement("div"); t.innerHTML=sanitizeDocHTML(dd.body); return t.textContent||""; }
+/* ---- shared rich-text editor behaviour (Documents + Self Notes) ----
+   Word-style autoformat while typing: "- " / "* " / "• " → bullet list, "1. " / "1) " → numbered
+   list, "# " / "## " / "### " → header, "> " → quote. Tab / Shift+Tab indent / outdent list
+   items, Enter on an empty item ends the list (native), Enter after a header returns to normal
+   text, Ctrl+Shift+8 / 7 toggle bullet / numbered lists, and pasted plain text that looks
+   like a list becomes a real list. Everything runs through execCommand so Ctrl+Z undoes it. */
+function bindRichEditor(body, toolsHost, opts){
+  opts=opts||{}; const hl=opts.hlColor||"#ffe86b"; const onChange=opts.onChange||(()=>{});
+  const exec=(cmd,val)=>{ document.execCommand("styleWithCSS",false,false); document.execCommand(cmd,false,val); };
+  const BLOCK=/^(P|DIV|LI|H1|H2|H3|BLOCKQUOTE)$/;
+  const blockOf=node=>{ let n=(node&&node.nodeType===3)?node.parentNode:node; while(n&&n!==body&&!BLOCK.test(n.tagName)) n=n.parentNode; return (n&&n!==body)?n:null; };
+  const inside=tag=>{ const s=window.getSelection(); if(!s.rangeCount) return null; let n=s.anchorNode; n=(n&&n.nodeType===3)?n.parentNode:n; while(n&&n!==body){ if(n.tagName===tag) return n; n=n.parentNode; } return null; };
+  const caretCtx=()=>{ /* text from the start of the current block up to the caret */
+    const s=window.getSelection(); if(!s.rangeCount||!s.isCollapsed) return null;
+    const n=s.anchorNode; if(!n||!body.contains(n)) return null;
+    const blk=blockOf(n)||body; const r=document.createRange(); r.setStart(blk,0); r.setEnd(n,s.anchorOffset);
+    return { text:r.toString().replace(/ /g," "), range:r, blk };
+  };
+  const AUTO=[ [/^(?:-|\*|•|–) $/,"ul"], [/^1[.)] $/,"ol"], [/^# $/,"H1"], [/^## $/,"H2"], [/^### $/,"H3"], [/^> $/,"BLOCKQUOTE"] ];
+  const maybeAuto=()=>{
+    const c=caretCtx(); if(!c) return;
+    if(c.blk!==body && c.blk.tagName==="LI") return;                              /* already in a list */
+    const hit=AUTO.find(([re])=>re.test(c.text)); if(!hit) return;
+    setTimeout(()=>{                                                               /* let the input settle, then transform */
+      const c2=caretCtx(); if(!c2||!hit[0].test(c2.text)) return;
+      const s=window.getSelection(); s.removeAllRanges(); s.addRange(c2.range);
+      document.execCommand("delete");                                              /* remove the typed marker (undoable) */
+      const k=hit[1];
+      if(k==="ul") exec("insertUnorderedList"); else if(k==="ol") exec("insertOrderedList"); else exec("formatBlock",k);
+      onChange();
+    },0);
+  };
+  body.addEventListener("input",()=>{ maybeAuto(); onChange(); });
+  body.addEventListener("keydown",e=>{
+    const mod=e.ctrlKey||e.metaKey;
+    if(e.key==="Tab"){ if(inside("LI")){ e.preventDefault(); exec(e.shiftKey?"outdent":"indent"); onChange(); } return; }
+    if(mod&&e.shiftKey&&(e.key==="8"||e.key==="*")){ e.preventDefault(); exec("insertUnorderedList"); onChange(); return; }
+    if(mod&&e.shiftKey&&(e.key==="7"||e.key==="&")){ e.preventDefault(); exec("insertOrderedList"); onChange(); return; }
+    if(e.key==="Enter"&&!e.shiftKey){
+      const s=window.getSelection(); if(!s.rangeCount||!s.isCollapsed) return;
+      const blk=blockOf(s.anchorNode); if(!blk) return;
+      const r=document.createRange(); r.setStart(s.anchorNode,s.anchorOffset); r.setEndAfter(blk.lastChild||blk);
+      const atEnd=!r.toString().trim();
+      if(/^H[1-3]$/.test(blk.tagName)&&atEnd){ e.preventDefault(); exec("insertParagraph"); exec("formatBlock","P"); onChange(); }  /* Enter after a header → normal text */
+      else if(blk.tagName==="BLOCKQUOTE"&&!blk.textContent.trim()){ e.preventDefault(); exec("formatBlock","P"); onChange(); }    /* Enter on an empty quote → leave it */
+    }
+  });
+  body.addEventListener("paste",e=>{
+    e.preventDefault();
+    const txt=(e.clipboardData||window.clipboardData).getData("text/plain");
+    const lines=txt.replace(/\r/g,"").split("\n");
+    if(!lines.some(l=>LIST_RE.test(l))){ document.execCommand("insertText",false,txt); onChange(); return; }
+    let html="", open=null;                                                        /* lines that look like a list become a real list */
+    const close=()=>{ if(open){ html+="</"+open+">"; open=null; } };
+    lines.forEach(l=>{ const m=l.match(LIST_RE);
+      if(m){ const tag=m[2]?"ul":"ol"; if(open!==tag){ close(); html+="<"+tag+">"; open=tag; } html+="<li>"+esc(m[6])+"</li>"; }
+      else { close(); if(l.trim()) html+="<div>"+esc(l)+"</div>"; } });
+    close();
+    document.execCommand("insertHTML",false,html); onChange();
+  });
+  const CMD={bold:"bold",i:"italic",u:"underline",s:"strikeThrough",ul:"insertUnorderedList",ol:"insertOrderedList",indent:"indent",outdent:"outdent",left:"justifyLeft",center:"justifyCenter",right:"justifyRight",undo:"undo",redo:"redo"};
+  (toolsHost||body.parentNode).querySelectorAll(".doc-tools button").forEach(b=>{
+    b.addEventListener("mousedown",e=>e.preventDefault());                         /* keep the text selection */
+    b.addEventListener("click",()=>{ const cmd=b.dataset.cmd; body.focus();
+      document.execCommand("styleWithCSS",false,cmd==="hl");                       /* CSS mode only for highlight — everything else emits plain tags the sanitizer keeps */
+      if(cmd==="h1"||cmd==="h2"||cmd==="h3"||cmd==="p") document.execCommand("formatBlock",false,cmd.toUpperCase());
+      else if(cmd==="quote") document.execCommand("formatBlock",false,inside("BLOCKQUOTE")?"P":"BLOCKQUOTE");
+      else if(cmd==="hl") document.execCommand("hiliteColor",false,hl);
+      else if(cmd==="clear"){ document.execCommand("removeFormat"); document.execCommand("formatBlock",false,"P"); }
+      else if(CMD[cmd]) document.execCommand(CMD[cmd]);
+      onChange(); });
+  });
+}
 function updateDocMeta(dd){ const m=$("docMeta"); if(m) m.textContent = "Created "+new Date(dd.createdAt).toLocaleDateString()+" · Last edited "+new Date(dd.updatedAt).toLocaleString()+" · "+wordsOf(docText(dd))+" words"; }
 function renderDocs(){
   const host=$("docsBody"); if(!host) return;
@@ -2421,8 +2554,9 @@ function renderDocs(){
           <button data-cmd="s" title="Strikethrough" style="text-decoration:line-through">S</button>
           <button data-cmd="hl" title="Highlight the selection" style="background:#ffe86b;color:#141519">HL</button>
           <span class="sep"></span>
-          <button data-cmd="ul" title="Bullet list (or type “- ” at the start of a line)">•&nbsp;List</button>
-          <button data-cmd="ol" title="Numbered list (or type “1. ” at the start of a line)">1.&nbsp;List</button>
+          <button data-cmd="ul" title="Bullet list — or type “- ” at the start of a line (Ctrl+Shift+8)">•&nbsp;List</button>
+          <button data-cmd="ol" title="Numbered list — or type “1. ” at the start of a line (Ctrl+Shift+7)">1.&nbsp;List</button>
+          <button data-cmd="quote" title="Quote block — or type “> ” at the start of a line">❝&nbsp;Quote</button>
           <button data-cmd="outdent" title="Decrease indent"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 6H3M21 12h-9M21 18H3M7 9l-4 3 4 3"/></svg></button>
           <button data-cmd="indent" title="Increase indent"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 6H3M21 12h-9M21 18H3M3 9l4 3-4 3"/></svg></button>
           <span class="sep"></span>
@@ -2448,44 +2582,7 @@ function renderDocs(){
     /* Typing updates data + the list entry in place — no full re-render, so focus is never lost. */
     $("docTitle").addEventListener("input",e=>{ cur2.title=e.target.value; cur2.updatedAt=Date.now(); save(); const li=host.querySelector(`.doc-item[data-doc="${cur2.id}"] .dt`); if(li) li.textContent=cur2.title||"Untitled"; updateDocMeta(cur2); });
     const syncBody=()=>{ cur2.body=sanitizeDocHTML($("docBody").innerHTML); cur2.rich=true; cur2.updatedAt=Date.now(); save(); updateDocMeta(cur2); };
-    /* Word-style autoformat: typing "- ", "* " or "1. " at the start of a line turns it into a list */
-    const maybeAutoList=()=>{
-      const sel=window.getSelection(); if(!sel.rangeCount||!sel.isCollapsed) return;
-      const n=sel.anchorNode; if(!n||n.nodeType!==3||!$("docBody").contains(n)) return;
-      if(n.parentNode.closest && n.parentNode.closest("li")) return;
-      const t=n.textContent.replace(/ /g," "), off=sel.anchorOffset; /* Chrome puts nbsp at line end */
-      let kind=null;
-      if((t==="- "||t==="* ")&&off===2) kind="insertUnorderedList";
-      else if(/^1[.)] $/.test(t)&&off===3) kind="insertOrderedList";
-      if(!kind) return;
-      /* transform just after the input event settles: clear the prefix, put the
-         caret back on the emptied node, then convert the line into a list */
-      setTimeout(()=>{
-        n.textContent="";
-        const r=document.createRange(); r.setStart(n,0); r.collapse(true);
-        const s2=window.getSelection(); s2.removeAllRanges(); s2.addRange(r);
-        document.execCommand("styleWithCSS",false,false);
-        document.execCommand(kind);
-        syncBody();
-      },0);
-    };
-    $("docBody").addEventListener("input",()=>{ maybeAutoList(); syncBody(); });
-    /* paste as plain text so pasted content can't drag messy markup in */
-    $("docBody").addEventListener("paste",e=>{ e.preventDefault(); const txt=(e.clipboardData||window.clipboardData).getData("text/plain"); document.execCommand("insertText",false,txt); });
-    const CMD_MAP={bold:"bold",i:"italic",u:"underline",s:"strikeThrough",ul:"insertUnorderedList",ol:"insertOrderedList",indent:"indent",outdent:"outdent",left:"justifyLeft",center:"justifyCenter",right:"justifyRight",undo:"undo",redo:"redo"};
-    host.querySelectorAll(".doc-tools button").forEach(b=>{
-      b.addEventListener("mousedown",e=>e.preventDefault()); /* keep the text selection */
-      b.addEventListener("click",()=>{
-        const cmd=b.dataset.cmd; $("docBody").focus();
-        /* CSS-styling mode only for highlight — everything else emits plain tags the sanitizer keeps */
-        document.execCommand("styleWithCSS",false,cmd==="hl");
-        if(cmd==="h1"||cmd==="h2"||cmd==="p") document.execCommand("formatBlock",false,cmd.toUpperCase());
-        else if(cmd==="hl") document.execCommand("hiliteColor",false,"#ffe86b");
-        else if(cmd==="clear"){ document.execCommand("removeFormat"); document.execCommand("formatBlock",false,"P"); }
-        else if(CMD_MAP[cmd]) document.execCommand(CMD_MAP[cmd]);
-        syncBody();
-      });
-    });
+    bindRichEditor($("docBody"), host, {hlColor:"#ffe86b", onChange:syncBody});
     $("docDelete").onclick=async()=>{ if(!await uiConfirm("Delete “"+(cur2.title||"Untitled")+"”? This can't be undone.",{title:"Delete document?"})) return; data.docs=data.docs.filter(x=>x.id!==cur2.id); curDocId=null; save(); renderDocs(); };
     updateDocMeta(cur2);
   }
@@ -4422,8 +4519,8 @@ function renderPNotes(){
         <div class="doc-meta" id="pnMeta"></div>
         <div class="doc-tools">
           <button data-cmd="h1">Header</button><button data-cmd="h2">Sub</button><button data-cmd="p">Text</button><span class="sep"></span>
-          <button data-cmd="bold" style="font-weight:800">B</button><button data-cmd="i" style="font-style:italic">I</button><button data-cmd="u" style="text-decoration:underline">U</button><button data-cmd="hl" style="background:var(--primary-soft);color:var(--primary)">HL</button><span class="sep"></span>
-          <button data-cmd="ul">•&nbsp;List</button><button data-cmd="ol">1.&nbsp;List</button><span class="sep"></span>
+          <button data-cmd="bold" style="font-weight:800">B</button><button data-cmd="i" style="font-style:italic">I</button><button data-cmd="u" style="text-decoration:underline">U</button><button data-cmd="s" style="text-decoration:line-through">S</button><button data-cmd="hl" style="background:var(--primary-soft);color:var(--primary)">HL</button><span class="sep"></span>
+          <button data-cmd="ul" title="Bullet list — or type “- ” (Ctrl+Shift+8)">•&nbsp;List</button><button data-cmd="ol" title="Numbered list — or type “1. ” (Ctrl+Shift+7)">1.&nbsp;List</button><button data-cmd="outdent" title="Decrease indent (Shift+Tab)">⇤</button><button data-cmd="indent" title="Increase indent (Tab)">⇥</button><button data-cmd="quote" title="Quote — or type “> ”">❝</button><span class="sep"></span>
           <button data-cmd="undo">↺</button><button data-cmd="redo">↻</button><button data-cmd="clear">Clear</button>
         </div>
         <div class="doc-body" id="pnBody" contenteditable="true" data-ph="Write freely — nobody reads this but you.">${docHTML(cur)}</div>
@@ -4441,20 +4538,8 @@ function renderPNotes(){
     meta();
     $("pnTitle").addEventListener("input",e=>{ cur2.title=e.target.value; cur2.updatedAt=Date.now(); save(); const li=host.querySelector(`.doc-item[data-pn="${cur2.id}"] .dt`); if(li) li.textContent=cur2.title||"Untitled"; meta(); });
     const syncB=()=>{ cur2.body=sanitizeDocHTML($("pnBody").innerHTML); cur2.rich=true; cur2.updatedAt=Date.now(); save(); meta(); };
-    $("pnBody").addEventListener("input",syncB);
-    $("pnBody").addEventListener("paste",e=>{ e.preventDefault(); document.execCommand("insertText",false,(e.clipboardData||window.clipboardData).getData("text/plain")); });
+    bindRichEditor($("pnBody"), host, {hlColor:"#f9e0c7", onChange:syncB});
     $("pnDel").onclick=async()=>{ if(!await uiConfirm("Delete “"+(cur2.title||"Untitled")+"”?")) return; P().notes=P().notes.filter(x=>x.id!==cur2.id); pNoteId=null; save(); renderPNotes(); };
-    const CMDS={bold:"bold",i:"italic",u:"underline",ul:"insertUnorderedList",ol:"insertOrderedList",undo:"undo",redo:"redo"};
-    host.querySelectorAll(".doc-tools button").forEach(b=>{
-      b.addEventListener("mousedown",e=>e.preventDefault());
-      b.addEventListener("click",()=>{ const cmd=b.dataset.cmd; $("pnBody").focus();
-        document.execCommand("styleWithCSS",false,cmd==="hl");
-        if(cmd==="h1"||cmd==="h2"||cmd==="p") document.execCommand("formatBlock",false,cmd.toUpperCase());
-        else if(cmd==="hl") document.execCommand("hiliteColor",false,"#f9e0c7");
-        else if(cmd==="clear"){ document.execCommand("removeFormat"); document.execCommand("formatBlock",false,"P"); }
-        else if(CMDS[cmd]) document.execCommand(CMDS[cmd]);
-        syncB(); });
-    });
   }
 }
 

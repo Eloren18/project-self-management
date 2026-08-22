@@ -106,7 +106,7 @@ on `data.updatedAt` via InstantDB (`workspaces` row, owner-linked).
 ### 4.10 Meeting notes — structured editor (shared: project pages **and** the meeting log)
 One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both places. **[ALWAYS CHECK — both surfaces]**
 - **Three fixed sections** auto-titled: **What was discussed?**, **Next steps**, **Next Jumps** (meeting-log entries also keep an **Agenda** section on top).
-- **Natural editing**: seamless borderless textareas that **auto-grow** as you type (no fixed rows, no manual resize); `- ` bullet lists auto-continue on Enter and end on an empty bullet.
+- **Natural editing**: seamless borderless textareas that **auto-grow** as you type (no fixed rows, no manual resize), with **plain-text smart lists** (`bulletKeys` → pure `listEnter`/`listTab`/`listBackspace`, tested in S20): bullets (`- ` `* ` `• ` `– `) **and numbered lists** (`1. ` / `1) `) auto-continue on Enter — numbers increment and the lines below **renumber**; Enter on an empty item ends the list; **Tab / Shift+Tab** indent / outdent (multi-line selections too); **Backspace** on an empty item removes the marker; Shift+Enter is a plain newline. The same behaviour is wired into the **project-page Notes** textarea and **Week Prep notes**.
 - **Collapsible cards** with a date header, a one-line snippet preview when collapsed, a `⇢ N` chip showing unconverted next-steps, and a relative "edited …" time when open.
 - **Next steps is a checkbox checklist** (`{id,text,done}`): tick items off with a real checkbox, edit text inline, add via the "＋ Add a next step" input (Enter), delete per row; done items strike through.
 - **Next steps → tasks**: a button turns each **un-ticked** step into a real task (on the project or meeting) that flows into To-Do, then **ticks that step's checkbox** so re-running never duplicates. Confirm dialog previews exactly what will be created.
@@ -118,9 +118,10 @@ One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both
 
 ### 4.5 Year Plan — 12-month overview of all project deadlines/progress for long-range planning.
 
-### 4.6 Week Prep — per-week preparation: notes + check-off item list, week navigation.
+### 4.6 Week Prep — per-week preparation: notes (with the plain-text smart-list behaviour from §4.10) + check-off item list, week navigation.
 
 ### 4.7 Documents — rich-text documents (title + formatted body), create/edit/delete.
+- **Shared rich editor** (`bindRichEditor`, also used by Self Notes) **[ALWAYS CHECK]**: Word-style **autoformat while typing** — `- ` / `* ` / `• ` → bullet list, `1. ` / `1) ` → numbered list, `# ` / `## ` / `### ` → headers, `> ` → quote (all at the start of a line; Ctrl+Z undoes the conversion). **Tab / Shift+Tab** indent / outdent list items (nested bullets get circle/square markers, nested numbers a./i.), Enter on an empty item ends the list, **Enter after a header returns to normal text**, **Ctrl+Shift+8 / Ctrl+Shift+7** toggle bullet / numbered lists. **Smart paste**: pasted plain text whose lines look like a list becomes a real list (everything else pastes as plain text, never messy markup). Toolbar: Header/Sub/Text, B/I/U/S, highlight, bullet + numbered lists, **Quote**, indent/outdent, align, undo/redo, Clear. Output is sanitized to a fixed tag whitelist on every save.
 
 ### 4.8 Glossary
 - Terms with definition, **source** (Jumbo = yellow, NIQ = blue, AH Data = teal, custom sources get stable palette colors), optional category grouping with collapsible headers and per-category ordering, add/edit/delete. **[ALWAYS CHECK after sync work — glossary was lost in the Jul 2026 incident]**
@@ -164,7 +165,7 @@ One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both
   - **☀ Reflections**: only the days you actually **wrote a feeling or set a mood** — meetup rows and the person filter are hidden.
 - Day rows show a **◷ open** chip when a past day was never finalized.
 - "+ log a past day" opens any date. (The tab and page title read **Journal**; the People tab's "Log →" still jumps here for a person's meetups.)
-### 5.9 Self Notes — notes with folders + rich-text editing.
+### 5.9 Self Notes — notes with folders + the same **shared rich editor** as Documents (§4.7): autoformat lists/headers/quotes while typing, Tab-indent, smart paste, Ctrl+Shift+8/7; toolbar has Header/Sub/Text, B/I/U/S, HL, lists, indent/outdent, quote, undo/redo, Clear.
 
 ### 5.11 Detox (addiction / dopamine-detox) **[ALWAYS CHECK]**
 - **Three rule tiers**, each an editable list (add via input+Enter, inline edit, ✕ delete): **🚫 Never do**, **⚠️ Try to avoid**, **〜 Not ideal**. Stored in `data.personal.detox.rules.{never,avoid,notideal}`.
