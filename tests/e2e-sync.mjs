@@ -657,6 +657,16 @@ async function HARNESS() {
     const t3 = listTab('- a\n- b', 0, 7, false);   check('Tab with a multi-line selection indents every line', !!t3 && t3.value === '  - a\n  - b', t3 && JSON.stringify(t3.value));
     const b1 = listBackspace('- ', 2);             check('Backspace on an empty item removes the marker', !!b1 && b1.value === '' && b1.pos === 0);
     check('Backspace inside a real item behaves normally', listBackspace('- a', 3) === null);
+    const a1 = listAutoFormat('- ', 2);           check('typing "- " becomes an indented bullet "  • "', !!a1 && a1.value === '  • ' && a1.pos === 4, a1 && JSON.stringify(a1));
+    const a2 = listAutoFormat('* ', 2);           check('"* " becomes a bullet too', !!a2 && a2.value === '  • ');
+    const a3 = listAutoFormat('1. ', 3);          check('"1. " becomes an indented numbered item', !!a3 && a3.value === '  1. ' && a3.pos === 5);
+    const a4 = listAutoFormat('1) ', 3);          check('"1) " style works too', !!a4 && a4.value === '  1) ');
+    const a5 = listAutoFormat('    - ', 6);       check('an existing indent is respected (no extra indent)', !!a5 && a5.value === '    • ');
+    const a6 = listAutoFormat('- hello', 2);      check('converting before existing text keeps the text', !!a6 && a6.value === '  • hello' && a6.pos === 4);
+    check('mid-line "- " is NOT a list trigger', listAutoFormat('say - ', 6) === null);
+    check('a year like "2026. " does NOT become a list', listAutoFormat('2026. ', 6) === null);
+    check('already-formatted "  • " does not re-trigger', listAutoFormat('  • ', 4) === null);
+    const chain = listEnter('  • first', 9);      check('the converted bullet then continues on Enter', !!chain && chain.value === '  • first' + String.fromCharCode(10) + '  • ');
   }
 
   // ===== report =====

@@ -1940,8 +1940,21 @@ function listBackspace(v,pos){
   const m=v.slice(ls,pos).match(LIST_RE); if(!m || m[6].length) return null;     /* only an empty item, caret right after the marker */
   return { value:v.slice(0,ls)+v.slice(pos), pos:ls };
 }
+/* Word-style autoformat while typing: "- ", "* " or "• " at the start of a line instantly becomes an
+   indented bullet ("  • "), and "1. " / "1) " (1–2 digits, so years like "2026." don't trigger) an
+   indented numbered item — the same visible cue Word gives that a list has started. */
+function listAutoFormat(v,pos){
+  const ls=listLineStart(v,pos);
+  const before=v.slice(ls,pos);
+  let m=before.match(/^( *)([-*•]) $/);
+  if(m){ const nl=(m[1]||"  ")+"• "; if(before===nl) return null; return { value:v.slice(0,ls)+nl+v.slice(pos), pos:ls+nl.length }; }
+  m=before.match(/^( *)([0-9]{1,2})([.)]) $/);
+  if(m){ const nl=(m[1]||"  ")+m[2]+m[3]+" "; if(before===nl) return null; return { value:v.slice(0,ls)+nl+v.slice(pos), pos:ls+nl.length }; }
+  return null;
+}
 function bulletKeys(ta, onChange){
   const apply=(r,s,e)=>{ ta.value=r.value; ta.selectionStart=s; ta.selectionEnd=e; autoGrow(ta); onChange(ta.value); };
+  ta.addEventListener("input",()=>{ if(ta.selectionStart!==ta.selectionEnd) return; const r=listAutoFormat(ta.value, ta.selectionStart); if(r) apply(r, r.pos, r.pos); });
   ta.addEventListener("keydown",e=>{
     const v=ta.value, s=ta.selectionStart, en=ta.selectionEnd;
     if(e.key==="Enter" && !e.shiftKey && s===en){ const r=listEnter(v,s); if(r){ e.preventDefault(); apply(r,r.pos,r.pos); } }
@@ -2126,7 +2139,7 @@ function bindTaskRows(host){
     row.querySelector("[data-tdone]").addEventListener("click",()=>{ t.done=!t.done; t.completedAt=t.done?Date.now():0; save(); refreshTaskViews(); });
     row.querySelector("[data-ttext]").addEventListener("input",e=>{ t.text=e.target.value; save(); });
     const noteBox=row.querySelector(".postit"), noteTa=row.querySelector("[data-tnotes]"), noteBtn=row.querySelector("[data-tnotebtn]");
-    const fitNote=()=>{ noteTa.style.height="auto"; noteTa.style.height=(noteTa.scrollHeight+2)+"px"; };
+    const fitNote=()=>autoGrow(noteTa);
     const labelNote=()=>{ const has=!!(t.notes&&t.notes.trim()); noteBtn.classList.toggle("has",has); noteBtn.innerHTML="🗒 "+(has?"Notes":"+ note"); };
     noteTa.addEventListener("input",e=>{ t.notes=e.target.value; save(); fitNote(); labelNote(); });
     noteBtn.addEventListener("click",()=>{
@@ -3228,7 +3241,16 @@ function slotSelectHTML(cur){ const exact=cur&&!slotOf(cur);
 function bindSlotSelect(host){ const seg=host.querySelector(".slotseg"), ex=host.querySelector(".slotexact"); if(!seg) return;
   seg.querySelectorAll("[data-slot]").forEach(b=>b.onclick=()=>{ seg.querySelectorAll("button").forEach(x=>x.classList.remove("active")); b.classList.add("active"); ex.style.display=b.dataset.slot==="__exact"?"":"none"; if(b.dataset.slot==="__exact") ex.focus(); }); }
 function readSlot(host){ const seg=host.querySelector(".slotseg"), ex=host.querySelector(".slotexact"); if(!seg) return ""; const a=seg.querySelector("button.active"); if(!a) return ""; if(a.dataset.slot==="__exact") return ex.value||""; return a.dataset.slot; }
-function autoGrow(el){ if(!el) return; el.style.height="auto"; el.style.height=(el.scrollHeight+2)+"px"; }
+function autoGrow(el){ /* resize WITHOUT the page jumping: the momentary height:auto reset shrinks the
+   document, the browser clamps the scroll, and the view "moves up" while typing — so save every
+   scroll position (window + any scrollable ancestor) and put them back before the next paint */
+  if(!el) return;
+  const scrollers=[]; for(let n=el.parentElement; n; n=n.parentElement){ if(n.scrollHeight>n.clientHeight+1) scrollers.push([n,n.scrollTop]); }
+  const sx=window.scrollX, sy=window.scrollY;
+  el.style.height="auto"; el.style.height=(el.scrollHeight+2)+"px";
+  for(const p of scrollers) if(p[0].scrollTop!==p[1]) p[0].scrollTop=p[1];
+  if(window.scrollY!==sy || window.scrollX!==sx) window.scrollTo(sx,sy);
+}
 function bindAutoGrow(host){ host.querySelectorAll(".dp-ta").forEach(t=>{ autoGrow(t); t.addEventListener("input",()=>autoGrow(t)); }); }
 let appMode=localStorage.getItem(MODE_KEY)==="personal"?"personal":"work";
 let pTab="today", pDayIso=todayISO(), pCalDate=new Date(), nowItemId=null, pNoteId=null, pNoteSearch="", pNoteFolder="", pBucketFilter="current", memoryPhotos=[], pLogPerson="", flagShownSession=false, dotsEditing=false, ptimeEntryCtx=null, pProjOpenId=null, pipWin=null;
@@ -3756,7 +3778,7 @@ function bindDayPage(host,dt,rerender){
     row.querySelector("[data-eopen]").onclick=ev=>{ if(ev.target.closest("[data-goproj],[data-pnotebtn],.postit")) return; openPTime(plan,e); };
     const pc=row.querySelector("[data-goproj]"); if(pc) pc.onclick=ev=>{ ev.stopPropagation(); openPProjModal(pc.dataset.goproj); };
     const nb=row.querySelector("[data-pnotebtn]"), po=row.querySelector(".postit"), nt=row.querySelector("[data-pnotes]");
-    const fitN=()=>{ nt.style.height="auto"; nt.style.height=(nt.scrollHeight+2)+"px"; };
+    const fitN=()=>autoGrow(nt);
     nb.onclick=ev=>{ ev.stopPropagation(); const nowOpen=po.classList.contains("hidden");
       po.classList.toggle("hidden",!nowOpen);
       if(nowOpen){ openNoteIds.add(it.id); fitN(); nt.focus(); } else openNoteIds.delete(it.id); };
