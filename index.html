@@ -1266,7 +1266,7 @@ function load(){
    ============================================================ */
 let data = load();
 let booting = true;
-let authedUser=null, workspaceId=null, granted=false, deniedShown=false;
+let authedUser=null, granted=false, deniedShown=false;
 let workspaceSub=null, devicesSub=null;
 let deviceRows=[];
 let curView = "board", curTab = "projects";
@@ -1436,7 +1436,7 @@ function startWorkspaceSync(){
 }
 /* ---- cloud snapshot history: periodic full copies in their own table (the server keeps
         the newest 30). Overwriting the live workspace row can no longer destroy history. ---- */
-const SNAP_EVERY = 4*3600*1000, SNAP_KEEP = 30;
+const SNAP_EVERY = 4*3600*1000; /* snapshot cadence; the server keeps the newest 30 */
 function cloudQuery(name, args){ /* must NEVER throw — a cloud error can't be allowed to kill UI paths */
   try{
     if(!convex || !sessionToken) return Promise.resolve(null);

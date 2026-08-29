@@ -2,40 +2,31 @@
   PROJECT SELF-MANAGEMENT
 ==========================================================
 
-A private web app version of your "Project Self-Management Advanced"
-workbook. Your 11 projects and their tasks are already loaded in.
+A private, single-file web app: a Work platform (projects, tasks,
+meetings, glossary, documents) and a Personal Life platform (days,
+journal, focus, bucket list, people, detox) behind one switch.
+
+Live at:  https://eloren18.github.io/project-self-management/
 
 WHAT'S HERE
-  index.html          The whole app (one file). Open online after setup.
-  SETUP.txt           One-time setup: Google sign-in + database + hosting.
+  index.html          The whole frontend (one file, no build step).
+  convex/             The backend (database + sign-in), hosted on Convex.
+  tests/              End-to-end sync & data-safety test suite.
+  FEATURES.md         The complete feature inventory + full-check protocol.
   SECURITY.md         The security policy (plain language + honest caveats).
-  instant.schema.ts   Data model (only needed for the CLI setup path).
-  instant.perms.ts    Server permission rules (only for the CLI path).
-
-FEATURES
-  • Projects — Board (drag between Not Started / In Progress / On Hold / Done)
-    and List views. Search + filter by priority/category.
-  • Click any project → side panel with description, stakeholders, doc link,
-    value proposition, last-discussed, next steps, and a task checklist.
-  • Calendar — projects shown on their deadline dates, coloured by priority.
-  • Year — 52-week overview with the current week highlighted.
-  • Light / dark theme (sun/moon icon).
-  • Security panel (shield icon) — approve/revoke devices, sign out others,
-    activity log.
+  SETUP-Convex.txt    Hosting, backend, and update instructions.
+  ARCHITECTURE_NOTES.md  Design notes for the Personal platform.
 
 HOW ACCESS WORKS
-  • Only  keremladkeholland@gmail.com  can sign in (Google), enforced on the
-    server so it can't be bypassed.
-  • New devices must be approved from a device you already trust. The first
-    device is trusted automatically.
+  • Only keremladkeholland@gmail.com can sign in — you get a 6-digit
+    code by email (Resend), enforced on the server so it can't be bypassed.
+  • New devices must be approved from a device you already trust. The
+    first device is trusted automatically. The server refuses data
+    requests from unapproved devices.
   • See SECURITY.md for the full policy.
 
-TO GO LIVE
-  Follow SETUP.txt. Until you paste in a Google Client ID and host it, the app
-  opens in "local only" mode so you can look around, but nothing syncs or is
-  protected. Google sign-in requires a real https:// address (hosting).
-
-UPDATING LATER
-  Edit index.html (or ask Claude), then re-upload it to your GitHub repo.
-  GitHub Pages refreshes within ~1 minute.
+UPDATING
+  Frontend: edit index.html, run Deploy.bat (GitHub Pages refreshes in
+  ~1 minute). Backend: edit convex/, run Deploy-Backend.bat.
+  Before shipping: node tests/e2e-sync.mjs must be all green.
 ==========================================================

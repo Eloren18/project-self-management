@@ -49,7 +49,7 @@ UPDATING THE APP
 ----------------------------------------------------------
 ONE-TIME SETUP (already done — for reference / a new machine)
 ----------------------------------------------------------
-1. `npm install` in this folder (installs the convex CLI + @instantdb/admin).
+1. `npm install` in this folder (installs the convex CLI).
 2. `npx convex dev --once` (logs in, links the project, writes .env.local —
    git-ignored).
 3. Resend API key (shared with the Budget app's Resend account):
@@ -63,13 +63,12 @@ ONE-TIME SETUP (already done — for reference / a new machine)
 ----------------------------------------------------------
 MIGRATION FROM INSTANTDB (Aug 2026)
 ----------------------------------------------------------
-The app ran on InstantDB + Google sign-in until 2026-08-22. The data was
-carried over with:
-  Export-InstantDB.bat  → tools/export-instantdb.mjs  (admin token, local only)
-  node tools/convert-export.mjs <export.json>  → migration/*.jsonl
-  npx convex import --table <table> migration/<table>.jsonl --append --prod
-The old schema/perms live in legacy-instantdb/ (fallback only). The InstantDB
-app can be deleted once the Convex version has run cleanly for ~2 weeks.
+The app ran on InstantDB + Google sign-in until 2026-08-22, when everything
+(workspace, 30 cloud snapshots, security log, devices) was exported with an
+admin token and imported into Convex 1:1 (verified by counts and bytes).
+The one-off migration tools and the old InstantDB schema/perms were removed
+after the cutover — git history has them if ever needed. The InstantDB app
+itself is untouched as a fallback until ~2026-09-05, then it can be deleted.
 
 
 ----------------------------------------------------------
