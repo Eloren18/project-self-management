@@ -1,3 +1,34 @@
+# Architecture — Project Self-Management
+
+One frontend file (index.html, vanilla ES module, no build) + one Convex backend
+(convex/). The design currency is the **deep module**: a lot of behaviour behind a
+small interface, tested through that interface. The test suite extracts the REAL
+code blocks out of index.html and drives them through these interfaces only.
+
+## The deep modules (seam → what hides behind it → tested by)
+
+| Module | Interface (the seam) | Hidden behind it | Tested by |
+|---|---|---|---|
+| Data layer | normalize(blob), load() | every migration/coercion ever shipped (legacy fields, checklists, detox, periods); personal namespace isolated so one side can never corrupt the other | S12, S17–S19 |
+| Sync & safety | save() — the ONE call every feature makes | monotonic clock, localStorage + IndexedDB mirror + weekday backups, per-namespace shrink guards, LWW push with real ack, bad-remote quarantine, cloud snapshots, truthful pill | S0–S15 |
+| Cloud transport | push() / cloudQuery() over convex.* string names | the SERVER enforces session + trusted device (convex/lib.ts requireTrusted); the client never authorizes | S16 (static) + convex/ |
+| Smart lists | pure listAutoFormat/listEnter/listTab/listBackspace + bulletKeys(ta, onChange) | Word-style list starts, continuation, renumbering, indent, marker removal — for every plain textarea | S20 |
+| Rich editor | bindRichEditor(body, toolsHost, opts) | autoformat, Tab-nesting, shortcuts, smart paste, toolbar, sanitizer discipline — Documents and Self Notes share it | browser checks |
+| Note cards | mnoteCardHTML(o, opts) / bindMnoteCards(host, arr, opts) | the structured meeting-note editor used by project pages AND the meeting log (sections, checklist steps, steps→tasks, pin/copy) | S17 + browser |
+| Dialogs & modals | uiConfirm/uiPrompt (Promise) + openPM/closePM | consistent open/close choreography; no native prompt/confirm anywhere | browser checks |
+
+**The rule of the codebase:** features render with innerHTML template literals,
+bind events, mutate `data`, and call save(). They never touch persistence, sync,
+auth, or the cloud directly. If a change needs to cross that line, the right move
+is to deepen one of the modules above, not to add a bypass.
+
+**Deletion test results:** each module above reappears at 10+ call sites if
+deleted — they earn their keep. Conversely, per-modal open/close wrappers are
+deliberately thin one-liners over the openPM/closePM seam (kept only for their
+call-site names).
+
+---
+
 # Architecture Notes — Personal Life Platform
 
 ## Existing Work app (discovered)

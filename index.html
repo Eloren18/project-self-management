@@ -981,6 +981,25 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
+/* ================================================================
+   MODULE MAP — the deep seams of this single-file app (grouped by
+   responsibility; see ARCHITECTURE_NOTES.md for the full inventory)
+   ----------------------------------------------------------------
+   Data layer ....... seed() / normalize() / normalizePersonal() / load()
+                      hides every migration ever shipped        [suite: S12, S17-S19]
+   Sync & safety .... save() is the ONE call features make; behind it:
+                      monotonic clock, mirror, weekday backups, shrink
+                      guards, LWW push+ack, quarantine, snapshots [S0-S15]
+   Cloud ............ convex.* via push()/cloudQuery(); the SERVER
+                      enforces session + trusted device           [S16]
+   Smart lists ...... pure listAutoFormat/Enter/Tab/Backspace +
+                      bulletKeys(ta, onChange)                    [S20]
+   Rich editor ...... bindRichEditor(body, tools, opts) - Docs + Self Notes
+   Note cards ....... mnoteCardHTML/bindMnoteCards - projects + meeting log
+   Dialogs .......... uiConfirm/uiPrompt (promises), openPM/closePM
+   Rule ............. features call save() and re-render; they never
+                      touch persistence, sync, or the cloud directly.
+   ================================================================ */
 /* ============================================================
    Load the Convex browser client from whichever CDN the network allows.
    (The backend — database + sign-in — lives in ./convex, see SETUP-Convex.txt.)
@@ -1763,7 +1782,7 @@ function toggleProjectDone(p){
 }
 
 /* ---- Lightweight detail drawer (from List view) ---- */
-function openDetail(pid){ openProjectId=pid; renderDetail(); const o=$("detailOverlay"); o.classList.remove("hidden"); requestAnimationFrame(()=>o.classList.add("show")); }
+function openDetail(pid){ openProjectId=pid; renderDetail(); openPM("detailOverlay"); }
 function closeDetail(){ const o=$("detailOverlay"); o.classList.remove("show"); openProjectId=null; setTimeout(()=>o.classList.add("hidden"),260); }
 function proj(){ return data.projects.find(p=>p.id===openProjectId); }
 function renderDetail(){
@@ -2936,8 +2955,8 @@ function newProject(){
 }
 async function deleteProject(){ const p=proj(); if(!p) return; if(!await uiConfirm("Delete “"+p.name+"”? This can't be undone.",{title:"Delete project?"})) return; data.projects=data.projects.filter(x=>x.id!==p.id); save(); closeDetail(); renderProjects(); renderCalendar(); renderYear(); renderTodo(); }
 
-function openCreate(ctx){ createCtx={deadline:ctx.deadline||"",isWk:!!ctx.isWk,type:"task"}; renderCreate(); const m=$("createModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show")); }
-function closeCreate(){ const m=$("createModal"); m.classList.remove("show"); setTimeout(()=>m.classList.add("hidden"),200); }
+function openCreate(ctx){ createCtx={deadline:ctx.deadline||"",isWk:!!ctx.isWk,type:"task"}; renderCreate(); openPM("createModal"); }
+function closeCreate(){ closePM("createModal"); }
 function renderCreate(){
   const projectsOpts=`<option value="">Standalone / ad-hoc task</option>`+data.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
   $("createBox").innerHTML=`
@@ -2976,8 +2995,8 @@ function doCreate(){
   }
 }
 
-function openTaskModal(tid){ taskModalId=tid; renderTaskModal(); const m=$("taskModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show")); }
-function closeTaskModal(){ const m=$("taskModal"); m.classList.remove("show"); setTimeout(()=>m.classList.add("hidden"),200); taskModalId=null; }
+function openTaskModal(tid){ taskModalId=tid; renderTaskModal(); openPM("taskModal"); }
+function closeTaskModal(){ closePM("taskModal"); taskModalId=null; }
 function renderTaskModal(){
   const r=findTask(taskModalId); if(!r){ closeTaskModal(); return; } const t=r.t;
   const isMeeting=r.project&&r.project._meeting;
@@ -3172,9 +3191,9 @@ function renderRestorePoints(){
 function openSec(){ /* the security modal is the recovery UI — it must open even if a renderer breaks */
   try{ renderSecurity(); }catch(e){ console.error("renderSecurity failed",e); }
   try{ renderRestorePoints(); }catch(e){ console.error("renderRestorePoints failed",e); }
-  const m=$("secModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show"));
+  openPM("secModal");
 }
-function closeSec(){ const m=$("secModal"); m.classList.remove("show"); setTimeout(()=>m.classList.add("hidden"),220); }
+function closeSec(){ closePM("secModal"); }
 
 /* ---- account / theme ---- */
 function updateAccount(){
@@ -3431,8 +3450,8 @@ function exportPersonal(){
 
 /* ---- styled in-app dialogs (replace ALL browser prompt/confirm, both platforms) ---- */
 let _uiRes=null;
-function uiDialog(html){ return new Promise(res=>{ _uiRes=res; $("uiBox").innerHTML=html; const m=$("uiDialog"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show")); }); }
-function uiClose(v){ const m=$("uiDialog"); m.classList.remove("show"); setTimeout(()=>m.classList.add("hidden"),180); const r=_uiRes; _uiRes=null; if(r) r(v); }
+function uiDialog(html){ return new Promise(res=>{ _uiRes=res; $("uiBox").innerHTML=html; openPM("uiDialog"); }); }
+function uiClose(v){ closePM("uiDialog"); const r=_uiRes; _uiRes=null; if(r) r(v); }
 function uiConfirm(msg,opts){
   opts=opts||{};
   const pr=uiDialog(`<h3>${esc(opts.title||"Are you sure?")}</h3><p class="sub">${esc(msg)}</p>
@@ -3451,7 +3470,9 @@ function uiPrompt(title,opts){
   setTimeout(()=>{ const i=$("uiInp"); if(i) i.focus(); },60);
   return pr;
 }
-function openMini(html){ $("qpBox").innerHTML=html; const m=$("qpModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show")); return $("qpBox"); }
+function openMini(html){ $("qpBox").innerHTML=html; openPM("qpModal"); return $("qpBox"); }
+/* ---- the modal seam: every modal/overlay opens and closes through this pair ---- */
+function openPM(id){ const m=$(id); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show")); return m; }
 function closePM(id){ const m=$(id); m.classList.remove("show"); setTimeout(()=>m.classList.add("hidden"),200); }
 
 /* ---- for-me week flag (3 days total in the current week without something for me) ---- */
@@ -3874,7 +3895,7 @@ function openPTime(plan,e){
     <div class="field"><label>When in the day</label><div id="ptSlot">${slotSelectHTML(e.time)}</div></div>
     <div class="field"><label>Duration</label><select id="ptDur">${[0,15,30,45,60,90,120,180,240].map(m=>`<option value="${m}"${e.dur===m?" selected":""}>${m?fmtMin(m):"—"}</option>`).join("")}</select></div>
     <div style="display:flex;gap:8px"><button class="btn danger sm" id="ptRemove">Remove from this day</button><span class="grow"></span><button class="btn primary" id="ptSave">Save</button></div>`;
-  const m=$("ptimeModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show"));
+  openPM("ptimeModal");
   bindSlotSelect($("ptSlot"));
   const tt=$("ptTitle"); if(tt){ autoGrow(tt); tt.addEventListener("input",()=>autoGrow(tt)); }
   $("ptSave").onclick=()=>{ if(it){ const nv=($("ptTitle").value||"").trim(); if(nv) it.title=nv; } e.time=readSlot($("ptSlot")); e.dur=+$("ptDur").value||0; save(); closePM("ptimeModal"); pR(); };
@@ -4093,7 +4114,7 @@ function openDayModal(dt){
       <h3 style="flex:1;margin:0;border:none;padding:0">${parseISO(dt).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</h3>
       <button class="icon-btn" id="dayClose"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div><div id="dayModalHost">${dayPageHTML(dt)}</div>`;
-  const m=$("dayModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show"));
+  openPM("dayModal");
   $("dayClose").onclick=()=>{ closePM("dayModal"); pR(); };
   bindDayPage($("dayModalHost"),dt,()=>openDayModal(dt));
 }
@@ -4304,7 +4325,7 @@ function openPItemModal(id,defaults){
       <span class="grow"></span>
       <button class="btn ghost" id="piCancel">Cancel</button><button class="btn primary" id="piSave">${id?"Save":"Add it"}</button>
     </div>`;
-  const m=$("pItemModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show"));
+  openPM("pItemModal");
   $("piCancel").onclick=()=>closePM("pItemModal");
   if(id) $("piDelete").onclick=async()=>{ if(!await uiConfirm("Delete this item everywhere (calendar blocks included)?")) return;
     P().items=P().items.filter(x=>x.id!==id);
@@ -4370,7 +4391,7 @@ function openBucketModal(id){
       <span class="grow"></span>
       ${b.status!=="done"?`<button class="btn primary" id="bkComplete" style="background:var(--s-done);border-color:var(--s-done)">🏆 I did it</button>`:`<span class="badge this">Completed ${b.completedAt?new Date(b.completedAt).toLocaleDateString():""}</span>`}
     </div>`;
-  const m=$("bucketModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show"));
+  openPM("bucketModal");
   $("bkTitle").addEventListener("input",e=>{ b.title=e.target.value; save(); });
   $("bkWhy").addEventListener("input",e=>{ b.why=e.target.value; save(); });
   $("bkDel").onclick=async()=>{ if(!await uiConfirm("Delete this dream and its linked steps?")) return;
@@ -4404,7 +4425,7 @@ function openMemoryModal(bid){
     <div class="field"><label>Photos (up to 3)</label><input type="file" id="memPhotos" accept="image/*" multiple></div>
     <div id="memPreview" style="display:flex;gap:8px;flex-wrap:wrap"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px"><button class="btn ghost" id="memSkip">Save without story</button><button class="btn primary" id="memSave">Seal the memory</button></div>`;
-  const m=$("memoryModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show"));
+  openPM("memoryModal");
   $("memPhotos").onchange=e=>{
     [...e.target.files].slice(0,3-memoryPhotos.length).forEach(f=>{
       const r=new FileReader(); r.onload=()=>{ const img=new Image(); img.onload=()=>{
@@ -4622,7 +4643,7 @@ function openPProjModal(id){
       ${pr.status==="done"?`<span class="badge this">Completed ${pr.completedAt?new Date(pr.completedAt).toLocaleDateString():""}</span>`:`<button class="btn" id="prjComplete" style="background:var(--s-done);border-color:var(--s-done);color:#fff">✓ Mark project done</button>`}
       <span class="grow"></span><button class="btn ghost" id="prjClose">Done</button>
     </div>`;
-  const m=$("pprojModal"); m.classList.remove("hidden"); requestAnimationFrame(()=>m.classList.add("show"));
+  openPM("pprojModal");
   $("prjTitle").addEventListener("input",e=>{ pr.title=e.target.value; save(); });
   $("prjNotes").addEventListener("input",e=>{ pr.notes=e.target.value; save(); });
   $("pprojBox").querySelectorAll("[data-prjcol]").forEach(b=>b.onclick=()=>{ pr.color=b.dataset.prjcol; save(); openPProjModal(id); });
