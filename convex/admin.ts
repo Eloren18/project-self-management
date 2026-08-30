@@ -69,7 +69,7 @@ export const mergeWorkFromSnapshot = internalMutation({
     if (!row) throw new Error("no workspace row");
     const cur = JSON.parse(row.data);
     const old = JSON.parse(cand.data);
-    const WORK = ["projects", "tasks", "glossary", "meetings", "docs", "weekPrep", "glossaryCollapsed", "glossaryCatOrder"];
+    const WORK = ["projects", "tasks", "glossary", "meetings", "docs", "weekPrep", "glossaryCollapsed", "glossaryCatOrder", "quarterGoals"];
     const count = (d: any) => ({
       projects: (d.projects || []).length,
       tasks: (d.tasks || []).length + (d.projects || []).reduce((a: number, p: any) => a + ((p && p.tasks) || []).length, 0) + (d.meetings || []).reduce((a: number, m: any) => a + ((m && m.tasks) || []).length, 0),

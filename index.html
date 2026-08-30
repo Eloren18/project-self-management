@@ -305,6 +305,19 @@
   .wk-ev.projev{font-weight:800;}
   .wk-ev.taskev{color:var(--muted);}
   .wk-ev.done{opacity:.5;text-decoration:line-through;}
+  .q-sec{margin:0 0 28px;}
+  .q-bar{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;padding-top:8px;border-top:2px solid var(--text);}
+  .q-bar.now{border-top-color:var(--primary);}
+  .q-name{font-size:16px;font-weight:800;letter-spacing:.3px;}
+  .q-bar.now .q-name{color:var(--primary);}
+  .q-range{font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
+  .q-count{font-size:11px;font-weight:700;color:var(--faint);}
+  .q-goals{border:1px solid var(--border);background:var(--surface);padding:5px 12px;margin:0 0 10px;}
+  .qg{display:flex;align-items:center;gap:8px;padding:2px 0;}
+  .qg input{flex:1;min-width:0;border:none;background:transparent;color:var(--text);font:inherit;font-size:12.5px;font-weight:600;padding:3px 0;outline:none;}
+  .qg.done input{text-decoration:line-through;color:var(--faint);}
+  .qg .tk-del{opacity:0;}
+  .qg:hover .tk-del,.qg:focus-within .tk-del{opacity:1;}
 
   /* ===== date / week picker popover ===== */
   .pickerpop{position:fixed;z-index:130;width:300px;background:var(--elevated);border:1px solid var(--border);box-shadow:var(--shadow-lg);padding:12px;}
@@ -799,9 +812,9 @@
       <h2 id="yrTitle">—</h2>
       <button class="icon-btn" id="yrNext"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg></button>
       <div class="grow"></div>
-      <span style="font-size:12.5px;color:var(--muted)">52 weeks (Mon-start) · drag items between weeks · click a week to add</span>
+      <span style="font-size:12.5px;color:var(--muted)">4 quarters · goals per quarter · drag items between weeks · click a week to add</span>
     </div>
-    <div class="year-grid" id="yearGrid"></div>
+    <div id="yearGrid"></div>
   </section>
 
   <!-- WEEK PREP -->
@@ -1184,6 +1197,9 @@ function normalize(d){
   d.glossary.forEach(g=>{ g.id ||= uid(); g.term ??= ""; g.definition ??= ""; g.source ??= GLOSSARY_SOURCES[0]; g.category ??= ""; if(typeof g.order!=="number") g.order=null; g.createdAt ??= Date.now(); g.updatedAt ??= g.createdAt; });
   d.glossaryCollapsed = Array.isArray(d.glossaryCollapsed) ? d.glossaryCollapsed.filter(x=>typeof x==="string") : [];
   d.glossaryCatOrder = (d.glossaryCatOrder && typeof d.glossaryCatOrder==="object" && !Array.isArray(d.glossaryCatOrder)) ? d.glossaryCatOrder : {};
+  /* quarter goals: keyed "<year>-Q<1..4>" → [{id,text,done}] (Year Plan) */
+  d.quarterGoals = (d.quarterGoals && typeof d.quarterGoals==="object" && !Array.isArray(d.quarterGoals)) ? d.quarterGoals : {};
+  Object.keys(d.quarterGoals).forEach(k=>{ const a=d.quarterGoals[k]; if(!Array.isArray(a)){ delete d.quarterGoals[k]; return; } a.forEach(g=>{ g.id ||= uid(); g.text ??= ""; g.done = !!g.done; }); });
   d.meetings = Array.isArray(d.meetings) ? d.meetings : [];
   d.meetings.forEach(m=>{
     m.id ||= uid(); m.name ??= "Untitled meeting"; m.cadence ??= ""; m.attendees ??= ""; m.createdAt ??= Date.now();
@@ -1319,12 +1335,13 @@ function blobCounts(d){
     projects:(d.projects||[]).length,
     tasks:(d.tasks||[]).length + (d.projects||[]).reduce((a,p)=>a+((p&&p.tasks||[]).length),0) + (d.meetings||[]).reduce((a,m)=>a+((m&&m.tasks||[]).length),0),
     glossary:(d.glossary||[]).length, meetings:(d.meetings||[]).length, docs:(d.docs||[]).length, weekPrep:(d.weekPrep||[]).length,
+    qGoals:(d.quarterGoals&&typeof d.quarterGoals==="object")?Object.values(d.quarterGoals).reduce((a,x)=>a+(Array.isArray(x)?x.length:0),0):0,
     pItems:(per.items||[]).length, pPlans:per.dayPlans&&typeof per.dayPlans==="object"?Object.keys(per.dayPlans).length:0,
     pBucket:(per.bucket||[]).length, pNotes:(per.notes||[]).length, pPeople:(per.people||[]).length
   };
 }
 function countsLabel(c){ return c.projects+" projects · "+c.tasks+" tasks · "+c.glossary+" glossary · "+c.meetings+" meetings · "+c.docs+" docs · personal: "+c.pItems+" items / "+c.pPlans+" days"; }
-function scoreWork(c){ return c.projects+c.tasks+c.glossary+c.meetings+c.docs+c.weekPrep; }
+function scoreWork(c){ return c.projects+c.tasks+c.glossary+c.meetings+c.docs+c.weekPrep+(c.qGoals||0); }
 function scorePersonal(c){ return c.pItems+c.pPlans+c.pBucket+c.pNotes+c.pPeople; }
 /* a "shrink" = losing >75% of EITHER platform's content — checked per-namespace so a
    personal-only wipe can't hide behind a big work dataset (and vice versa) */
@@ -2378,21 +2395,59 @@ function renderCalendar(){
     cell.addEventListener("drop",e=>{ e.preventDefault(); cell.classList.remove("drag-over"); const raw=e.dataTransfer.getData("text/plain")||""; const bar=raw.indexOf("|"); if(bar<0) return; const kind=raw.slice(0,bar), idv=raw.slice(bar+1); if(kind==="col"||!idv) return; moveItemToDate(kind,idv,cell.dataset.date); });
   });
 }
+function qKey(y,q){ return y+"-Q"+(q+1); }
+function qgList(y,q){ return (data.quarterGoals||{})[qKey(y,q)]||[]; }
+function qgEnsure(y,q){ const k=qKey(y,q); return data.quarterGoals[k] ||= []; }
 function renderYear(){
   $("yrTitle").textContent = "Year "+yearNum;
   const ws=weekStartOfYear(yearNum); const now=d0(new Date());
   const items=calItems();
   const weeks=[];
   for(let i=0;i<52;i++){ const s=new Date(ws); s.setDate(ws.getDate()+i*7); const e=new Date(s); e.setDate(s.getDate()+6); const inw=items.filter(it=>{ const d=parseISO(it.deadline); return d && d>=s && d<=e; }); const isNow=now>=s&&now<=e; weeks.push({n:i+1,s,e,inw,isNow,isPast:e<now&&!isNow}); }
-  $("yearGrid").innerHTML = weeks.map(w=>`
+  const wkCell=w=>`
     <div class="wk ${w.isNow?"now":""} ${w.isPast?"past":""}" data-ws="${iso(w.s)}">
       <div class="wk-label"><span>W${w.n}</span><span>${fmtShort(iso(w.s))} – ${fmtShort(iso(w.e))}${w.isNow?" ◄":""}</span></div>
       ${w.inw.map(it=> it.kind==="project"
         ? `<div class="wk-ev projev ${it.done?'done':''}" draggable="true" data-kind="project" data-id="${it.id}" title="Project: ${esc(it.name)}"><span class="d" style="background:${it.color}"></span>🚩 ${esc(it.name)}</div>`
         : `<div class="wk-ev taskev ${it.done?'done':''}" draggable="true" data-kind="task" data-id="${it.id}" title="Task: ${esc(it.name)}"><span class="d" style="background:${it.color}"></span>${esc(it.name)}</div>`
       ).join("")||`<div style="font-size:10.5px;color:var(--faint)">—</div>`}
-    </div>`).join("");
+    </div>`;
+  /* corporate quarters: a week belongs to the quarter holding its Thursday (majority-day
+     rule — week 1 can start in the previous December, week 52 can end in the next January) */
+  const qOf=w=>{ const th=addDays(w.s,3); if(th.getFullYear()<yearNum) return 0; if(th.getFullYear()>yearNum) return 3; return Math.floor(th.getMonth()/3); };
+  const buckets=[[],[],[],[]]; weeks.forEach(w=>buckets[qOf(w)].push(w));
+  const QRANGES=["Jan – Mar","Apr – Jun","Jul – Sep","Oct – Dec"];
+  $("yearGrid").innerHTML = QRANGES.map((range,qi)=>{
+    const gs=qgList(yearNum,qi), doneN=gs.filter(g=>g.done).length;
+    return `<div class="q-sec">
+      <div class="q-bar ${buckets[qi].some(w=>w.isNow)?"now":""}">
+        <span class="q-name">Q${qi+1}</span><span class="q-range">${range} ${yearNum}</span>
+        ${gs.length?`<span class="q-count">${doneN}/${gs.length} goals</span>`:""}
+        <div class="grow"></div>
+        <button class="btn ghost sm" data-qadd="${qi}">+ Goal</button>
+      </div>
+      ${gs.length?`<div class="q-goals">${gs.map(g=>`
+        <div class="qg ${g.done?'done':''}" data-q="${qi}" data-qgid="${g.id}">
+          <div class="check-sm ${g.done?'on':''}" data-qgdone title="Achieved">${g.done?TICK:''}</div>
+          <input data-qgtext value="${esc(g.text)}" placeholder="Goal for Q${qi+1}…">
+          <button class="tk-del" data-qgdel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        </div>`).join("")}</div>`:""}
+      <div class="year-grid">${buckets[qi].map(wkCell).join("")}</div>
+    </div>`;
+  }).join("");
   const grid=$("yearGrid");
+  grid.querySelectorAll("[data-qadd]").forEach(b=>b.addEventListener("click",()=>{
+    const q=+b.dataset.qadd; qgEnsure(yearNum,q).push({id:uid(),text:"",done:false}); save(); renderYear();
+    const rows=$("yearGrid").querySelectorAll(`.qg[data-q="${q}"] input`); const last=rows[rows.length-1]; if(last) last.focus();
+  }));
+  grid.querySelectorAll(".qg").forEach(row=>{
+    const q=+row.dataset.q, g=qgList(yearNum,q).find(x=>x.id===row.dataset.qgid); if(!g) return;
+    row.querySelector("[data-qgdone]").addEventListener("click",()=>{ g.done=!g.done; save(); renderYear(); });
+    const inp=row.querySelector("[data-qgtext]");
+    inp.addEventListener("input",e=>{ g.text=e.target.value; save(); });
+    inp.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); e.target.blur(); } });
+    row.querySelector("[data-qgdel]").addEventListener("click",()=>{ const k=qKey(yearNum,q); data.quarterGoals[k]=qgList(yearNum,q).filter(x=>x.id!==g.id); if(!data.quarterGoals[k].length) delete data.quarterGoals[k]; save(); renderYear(); });
+  });
   grid.querySelectorAll(".wk-ev").forEach(ev=>{
     ev.addEventListener("click",e=>{ e.stopPropagation(); openEvItem(ev.dataset.kind,ev.dataset.id); });
     ev.addEventListener("dragstart",e=>{ e.stopPropagation(); e.dataTransfer.setData("text/plain",ev.dataset.kind+"|"+ev.dataset.id); });

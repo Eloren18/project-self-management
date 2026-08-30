@@ -490,6 +490,16 @@ async function HARNESS() {
     useDevice(laptop); const lc = blobCounts(data);
     useDevice(phone); startWorkspaceSync();
     check('a save→push→adopt round-trip preserves item counts exactly', JSON.stringify(blobCounts(data)) === JSON.stringify(lc), JSON.stringify(blobCounts(data)));
+
+    // quarter goals (Year Plan): sanitized by normalize, counted by the shrink guard, synced with the blob
+    const qd = normalize({ quarterGoals: { '2026-Q1': [{ text: 'Ship X' }, { id: 'g2', done: 1 }], '2026-Q2': 'garbage', '2026-Q3': [] } });
+    check('quarterGoals entries are sanitized (id/text/done filled in)', qd.quarterGoals['2026-Q1'].every(g => typeof g.id === 'string' && g.id && typeof g.text === 'string' && typeof g.done === 'boolean'));
+    check('a non-array quarter bucket is dropped, arrays survive', qd.quarterGoals['2026-Q2'] === undefined && Array.isArray(qd.quarterGoals['2026-Q3']));
+    check('quarter goals count toward the work score (shrink guard covers them)', blobCounts(qd).qGoals === 2 && scoreWork(blobCounts(qd)) >= 2);
+    useDevice(laptop);
+    data.quarterGoals['2026-Q4'] = [{ id: 'gq', text: 'Year-end review', done: false }]; save();
+    useDevice(phone); startWorkspaceSync();
+    check('quarter goals sync to other devices with the blob', (data.quarterGoals['2026-Q4'] || []).some(g => g.id === 'gq'));
   }
 
   // ============================================================
