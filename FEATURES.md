@@ -119,7 +119,10 @@ One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both
 
 ### 4.4 Calendar — month grid; shows project deadlines, task deadlines, meetings; month navigation; overdue tint; click-through to items.
 
-### 4.5 Year Plan — 12-month overview of all project deadlines/progress for long-range planning.
+### 4.5 Year Plan — the year's 52 weeks grouped into **four corporate quarters**, with **goals per quarter**, for long-range planning.
+- Four sections (Q1 Jan–Mar … Q4 Oct–Dec), each headed by a bar with the quarter name, month range, a `done/total goals` counter, and a **+ Goal** button; the current quarter's bar (and week) is highlighted. A week belongs to the quarter holding its **Thursday** (majority-day rule — boundary weeks like W1 starting in the previous December land correctly); every year splits 13/13/13/13, 52 total.
+- **Quarter goals**: check-off rows (inline text edit, Enter commits, delete on hover) stored per year+quarter in `data.quarterGoals` (`"2026-Q3"` → `[{id,text,done}]`) — each year keeps its own goals; navigating years switches them. Normalized (garbage buckets dropped, entries repaired), **counted by the shrink guard** (`scoreWork` includes `qGoals`), included in the backend merge helper's WORK list, and synced with the blob (S12 checks).
+- Week grid behaviour unchanged: drag items between weeks, click a week to add, click an item to open it.
 
 ### 4.6 Week Prep — per-week preparation: notes (with the plain-text smart-list behaviour from §4.10) + check-off item list, week navigation.
 
