@@ -255,8 +255,12 @@ async function HARNESS() {
   const lostBefore = stashCount(phoneOld, 'lost');
   const toastsBefore = __toasts.length;
   startWorkspaceSync();
-  check('OLD seed overwrites the cloud → work data loss reproduced', wScore(cloudWs().data) <= wScore(seedN), 'cloud=' + wScore(cloudWs().data));
-  check('shrink guard stays SILENT for a work-only seed-overwrite (no safety net) → why the timestamp fix matters', stashCount(phoneOld, 'lost') === lostBefore && __toasts.length === toastsBefore);
+  check('the stale-stamp overwrite is now BLOCKED — cloud survives untouched', wScore(cloudWs().data) === wScore(normalize(clone(REALwork))), 'cloud=' + wScore(cloudWs().data));
+  check('the blocked device kept its own copy as a restore point + was warned', stashCount(phoneOld, 'lost') === lostBefore + 1 && __toasts.length > toastsBefore);
+  check('…and the blocked device adopted the cloud copy', wScore(data) === wScore(normalize(clone(REALwork))));
+  // once the device HAS seen the cloud, a later edit pushes normally again
+  __clock.t += 1000; data.glossary.push({ id: 'gAFTER', term: 'post-block edit', definition: 'x' }); save();
+  check('after adopting, normal edits push to the cloud again', cloudWs().data.glossary.some(g => g.id === 'gAFTER'));
 
   // ============================================================
   //  S2 — convergence + monotonic clock

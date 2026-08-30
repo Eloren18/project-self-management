@@ -1346,6 +1346,12 @@ function stash(tag, json){ /* keep a copy nothing can silently destroy; prune on
 }
 let expectedShrink=false; /* set during deliberate restores so shrink guards don't cry wolf */
 let lastSyncedUp=0, syncErr=false; /* highest updatedAt confirmed in the cloud, and whether the last push errored — drive the truthful sync pill */
+/* each device also REMEMBERS the newest cloud version it has ever seen (persisted): the
+   difference between "my stamp is newer" and "I have actually seen the latest cloud copy"
+   is what lets a long-offline device get a fresh stamp on stale data (the 2026-08-29
+   phone incident). seenUp/noteSynced make that difference checkable. */
+function seenUp(){ try{ return +localStorage.getItem(STORAGE_KEY+"_synced")||0; }catch(e){ return 0; } }
+function noteSynced(up){ if(!(up>0)) return; if(up>lastSyncedUp) lastSyncedUp=up; try{ const k=STORAGE_KEY+"_synced"; if(up>(+localStorage.getItem(k)||0)) localStorage.setItem(k, ""+up); }catch(e){} }
 function save(){
   /* monotonic clock: a device with a backwards-skewed clock can never make real edits lose a sync race */
   data.updatedAt = Math.max(Date.now(), (data.updatedAt||0)+1);
@@ -1399,7 +1405,7 @@ function push(){
       if(!granted) return;
       /* accepted → the cloud now holds `target`; rejected (accepted:false) → the cloud has something newer
          and the live subscription is about to hand it to us — either way the cloud's stamp is confirmed */
-      lastSyncedUp=Math.max(lastSyncedUp, (r&&typeof r.updatedAt==="number")?r.updatedAt:target);
+      noteSynced((r&&typeof r.updatedAt==="number")?r.updatedAt:target);
       syncErr=false; renderSync();
     })
     .catch(e=>{
@@ -1436,12 +1442,29 @@ function startWorkspaceSync(){
       let remote; try{ remote=JSON.parse(row.data); }
       catch(e){ console.error("cloud copy unreadable — keeping current data",e); try{ stash("badremote", String(row.data)); }catch(_e){} syncErr=true; renderSync(); return; }
       const remoteUp = row.updatedAt || (remote&&remote.updatedAt) || 0, localUp = data.updatedAt || 0;
-      if(remoteUp) lastSyncedUp = Math.max(lastSyncedUp, remoteUp); /* the cloud is confirmed to hold remoteUp */
-      if(remoteUp > localUp) adoptRemote(remote);
+      const seenBefore = seenUp(); /* what this device had seen BEFORE this delivery — receiving a copy now is not the same as having based our edits on it */
+      if(remoteUp) noteSynced(remoteUp); /* the cloud is confirmed to hold remoteUp */
+      if(remoteUp > localUp){
+        /* if this device holds edits the cloud never saw, keep them as a restore point before
+           following the cloud — adoption must never silently drop work (mirror of the barrier) */
+        if(localUp > seenBefore && localUp > 0){ try{ stash("lost", JSON.stringify(data)); toast("⚠ Newer cloud copy adopted — this device's unsynced edits were kept (Security → Restore points)"); }catch(e){} }
+        adoptRemote(remote);
+      }
       else if(localUp > remoteUp && localUp > 0){
-        /* offline edits: local is genuinely newer → upload it, but never silently destroy a larger cloud copy */
-        try{ if(shrunk(blobCounts(remote), blobCounts(data))){ stash("lost", JSON.stringify(remote)); toast("⚠ The cloud copy was larger — a safety copy of it was kept (Security → Restore points)"); } }catch(e){}
-        push();
+        if(remoteUp > seenBefore){
+          /* STALE-DEVICE BARRIER: this device claims to be newest but has NEVER SEEN the cloud's
+             current version — it was away while other devices moved the cloud forward. Pushing
+             would silently erase their work (the 2026-08-29 phone incident). Keep this device's
+             copy as a restore point and follow the cloud instead. */
+          try{ stash("lost", JSON.stringify(data)); }catch(e){}
+          adoptRemote(remote);
+          toast("⚠ This device was behind — kept the cloud version; this device's own edits are in Security → Restore points");
+          logSec("stale_overwrite_blocked", "device stamp was newer but based on an unseen cloud version");
+        } else {
+          /* normal offline edits: this device HAD the latest cloud version and moved past it */
+          try{ if(shrunk(blobCounts(remote), blobCounts(data))){ stash("lost", JSON.stringify(remote)); toast("⚠ The cloud copy was larger — a safety copy of it was kept (Security → Restore points)"); } }catch(e){}
+          push();
+        }
       }
       renderSync();
       maybeCloudSnapshot();
@@ -3140,7 +3163,7 @@ function loadSecLog(){
   if(logSub){ try{ logSub(); }catch(e){} logSub=null; }
   logSub=convex.onUpdate("securityLog:list",{ token:sessionToken, deviceId, limit:30 }, rows=>{
     rows=rows||[];
-    const nice={sign_in:"Signed in",device_bootstrap:"First device trusted",device_requested:"New device requested access",device_approved:"Device approved",device_rejected:"Device request rejected",device_revoked:"Device revoked",device_removed:"Device removed",signout_others:"Signed out other devices",data_restored:"Data restored from a backup",data_shrunk:"Large data removal detected (safety copy kept)"};
+    const nice={sign_in:"Signed in",device_bootstrap:"First device trusted",device_requested:"New device requested access",device_approved:"Device approved",device_rejected:"Device request rejected",device_revoked:"Device revoked",device_removed:"Device removed",signout_others:"Signed out other devices",stale_overwrite_blocked:"Blocked a stale device from overwriting the cloud (its copy was kept)",data_restored:"Data restored from a backup",data_shrunk:"Large data removal detected (safety copy kept)"};
     const el=$("secLog"); if(!el) return;
     el.innerHTML = rows.length? rows.map(l=>`<div class="log-row"><span class="lt">${new Date(l.ts).toLocaleString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span><span><span class="le">${esc(nice[l.event]||l.event)}</span>${l.detail?" · "+esc(l.detail):""}</span></div>`).join("") : `<div style="font-size:12.5px;color:var(--faint)">No activity yet.</div>`;
   }, e=>console.warn("security log error",e));

@@ -41,7 +41,7 @@ Backend code lives in `convex/` (see `SETUP-Convex.txt`); prod `cheerful-rat-350
 | 1.3 | Two devices **converge**: each adopts the other's newer copy; edits from both survive sequential syncs | S2 |
 | 1.4 | A returning **stale device adopts** the newer cloud copy and never clobbers it | S8 |
 | 1.5 | **Offline edits** push to the cloud on reconnect (`online` event) | S7 + code |
-| 1.6 | **Concurrent edits** (two devices, one offline): higher `updatedAt` wins the whole blob — deterministic, no crash. Known limitation: the loser's concurrent edit is dropped → mitigated by the truthful sync pill (1.13) | S7 |
+| 1.6 | **Concurrent edits / true conflicts**: higher `updatedAt` wins the whole blob, BUT no side is ever silently dropped — the **stale-device barrier** (each device persists the newest cloud version it has SEEN in `psmData_v1_synced`): a device whose stamp is newer but whose base was never seen (long-offline device, the Aug-2026 phone incident) does NOT push; it stashes its copy (`_lost_`), adopts the cloud, warns, and logs `stale_overwrite_blocked`. Mirror-side: adopting a newer cloud while holding unsynced local edits stashes them first. Normal offline edits (base was seen) push as before | S1b, S7 |
 | 1.7 | **Per-namespace shrink guards**: any save/adopt/reconnect-push that would lose >75% of work OR personal content first stashes the bigger copy (`_prewipe_`/`_lost_`) + warns. Normal small edits never trip it | S3, S11 |
 | 1.8 | **Bad-remote quarantine**: a copy that fails `normalize()` is stashed as `_badremote_` and NEVER adopted | S6 |
 | 1.9 | **Personal isolation**: a corrupt `data.personal` can't take down work data (isolated normalize try/catch), and raw personal data is preserved, not dropped | S6 |
@@ -202,6 +202,7 @@ A bug in one namespace must never take the other down (enforced by
 3. **Invisible categories**: board cards didn't render the project category; empty-string category displayed as the first option while storing "". Guard: `pc-cat` labels on cards + To-Do project rows + `normalize` coercion.
 4. **Log missing days**: personal Log only showed days with a feeling. Guard: day row appears for done/gym/mood/meetup too.
 5. **Lying sync pill**: pill said "Synced" on a 500ms timer regardless of the cloud. Guard: ack-driven states only (S14).
+6. **Stale-phone overwrite (Aug 2026, on Convex)**: an iPhone that hadn't opened the app for ~9 days was used before its connection caught up; the monotonic clock stamped its stale copy "newest" and LWW pushed it, silently erasing Aug 24–26 work (9% shrink — under the guard's threshold). Recovered server-side by grafting the work collections back from a cloud snapshot (admin:mergeWorkFromSnapshot). Guard: the **stale-device barrier** + adoption-side stash (see 1.6, S1b/S7) — pushing now requires having SEEN the cloud version being replaced.
 
 ---
 
