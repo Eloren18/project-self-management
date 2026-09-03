@@ -228,6 +228,7 @@
   .mnote-ta:hover{border-color:var(--border-soft);}
   .mnote-ta:focus{border-color:var(--primary);background:var(--surface-2);}
   .mnote-ta::placeholder{color:var(--faint);}
+  textarea[data-hang]{transition-property:border-color,background-color;} /* the hanging-indent switch must not animate: autoGrow measures with the final padding, and text must not slide */
   .mn-steps{display:flex;flex-direction:column;gap:1px;}
   .mn-step{display:flex;align-items:center;gap:8px;padding:1px 0;}
   .mn-step .check-sm{width:16px;height:16px;}
