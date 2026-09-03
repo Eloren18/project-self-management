@@ -157,7 +157,7 @@ async function HARNESS() {
     },
     action() { return Promise.resolve({}); },
     onUpdate(name, args, cb) {   // a real subscription fires immediately with the current value
-      if (name === 'workspace:get') cb(wsRow());
+      if (name === 'workspace:get') { cloud.wsCb = cb; cb(wsRow()); }   // wsCb lets a test replay a later delivery (the server echoes every write back)
       else if (name === 'devices:list') cb(cloud.devices.slice());
       else if (name === 'securityLog:list') cb(cloud.securityLog.slice());
       return () => {};
@@ -681,6 +681,50 @@ async function HARNESS() {
     check('a year like "2026. " does NOT become a list', listAutoFormat('2026. ', 6) === null);
     check('already-formatted "  • " does not re-trigger', listAutoFormat('  • ', 4) === null);
     const chain = listEnter('  • first', 9);      check('the converted bullet then continues on Enter', !!chain && chain.value === '  • first' + String.fromCharCode(10) + '  • ');
+  }
+
+  // ============================================================
+  //  S21 — fast typing. The cloud echoes every write back through the subscription BEFORE
+  //  acknowledging it, so the echo of letter 1 arrives while the device already holds letter 2
+  //  and nothing is marked "seen" yet. That echo is OUR OWN write, never an unseen foreign
+  //  version — the stale-device barrier must not revert letter 2.
+  //  (regression, live 2026-08-30: every second keystroke was reverted with a
+  //   "this device was behind" toast — typing in a document became impossible)
+  // ============================================================
+  scen('S21 Fast typing: our own write echoing back mid-edit never trips the stale-device barrier');
+  {
+    const { laptop } = setupSynced();
+    useDevice(laptop); await flush();
+    const origMut = convex.mutation; const held = [];
+    convex.mutation = (name, args) => { const p = origMut(name, args); if (name !== 'workspace:save') return p; return new Promise(res => held.push(() => p.then(res))); }; // the cloud applies each write at once; its ack is released later
+    const lostBefore = stashCount(laptop, 'lost'), toastsBefore = __toasts.length, logBefore = cloud.securityLog.length;
+    __clock.t += 1000; data.docs[0].body = 'a';  save(); const T1 = data.updatedAt; const echoT1 = wsRow();   // letter 1 → in flight
+    __clock.t += 60;   data.docs[0].body = 'ab'; save(); const T2 = data.updatedAt;                          // letter 2 → in flight
+    check('setup: two writes in flight, the cloud already holds the second', T2 > T1 && cloudWs().updatedAt === T2 && echoT1.updatedAt === T1);
+    cloud.wsCb(echoT1);                                                                                     // the echo of letter 1 arrives now (acks still pending)
+    check('letter 2 survives the echo of letter 1 (nothing reverted)', data.docs[0].body === 'ab' && data.updatedAt === T2, JSON.stringify({ body: data.docs[0].body }));
+    check('no false "device was behind" warning, no restore point, no security-log entry', __toasts.length === toastsBefore && stashCount(laptop, 'lost') === lostBefore && cloud.securityLog.length === logBefore);
+    check('the echo did not trigger a duplicate push while letter 2 was already in flight', held.length === 2, 'pushes=' + held.length);
+    held.forEach(f => f()); await flush();
+    check('after the acks land: cloud holds letter 2, device marked synced', cloudWs().data.docs[0].body === 'ab' && seenUp() === T2 && lastSyncedUp === T2);
+    convex.mutation = origMut;
+
+    // own stamps are persisted: the same echo after an instant close/reopen is still recognized
+    cloud.workspace = { data: echoT1.data, updatedAt: echoT1.updatedAt };   // letter 2 never reached the cloud (tab closed at once)…
+    localStorage.setItem(STORAGE_KEY + '_synced', '' + (T1 - 1));           // …and no ack was ever recorded
+    saveDevice(laptop); boot(laptop); startWorkspaceSync();
+    check('after a reload, the device pushes letter 2 instead of being "blocked" by its own earlier write', data.docs[0].body === 'ab' && cloudWs().data.docs[0].body === 'ab');
+    await flush();
+
+    // a REJECTED push (another device moved the cloud on meanwhile) must NOT mark that unseen
+    // cloud version as "seen" — the delivery that follows has to keep our edit as a restore point
+    const foreign = JSON.parse(cloud.workspace.data); foreign.docs[0].body = 'other device'; foreign.updatedAt = __clock.t + 5000;
+    cloud.workspace = { data: JSON.stringify(foreign), updatedAt: foreign.updatedAt };                     // written by another device, not delivered to us yet
+    __clock.t += 100; data.docs[0].body = 'abx'; save(); await flush();                                     // our push is rejected (older stamp)
+    check('a rejected push leaves the unseen cloud version unmarked', seenUp() < foreign.updatedAt && data.updatedAt < foreign.updatedAt);
+    const lost0 = stashCount(laptop, 'lost'), toasts0 = __toasts.length;
+    cloud.wsCb(wsRow());
+    check('…so the delivery that follows keeps our edit as a restore point before adopting', stashCount(laptop, 'lost') === lost0 + 1 && __toasts.length > toasts0 && data.docs[0].body === 'other device', JSON.stringify({ body: data.docs[0].body, lost: stashCount(laptop, 'lost') - lost0 }));
   }
 
   // ===== report =====

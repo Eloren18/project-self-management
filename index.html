@@ -1369,6 +1369,15 @@ let lastSyncedUp=0, syncErr=false; /* highest updatedAt confirmed in the cloud, 
    phone incident). seenUp/noteSynced make that difference checkable. */
 function seenUp(){ try{ return +localStorage.getItem(STORAGE_KEY+"_synced")||0; }catch(e){ return 0; } }
 function noteSynced(up){ if(!(up>0)) return; if(up>lastSyncedUp) lastSyncedUp=up; try{ const k=STORAGE_KEY+"_synced"; if(up>(+localStorage.getItem(k)||0)) localStorage.setItem(k, ""+up); }catch(e){} }
+/* ...and the stamps it PUSHED itself (persisted, newest 40). The cloud echoes every write back
+   through the subscription BEFORE acknowledging it, so while typing, the echo of letter 1 arrives
+   when this device already holds letter 2 and nothing has been marked "seen" yet. That echo is
+   our own write — never an unseen foreign version — so it must not trip the barrier. Matched by
+   EQUALITY on purpose: "seen" must never be inferred from our own (possibly stale-based) stamps. */
+function ownStamps(){ try{ const a=JSON.parse(localStorage.getItem(STORAGE_KEY+"_own")||"[]"); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+function noteOwn(up){ if(!(up>0)) return; try{ const a=ownStamps(); if(a.includes(up)) return; a.push(up); while(a.length>40) a.shift(); localStorage.setItem(STORAGE_KEY+"_own", JSON.stringify(a)); }catch(e){} }
+function isOwn(up){ return ownStamps().includes(up); }
+let pushInFlight=0; /* the stamp currently being written — an echo arriving mid-flight must not trigger a duplicate push */
 function save(){
   /* monotonic clock: a device with a backwards-skewed clock can never make real edits lose a sync race */
   data.updatedAt = Math.max(Date.now(), (data.updatedAt||0)+1);
@@ -1417,15 +1426,19 @@ function push(){
   const target = data.updatedAt;
   syncErr=false; renderSync(); /* pending until the cloud confirms → shows "Saving…" (or "Not synced · offline") */
   let json; try{ json=JSON.stringify(data); }catch(e){ console.warn("push: could not serialize",e); return; }
+  pushInFlight=target; noteOwn(target);
   convex.mutation("workspace:save", { token:sessionToken, deviceId, data:json, updatedAt:target })
     .then(r=>{
+      if(pushInFlight===target) pushInFlight=0;
       if(!granted) return;
-      /* accepted → the cloud now holds `target`; rejected (accepted:false) → the cloud has something newer
-         and the live subscription is about to hand it to us — either way the cloud's stamp is confirmed */
-      noteSynced((r&&typeof r.updatedAt==="number")?r.updatedAt:target);
+      /* accepted → the cloud now holds `target`. Rejected (accepted:false) → the cloud has something
+         newer that this device has NOT seen: the live subscription delivers it and the adoption path
+         decides — marking it "seen" here would let it replace our edits without a restore point */
+      if(!r || r.accepted!==false) noteSynced((r&&typeof r.updatedAt==="number")?r.updatedAt:target);
       syncErr=false; renderSync();
     })
     .catch(e=>{
+      if(pushInFlight===target) pushInFlight=0;
       console.warn("push failed",e); if(!granted) return;
       syncErr=true; renderSync();
       if(/approved|signed in/i.test(errText(e,""))) return; /* an auth problem — the session/device gates handle it; don't hammer */
@@ -1468,19 +1481,21 @@ function startWorkspaceSync(){
         adoptRemote(remote);
       }
       else if(localUp > remoteUp && localUp > 0){
-        if(remoteUp > seenBefore){
+        if(remoteUp > seenBefore && !isOwn(remoteUp)){
           /* STALE-DEVICE BARRIER: this device claims to be newest but has NEVER SEEN the cloud's
              current version — it was away while other devices moved the cloud forward. Pushing
              would silently erase their work (the 2026-08-29 phone incident). Keep this device's
-             copy as a restore point and follow the cloud instead. */
+             copy as a restore point and follow the cloud instead. (An echo of our OWN earlier
+             write is not that case — see isOwn — otherwise every second keystroke got reverted.) */
           try{ stash("lost", JSON.stringify(data)); }catch(e){}
           adoptRemote(remote);
           toast("⚠ This device was behind — kept the cloud version; this device's own edits are in Security → Restore points");
           logSec("stale_overwrite_blocked", "device stamp was newer but based on an unseen cloud version");
         } else {
-          /* normal offline edits: this device HAD the latest cloud version and moved past it */
+          /* normal offline edits (or our own earlier write echoing back mid-typing): this device HAD
+             the latest cloud version and moved past it — make sure the cloud gets our newest copy */
           try{ if(shrunk(blobCounts(remote), blobCounts(data))){ stash("lost", JSON.stringify(remote)); toast("⚠ The cloud copy was larger — a safety copy of it was kept (Security → Restore points)"); } }catch(e){}
-          push();
+          if(pushInFlight!==localUp) push();
         }
       }
       renderSync();
