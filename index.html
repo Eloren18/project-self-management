@@ -2026,9 +2026,27 @@ function listAutoFormat(v,pos){
   if(m){ const nl=(m[1]||"  ")+m[2]+m[3]+" "; if(before===nl) return null; return { value:v.slice(0,ls)+nl+v.slice(pos), pos:ls+nl.length }; }
   return null;
 }
+/* Hanging indent (like Word): when a list item wraps, its continuation lines line up under the
+   item's text instead of falling back to the margin. A textarea can't style lines individually,
+   so the indent is uniform per box and only switched on while the box contains a list line;
+   its size is measured from the list markers in the box's own font. */
+function hasListLine(v){ return /^ *([-•*]|[0-9]{1,2}[.)]) /m.test(v||""); }
+function hangApply(ta){
+  try{
+    const on=hasListLine(ta.value); if((ta.dataset.hang==="on")===on) return;
+    if(!ta.dataset.hangW){ const cs=getComputedStyle(ta); let w=0;
+      try{ const c=document.createElement("canvas").getContext("2d"); c.font=[cs.fontStyle,cs.fontWeight,cs.fontSize,cs.fontFamily].join(" "); w=(c.measureText("  • ").width+c.measureText("  1. ").width)/2; }catch(e){}
+      if(!(w>0)) w=(parseFloat(cs.fontSize)||13)*1.4;
+      ta.dataset.hangW=""+w; ta.dataset.hangPad=""+(parseFloat(cs.paddingLeft)||0); }
+    const w=+ta.dataset.hangW, pad=+ta.dataset.hangPad;
+    ta.style.paddingLeft = on ? (pad+w)+"px" : ""; ta.style.textIndent = on ? (-w)+"px" : "";
+    ta.dataset.hang = on ? "on" : "off"; autoGrow(ta);
+  }catch(e){}
+}
 function bulletKeys(ta, onChange){
-  const apply=(r,s,e)=>{ ta.value=r.value; ta.selectionStart=s; ta.selectionEnd=e; autoGrow(ta); onChange(ta.value); };
-  ta.addEventListener("input",()=>{ if(ta.selectionStart!==ta.selectionEnd) return; const r=listAutoFormat(ta.value, ta.selectionStart); if(r) apply(r, r.pos, r.pos); });
+  const apply=(r,s,e)=>{ ta.value=r.value; ta.selectionStart=s; ta.selectionEnd=e; hangApply(ta); autoGrow(ta); onChange(ta.value); };
+  hangApply(ta);
+  ta.addEventListener("input",()=>{ hangApply(ta); if(ta.selectionStart!==ta.selectionEnd) return; const r=listAutoFormat(ta.value, ta.selectionStart); if(r) apply(r, r.pos, r.pos); });
   ta.addEventListener("keydown",e=>{
     const v=ta.value, s=ta.selectionStart, en=ta.selectionEnd;
     if(e.key==="Enter" && !e.shiftKey && s===en){ const r=listEnter(v,s); if(r){ e.preventDefault(); apply(r,r.pos,r.pos); } }

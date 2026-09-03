@@ -681,6 +681,13 @@ async function HARNESS() {
     check('a year like "2026. " does NOT become a list', listAutoFormat('2026. ', 6) === null);
     check('already-formatted "  • " does not re-trigger', listAutoFormat('  • ', 4) === null);
     const chain = listEnter('  • first', 9);      check('the converted bullet then continues on Enter', !!chain && chain.value === '  • first' + String.fromCharCode(10) + '  • ');
+    // hanging indent is switched on only while the box holds a list line (pure detector)
+    const NL = String.fromCharCode(10);
+    check('hasListLine: a plain paragraph is not a list', !hasListLine('Questions to ask:' + NL + 'plain second line'));
+    check('hasListLine: a bullet line anywhere in the box counts', hasListLine('Questions to ask:' + NL + '  • Should we develop a tool'));
+    check('hasListLine: numbered "1)" / "2." lines count', hasListLine('x' + NL + '   1) first') && hasListLine('  2. second'));
+    check('hasListLine: a year like "2026. " is not a list', !hasListLine('2026. was a year'));
+    check('hasListLine: empty / missing text is not a list', !hasListLine('') && !hasListLine(undefined));
   }
 
   // ============================================================
