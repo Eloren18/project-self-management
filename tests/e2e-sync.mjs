@@ -500,6 +500,15 @@ async function HARNESS() {
     data.quarterGoals['2026-Q4'] = [{ id: 'gq', text: 'Year-end review', done: false }]; save();
     useDevice(phone); startWorkspaceSync();
     check('quarter goals sync to other devices with the blob', (data.quarterGoals['2026-Q4'] || []).some(g => g.id === 'gq'));
+
+    // mandatory/optional label on tasks (To-Do columns): defaults to mandatory, survives normalize + sync
+    const tk = normalize({ projects: [{ id: 'pX', name: 'X', tasks: [{ id: 'tM', text: 'm' }, { id: 'tO', text: 'o', optional: 1 }] }], tasks: [{ id: 'tA', text: 'a', optional: true }] });
+    check('tasks default to mandatory (optional:false); a truthy flag becomes true', tk.projects[0].tasks[0].optional === false && tk.projects[0].tasks[1].optional === true && tk.tasks[0].optional === true);
+    const tk2 = normalize(tk);
+    check('the label is stable through repeated normalize', tk2.tasks[0].optional === true && tk2.projects[0].tasks[0].optional === false);
+    useDevice(laptop); data.tasks.push({ id: 'tOPT', text: 'optional one', optional: true }); save();
+    useDevice(phone); startWorkspaceSync();
+    check('the label syncs to other devices with the blob', data.tasks.some(t => t.id === 'tOPT' && t.optional === true));
   }
 
   // ============================================================

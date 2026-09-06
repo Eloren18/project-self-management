@@ -198,6 +198,21 @@
   .todo-sec .line{flex:1;height:1px;background:var(--border);}
   .todo-sec.over{color:var(--p-asap);}
   .todo-sec.today{color:var(--primary);}
+  /* To-Do: Mandatory | Optional columns (drop targets) + the per-row label chip and drag grip */
+  .todo-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;align-items:start;}
+  .todo-col{min-width:0;min-height:160px;padding:0 2px 8px;}
+  .todo-col.drag-over{outline:2px dashed var(--primary);outline-offset:6px;background:var(--primary-soft);}
+  .todo-col-h{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:6px 0 8px;border-bottom:2px solid var(--text);}
+  .todo-col-h .cnt{font-size:11px;font-weight:800;background:var(--text);color:var(--surface);padding:1px 7px;}
+  .todo-col-h .line{flex:1;} .todo-col-h .hint{font-size:10px;font-weight:700;color:var(--faint);letter-spacing:.3px;}
+  .todo-col-h.opt{color:var(--muted);border-bottom-color:var(--border);} .todo-col-h.opt .cnt{background:var(--surface-2);color:var(--muted);border:1px solid var(--border);}
+  .todo-col-h + .todo-sec{margin-top:12px;}
+  .todo-col-empty{font-size:12.5px;color:var(--faint);padding:14px 6px;border:1px dashed var(--border);margin-top:12px;text-align:center;}
+  .trow-grip{color:var(--faint);cursor:grab;font-size:13px;line-height:1;padding:3px 0 0;user-select:none;flex:none;letter-spacing:-2px;}
+  .trow-grip:active{cursor:grabbing;}
+  .trow-kind{border:1px solid var(--text);background:transparent;color:var(--text);cursor:pointer;font-weight:800;text-transform:uppercase;letter-spacing:.4px;}
+  .trow-kind.opt{border:1px dashed var(--border);color:var(--muted);}
+  .trow.opt{border-left-style:dashed;}
 
   /* ===== project page ===== */
   .pp-wrap{max-width:1150px;margin:0;}
@@ -679,6 +694,7 @@
   @keyframes burstfly{from{transform:translate(0,0) rotate(0);opacity:1;}to{transform:translate(var(--dx),var(--dy)) rotate(340deg);opacity:0;}}
   @media(max-width:900px){
     .lanes{grid-template-columns:1fr;}
+    .todo-cols{grid-template-columns:1fr;}
     html[data-mode="personal"] .tab.active{box-shadow:inset 0 -3px 0 var(--primary);}
   }
 
@@ -781,6 +797,7 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.6" stroke-linecap="round" style="flex:none"><path d="M12 5v14M5 12h14"/></svg>
       <input id="qaText" placeholder="Log a task… press Enter to add" autocomplete="off">
       <select id="qaProject" title="Attach to a project (optional)"><option value="">Ad-hoc task</option></select>
+      <select id="qaKind" title="Mandatory or optional? New tasks land in that To-Do column"><option value="m">Mandatory</option><option value="o">Optional</option></select>
       <button class="btn sm" id="qaDeadline" title="Set a deadline — includes quick options like +3 business days">📅 No deadline</button>
       <button class="btn primary sm" id="qaAdd">Add</button>
     </div>
@@ -1134,7 +1151,7 @@ function seed(){
     /* updatedAt: 0 is deliberate — a freshly-seeded device must NEVER outrank the cloud copy.
        (A fresh browser once seeded itself "newer" than the real data and overwrote it. Never again.) */
 }
-function normTask(t){ t.id ||= uid(); t.text ??= ""; t.done=!!t.done; if(t.deadline===undefined) t.deadline = t.due || ""; delete t.due; t.deadline ??= ""; t.deadlineWeek = !!t.deadlineWeek; t.notes ??= ""; t.completedAt ??= 0; return t; }
+function normTask(t){ t.id ||= uid(); t.text ??= ""; t.done=!!t.done; if(t.deadline===undefined) t.deadline = t.due || ""; delete t.due; t.deadline ??= ""; t.deadlineWeek = !!t.deadlineWeek; t.notes ??= ""; t.completedAt ??= 0; t.optional = !!t.optional; return t; }
 /* Structured meeting notes (project notes + meeting-log entries share this shape).
    The old free-text field migrates into "What was discussed?" and is NEVER dropped —
    if that section already had text, the legacy note is appended rather than lost.
@@ -2212,12 +2229,14 @@ function taskRowHTML(t, project, opts){
   opts=opts||{}; const over=isOverdue(t.deadline,t.done,t.deadlineWeek);
   const hasNote=!!(t.notes&&t.notes.trim());
   const projTag = opts.showProject ? (project?`<span class="trow-proj" data-goproj="${project.id}" style="color:${projColor(project)};background:color-mix(in srgb,${projColor(project)} 12%,transparent)">${esc(project.name)}</span>`:`<span class="trow-proj adhoc">Ad-hoc</span>`) : "";
-  return `<div class="trow ${t.done?'done':''} ${over?'overdue':''}" data-tid="${t.id}">
+  return `<div class="trow ${t.done?'done':''} ${over?'overdue':''} ${t.optional?'opt':''}" data-tid="${t.id}">
+    ${opts.grip?`<div class="trow-grip" draggable="true" data-tgrip title="Drag to the other column">⋮⋮</div>`:""}
     <div class="check-sm ${t.done?'on':''}" data-tdone title="Mark done">${t.done?TICK:''}</div>
     <div class="trow-main">
       <input class="trow-text" data-ttext value="${esc(t.text)}" placeholder="Task description">
       <div class="trow-sub">
         ${projTag}
+        <button class="chip trow-kind ${t.optional?'opt':''}" data-tkind title="${t.optional?'Optional — click to make it mandatory':'Mandatory — click to make it optional'}">${t.optional?'Optional':'Mandatory'}</button>
         <button class="chip trow-dl ${over?'over':''}" data-tdl>${t.deadline?esc(fmtDL(t.deadline,t.deadlineWeek))+(over?' · overdue':''):'+ deadline'}</button>
         <button class="chip trow-note-btn ${hasNote?'has':''}" data-tnotebtn title="${hasNote?'View / edit the note':'Add a note'}">🗒 ${hasNote?'Notes':'+ note'}</button>
       </div>
@@ -2231,6 +2250,7 @@ function bindTaskRows(host){
     const tid=row.dataset.tid; const ref=findTask(tid); if(!ref) return; const t=ref.t;
     row.querySelector("[data-tdone]").addEventListener("click",()=>{ t.done=!t.done; t.completedAt=t.done?Date.now():0; save(); refreshTaskViews(); });
     row.querySelector("[data-ttext]").addEventListener("input",e=>{ t.text=e.target.value; save(); });
+    row.querySelector("[data-tkind]").addEventListener("click",()=>{ t.optional=!t.optional; save(); refreshTaskViews(); });
     const noteBox=row.querySelector(".postit"), noteTa=row.querySelector("[data-tnotes]"), noteBtn=row.querySelector("[data-tnotebtn]");
     const fitNote=()=>autoGrow(noteTa);
     const labelNote=()=>{ const has=!!(t.notes&&t.notes.trim()); noteBtn.classList.toggle("has",has); noteBtn.innerHTML="🗒 "+(has?"Notes":"+ note"); };
@@ -2267,18 +2287,23 @@ function renderTodo(){
   const byDL=(a,b)=>((a.t.deadline||"9999-99").localeCompare(b.t.deadline||"9999-99"));
   const active=items.filter(x=>!x.t.done), doneItems=items.filter(x=>x.t.done);
   const t0=d0(new Date()), wkS=weekStart(new Date()), wkE=addDays(wkS,6);
-  const overdue=[], today=[], thisWk=[], later=[], noDate=[];
-  active.forEach(x=>{
-    const t=x.t;
-    if(!t.deadline){ noDate.push(x); return; }
-    if(isOverdue(t.deadline,false,t.deadlineWeek)){ overdue.push(x); return; }
-    const d=d0(parseISO(t.deadline)); const end=t.deadlineWeek?addDays(d,6):d;
-    if(!t.deadlineWeek && +d===+t0) today.push(x);
-    else if(d<=wkE && end>=wkS) thisWk.push(x);
-    else later.push(x);
-  });
-  [overdue,today,thisWk,later].forEach(a=>a.sort(byDL));
-  const sec=(title,arr,cls)=> arr.length?`<div class="todo-sec ${cls||''}">${title} <span class="line"></span><span style="font-weight:700">${arr.length}</span></div>`+arr.map(x=>taskRowHTML(x.t,x.project,{showProject:true})).join(""):"";
+  /* time groups, computed per column (Mandatory | Optional) */
+  const groupOf=list=>{
+    const g={overdue:[],today:[],thisWk:[],later:[],noDate:[]};
+    list.forEach(x=>{
+      const t=x.t;
+      if(!t.deadline){ g.noDate.push(x); return; }
+      if(isOverdue(t.deadline,false,t.deadlineWeek)){ g.overdue.push(x); return; }
+      const d=d0(parseISO(t.deadline)); const end=t.deadlineWeek?addDays(d,6):d;
+      if(!t.deadlineWeek && +d===+t0) g.today.push(x);
+      else if(d<=wkE && end>=wkS) g.thisWk.push(x);
+      else g.later.push(x);
+    });
+    [g.overdue,g.today,g.thisWk,g.later].forEach(a=>a.sort(byDL));
+    return g;
+  };
+  const row=x=>taskRowHTML(x.t,x.project,{showProject:true,grip:true});
+  const sec=(title,arr,cls)=> arr.length?`<div class="todo-sec ${cls||''}">${title} <span class="line"></span><span style="font-weight:700">${arr.length}</span></div>`+arr.map(row).join(""):"";
   const projRowHTML=p=>`<div class="trow overdue" data-goprojrow="${p.id}" style="cursor:pointer">
     <div class="check-sm" data-pjdone="${p.id}" title="Mark project complete"></div>
     <div class="trow-main">
@@ -2293,26 +2318,38 @@ function renderTodo(){
       <div class="trow-sub"><span class="chip" style="background:color-mix(in srgb,${projColor(p)} 14%,transparent);color:${projColor(p)}">Project</span>${p.category?`<span class="chip" style="background:color-mix(in srgb,${catColor(p.category)} 16%,transparent);color:${catColor(p.category)}">${esc(p.category)}</span>`:""}${p.completedAt?`<span class="chip soft">done ${fmtShort(iso(new Date(p.completedAt)))}</span>`:""}</div>
     </div>
   </div>`;
-  let html="";
-  if(overdue.length||overdueProjects.length){
-    html+=`<div class="todo-sec over">⚠ Overdue <span class="line"></span><span style="font-weight:700">${overdue.length+overdueProjects.length}</span></div>`;
-    html+=overdueProjects.map(projRowHTML).join("");
-    html+=overdue.map(x=>taskRowHTML(x.t,x.project,{showProject:true})).join("");
-  }
-  html+=sec("Today",today,"today");
-  html+=sec("This week",thisWk);
-  html+=sec("Upcoming",later);
-  html+=sec("No date",noDate);
-  if(todoShowDone){
-    const doneProjects=data.projects.filter(p=>p.progress==="Done" && (!q||((p.name||"")+" "+(p.description||"")).toLowerCase().includes(q))).sort((a,b)=>(b.completedAt||0)-(a.completedAt||0));
-    if(doneItems.length||doneProjects.length){
-      html+=`<div class="todo-sec">Completed <span class="line"></span><span style="font-weight:700">${doneItems.length+doneProjects.length}</span></div>`;
-      html+=doneProjects.map(doneProjRowHTML).join("");
-      html+=doneItems.sort((a,b)=>(b.t.completedAt||0)-(a.t.completedAt||0)).map(x=>taskRowHTML(x.t,x.project,{showProject:true})).join("");
-    } else html+=`<div class="todo-sec">Completed <span class="line"></span><span style="font-weight:700">0</span></div><div style="font-size:12.5px;color:var(--faint);padding:2px 0 8px">Nothing completed yet.</div>`;
-  }
-  host.innerHTML=html||`<div class="empty"><div>All caught up! 🎉 <span style="color:var(--faint)">(tick “Show completed” to see finished tasks)</span></div></div>`;
+  const doneProjects = todoShowDone ? data.projects.filter(p=>p.progress==="Done" && (!q||((p.name||"")+" "+(p.description||"")).toLowerCase().includes(q))).sort((a,b)=>(b.completedAt||0)-(a.completedAt||0)) : [];
+  /* two columns: Mandatory (the default for every task) | Optional. Projects are commitments → Mandatory. */
+  const colHTML=kind=>{
+    const opt=kind==="optional";
+    const g=groupOf(active.filter(x=>!!x.t.optional===opt));
+    const projs=opt?[]:overdueProjects, dProjs=opt?[]:doneProjects;
+    const done=doneItems.filter(x=>!!x.t.optional===opt).sort((a,b)=>(b.t.completedAt||0)-(a.t.completedAt||0));
+    const n=g.overdue.length+g.today.length+g.thisWk.length+g.later.length+g.noDate.length+projs.length;
+    let h=`<div class="todo-col-h ${opt?'opt':''}">${opt?'Optional':'Mandatory'} <span class="cnt">${n}</span><span class="line"></span><span class="hint">${opt?'nice to do':'must do'}</span></div>`;
+    if(g.overdue.length||projs.length){
+      h+=`<div class="todo-sec over">⚠ Overdue <span class="line"></span><span style="font-weight:700">${g.overdue.length+projs.length}</span></div>`;
+      h+=projs.map(projRowHTML).join("")+g.overdue.map(row).join("");
+    }
+    h+=sec("Today",g.today,"today")+sec("This week",g.thisWk)+sec("Upcoming",g.later)+sec("No date",g.noDate);
+    if(!n) h+=`<div class="todo-col-empty">${opt?"Nothing optional. Drag a task here, or switch a task's chip.":"All caught up here 🎉"}</div>`;
+    if(todoShowDone){
+      if(done.length||dProjs.length){
+        h+=`<div class="todo-sec">Completed <span class="line"></span><span style="font-weight:700">${done.length+dProjs.length}</span></div>`;
+        h+=dProjs.map(doneProjRowHTML).join("")+done.map(row).join("");
+      } else h+=`<div class="todo-sec">Completed <span class="line"></span><span style="font-weight:700">0</span></div><div style="font-size:12.5px;color:var(--faint);padding:2px 0 8px">Nothing completed yet.</div>`;
+    }
+    return `<div class="todo-col" data-kind="${kind}">${h}</div>`;
+  };
+  host.innerHTML=`<div class="todo-cols">${colHTML("mandatory")}${colHTML("optional")}</div>`;
   bindTaskRows(host);
+  /* drag a task between the columns to relabel it — from the grip handle only, so row text stays selectable */
+  host.querySelectorAll("[data-tgrip]").forEach(gp=>gp.addEventListener("dragstart",e=>{ e.stopPropagation(); e.dataTransfer.setData("text/plain","task|"+gp.closest(".trow").dataset.tid); e.dataTransfer.effectAllowed="move"; }));
+  host.querySelectorAll(".todo-col").forEach(col=>{
+    col.addEventListener("dragover",e=>{ e.preventDefault(); col.classList.add("drag-over"); });
+    col.addEventListener("dragleave",e=>{ if(!col.contains(e.relatedTarget)) col.classList.remove("drag-over"); });
+    col.addEventListener("drop",e=>{ e.preventDefault(); col.classList.remove("drag-over"); const raw=e.dataTransfer.getData("text/plain")||""; if(!raw.startsWith("task|")) return; const ref=findTask(raw.slice(5)); if(!ref) return; const opt=col.dataset.kind==="optional"; if(!!ref.t.optional===opt) return; ref.t.optional=opt; save(); refreshTaskViews(); toast(opt?"Marked optional":"Marked mandatory"); });
+  });
   host.querySelectorAll("[data-goprojrow]").forEach(r=>r.addEventListener("click",e=>{ if(e.target.closest("[data-pjdone],[data-pjdl]")) return; showProjectPage(r.dataset.goprojrow); }));
   host.querySelectorAll("[data-pjdone]").forEach(b=>b.addEventListener("click",e=>{ e.stopPropagation(); toggleProjectDone(data.projects.find(p=>p.id===b.dataset.pjdone)); }));
   host.querySelectorAll("[data-pjdl]").forEach(b=>b.addEventListener("click",e=>{ e.stopPropagation();
@@ -2383,7 +2420,7 @@ function populateQaProject(){
 function qaAddTask(){
   const inp=$("qaText"); const text=(inp.value||"").trim();
   if(!text){ inp.focus(); return; }
-  const t={id:uid(),text,done:false,deadline:qaDL.deadline||todayISO(),deadlineWeek:qaDL.isWk,notes:""};
+  const t={id:uid(),text,done:false,deadline:qaDL.deadline||todayISO(),deadlineWeek:qaDL.isWk,notes:"",optional:$("qaKind").value==="o"};
   const pid=$("qaProject").value;
   if(pid){ const p=data.projects.find(x=>x.id===pid); (p?p.tasks:data.tasks).push(t); } else data.tasks.push(t);
   save(); inp.value=""; qaDL={deadline:todayISO(),isWk:false}; qaLabel();
