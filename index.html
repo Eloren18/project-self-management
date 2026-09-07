@@ -342,6 +342,7 @@
   .pk-quick button{border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:10px;font-weight:700;padding:5px 2px;transition:.1s;letter-spacing:.2px;}
   .pk-quick button:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-soft);}
   .pk-quick button small{display:block;font-size:8.5px;color:var(--faint);font-weight:600;margin-top:1px;letter-spacing:0;}
+  .pk-quick button.none{grid-column:1/-1;border-style:dashed;color:var(--muted);}
   .pk-head{display:flex;align-items:center;gap:6px;margin-bottom:10px;}
   .pk-head h4{margin:0;font-size:11.5px;font-weight:750;flex:1;text-align:center;text-transform:uppercase;letter-spacing:.5px;}
   .pk-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
@@ -798,7 +799,7 @@
       <input id="qaText" placeholder="Log a task… press Enter to add" autocomplete="off">
       <select id="qaProject" title="Attach to a project (optional)"><option value="">Ad-hoc task</option></select>
       <select id="qaKind" title="Mandatory or optional? New tasks land in that To-Do column"><option value="m">Mandatory</option><option value="o">Optional</option></select>
-      <button class="btn sm" id="qaDeadline" title="Set a deadline — includes quick options like +3 business days">📅 No deadline</button>
+      <button class="btn sm" id="qaDeadline" title="Set a deadline — quick options like +3 business days, or No deadline">📅 No deadline</button>
       <button class="btn primary sm" id="qaAdd">Add</button>
     </div>
     <div id="todoView"></div>
@@ -2261,7 +2262,7 @@ function bindTaskRows(host){
       if(nowOpen){ openNoteIds.add(t.id); fitNote(); noteTa.focus(); } else openNoteIds.delete(t.id);
     });
     if(!noteBox.classList.contains("hidden")) fitNote();
-    row.querySelector("[data-tdl]").addEventListener("click",e=>{ openPicker(e.currentTarget,{deadline:t.deadline,isWk:t.deadlineWeek,required:true},sel=>{ t.deadline=sel.deadline; t.deadlineWeek=sel.isWk; save(); refreshTaskViews(); }); });
+    row.querySelector("[data-tdl]").addEventListener("click",e=>{ openPicker(e.currentTarget,{deadline:t.deadline,isWk:t.deadlineWeek},sel=>{ t.deadline=sel.deadline; t.deadlineWeek=sel.isWk; save(); refreshTaskViews(); }); });
     row.querySelector("[data-tdel]").addEventListener("click",()=>{ const idx=ref.arr.indexOf(t); if(idx>-1) ref.arr.splice(idx,1); save(); refreshTaskViews(); });
     const gp=row.querySelector("[data-goproj]"); if(gp) gp.addEventListener("click",()=>{ const pid=gp.dataset.goproj; if(data.projects.find(x=>x.id===pid)) showProjectPage(pid); else if(data.meetings.find(x=>x.id===pid)) openMeetingPage(pid); });
   });
@@ -2411,7 +2412,7 @@ function renderArchive(){
 }
 
 /* ---- quick-add bar ---- */
-let qaDL={deadline:todayISO(),isWk:false}; /* tasks always carry a deadline — default today */
+let qaDL={deadline:todayISO(),isWk:false}; /* default today; "No deadline" is a picker option — such tasks live in To-Do under "No date" */
 function qaLabel(){ const b=$("qaDeadline"); b.textContent = qaDL.deadline ? "📅 "+fmtDL(qaDL.deadline,qaDL.isWk) : "📅 No deadline"; b.style.borderColor = qaDL.deadline ? "var(--primary)" : ""; b.style.color = qaDL.deadline ? "var(--primary)" : ""; }
 function populateQaProject(){
   const sel=$("qaProject"); if(!sel) return; const cur=sel.value;
@@ -2420,7 +2421,7 @@ function populateQaProject(){
 function qaAddTask(){
   const inp=$("qaText"); const text=(inp.value||"").trim();
   if(!text){ inp.focus(); return; }
-  const t={id:uid(),text,done:false,deadline:qaDL.deadline||todayISO(),deadlineWeek:qaDL.isWk,notes:"",optional:$("qaKind").value==="o"};
+  const t={id:uid(),text,done:false,deadline:qaDL.deadline||"",deadlineWeek:qaDL.isWk,notes:"",optional:$("qaKind").value==="o"};
   const pid=$("qaProject").value;
   if(pid){ const p=data.projects.find(x=>x.id===pid); (p?p.tasks:data.tasks).push(t); } else data.tasks.push(t);
   save(); inp.value=""; qaDL={deadline:todayISO(),isWk:false}; qaLabel();
@@ -3126,7 +3127,7 @@ function renderCreate(){
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn ghost" id="ctCancel">Cancel</button><button class="btn primary" id="ctCreate">Create</button></div>
   `;
   $("createType").querySelectorAll("button").forEach(b=>b.onclick=()=>{ createCtx.type=b.dataset.ct; renderCreate(); });
-  $("ctDeadline").onclick=()=>openPicker($("ctDeadline"),{deadline:createCtx.deadline,isWk:createCtx.isWk,required:createCtx.type==="task"},sel=>{ createCtx.deadline=sel.deadline; createCtx.isWk=sel.isWk; renderCreate(); });
+  $("ctDeadline").onclick=()=>openPicker($("ctDeadline"),{deadline:createCtx.deadline,isWk:createCtx.isWk},sel=>{ createCtx.deadline=sel.deadline; createCtx.isWk=sel.isWk; renderCreate(); });
   $("ctCancel").onclick=closeCreate;
   $("ctCreate").onclick=doCreate;
   const f=$("ctText")||$("ctName"); if(f) setTimeout(()=>f.focus(),60);
@@ -3134,7 +3135,7 @@ function renderCreate(){
 function doCreate(){
   if(createCtx.type==="task"){
     const text=($("ctText").value||"").trim(); const pid=$("ctProject").value;
-    const t={id:uid(),text,done:false,deadline:createCtx.deadline||todayISO(),deadlineWeek:createCtx.isWk,notes:""};
+    const t={id:uid(),text,done:false,deadline:createCtx.deadline||"",deadlineWeek:createCtx.isWk,notes:"",optional:false};
     if(pid){ const p=data.projects.find(x=>x.id===pid); (p?p.tasks:data.tasks).push(t); } else data.tasks.push(t);
     save(); closeCreate(); renderAll(); toast("Task created");
   } else {
@@ -3166,7 +3167,7 @@ function renderTaskModal(){
   $("tmText").addEventListener("input",e=>{ t.text=e.target.value; save(); });
   $("tmNotes").addEventListener("input",e=>{ t.notes=e.target.value; save(); });
   $("tmProject").addEventListener("change",e=>{ if(e.target.value==="__mtg") return; moveTaskTo(taskModalId,e.target.value); });
-  $("tmDeadline").onclick=()=>openPicker($("tmDeadline"),{deadline:t.deadline,isWk:t.deadlineWeek,required:true},sel=>{ t.deadline=sel.deadline; t.deadlineWeek=sel.isWk; save(); renderTaskModal(); refreshTaskViews(); });
+  $("tmDeadline").onclick=()=>openPicker($("tmDeadline"),{deadline:t.deadline,isWk:t.deadlineWeek},sel=>{ t.deadline=sel.deadline; t.deadlineWeek=sel.isWk; save(); renderTaskModal(); refreshTaskViews(); });
   $("tmDelete").onclick=()=>{ const idx=r.arr.indexOf(t); if(idx>-1) r.arr.splice(idx,1); save(); closeTaskModal(); refreshTaskViews(); };
   $("tmClose").onclick=closeTaskModal;
 }
@@ -3179,7 +3180,7 @@ function moveTaskTo(tid,pid){
 /* ---- Date / week picker popover ---- */
 function openPicker(anchor, cur, onPick){
   const base = cur.deadline?parseISO(cur.deadline):new Date();
-  pkState={ month:new Date(base.getFullYear(),base.getMonth(),1), mode:cur.isWk?"week":"day", cur:{deadline:cur.deadline||"",isWk:!!cur.isWk,required:!!cur.required}, onPick };
+  pkState={ month:new Date(base.getFullYear(),base.getMonth(),1), mode:cur.isWk?"week":"day", cur:{deadline:cur.deadline||"",isWk:!!cur.isWk}, onPick };
   renderPicker();
   const pop=$("pickerPop"); pop.classList.remove("hidden");
   const r=anchor.getBoundingClientRect();
@@ -3217,8 +3218,9 @@ function renderPicker(){
     { l:"Month end",s:fmtShort(iso(endOfMonth(_t))),         v:iso(endOfMonth(_t)),           wk:false },
     { l:"Next week",s:"W"+(weekInfo(iso(nextMonday(_t)))||{}).week, v:iso(nextMonday(_t)),    wk:true },
     { l:"In 2 wks", s:"W"+(weekInfo(iso(addDays(nextMonday(_t),7)))||{}).week, v:iso(addDays(nextMonday(_t),7)), wk:true },
+    { l:"No deadline", s:"stays in To-Do · No date", v:"", wk:false, none:true }, /* a task without a date still lives in To-Do, just not on the calendar */
   ];
-  const quickHtml=`<div class="pk-quick">${quick.map((q,i)=>`<button data-qi="${i}" title="${q.wk?'Week deadline':'Day deadline'} — ${esc(fmtDL(q.v,q.wk))}">${q.l}<small>${esc(q.s||"")}</small></button>`).join("")}</div>`;
+  const quickHtml=`<div class="pk-quick">${quick.map((q,i)=>`<button data-qi="${i}" class="${q.none?'none':''}" title="${q.none?'No deadline — the task still shows in To-Do under “No date” (not on the calendar)':(q.wk?'Week deadline':'Day deadline')+' — '+esc(fmtDL(q.v,q.wk))}">${q.l}<small>${esc(q.s||"")}</small></button>`).join("")}</div>`;
   $("pickerPop").innerHTML=`
     ${quickHtml}
     <div class="pk-head">
@@ -3228,7 +3230,6 @@ function renderPicker(){
     </div>
     <div class="seg" style="margin-bottom:10px"><button data-mode="day" class="${st.mode==='day'?'active':''}" style="flex:1">Day</button><button data-mode="week" class="${st.mode==='week'?'active':''}" style="flex:1">Week</button></div>
     ${body}
-    ${st.cur.required?"":`<button class="btn ghost sm" id="pkClear" style="width:100%;justify-content:center;margin-top:10px">Clear (no deadline)</button>`}
   `;
   $("pickerPop").querySelectorAll("[data-qi]").forEach(b=>b.onclick=()=>{ const q=quick[+b.dataset.qi]; const cb=st.onPick; closePicker(); cb({deadline:q.v,isWk:q.wk}); });
   $("pkPrev").onclick=()=>{ st.month=new Date(y,m-1,1); renderPicker(); };
@@ -3236,7 +3237,6 @@ function renderPicker(){
   $("pickerPop").querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{ st.mode=b.dataset.mode; renderPicker(); });
   $("pickerPop").querySelectorAll("[data-day]").forEach(b=>b.onclick=()=>{ const v=b.dataset.day; const cb=st.onPick; closePicker(); cb({deadline:v,isWk:false}); });
   $("pickerPop").querySelectorAll("[data-week]").forEach(b=>b.onclick=()=>{ const v=b.dataset.week; const cb=st.onPick; closePicker(); cb({deadline:v,isWk:true}); });
-  const pc=$("pkClear"); if(pc) pc.onclick=()=>{ const cb=st.onPick; closePicker(); cb({deadline:"",isWk:false}); };
 }
 
 /* ---- Excel export (SheetJS from a whitelisted CDN) ---- */
@@ -5083,7 +5083,7 @@ $("todoNewProject").onclick=newProject;
 $("todoSearchInput").addEventListener("input",e=>{ todoSearch=e.target.value; renderTodo(); });
 $("qaAdd").onclick=qaAddTask;
 $("qaText").addEventListener("keydown",e=>{ if(e.key==="Enter") qaAddTask(); });
-$("qaDeadline").onclick=()=>openPicker($("qaDeadline"),{deadline:qaDL.deadline,isWk:qaDL.isWk,required:true},sel=>{ qaDL=sel; qaLabel(); $("qaText").focus(); });
+$("qaDeadline").onclick=()=>openPicker($("qaDeadline"),{deadline:qaDL.deadline,isWk:qaDL.isWk},sel=>{ qaDL=sel; qaLabel(); $("qaText").focus(); });
 $("todoShowDone").addEventListener("change",e=>{ todoShowDone=e.target.checked; renderTodo(); });
 $("exportBtn").onclick=exportExcel;
 $("detailClose").onclick=closeDetail;
