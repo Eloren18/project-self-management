@@ -464,9 +464,9 @@
     .app{flex-direction:column;}
     .sidebar{width:100%;height:auto;position:static;flex-direction:row;align-items:center;flex-wrap:wrap;}
     .brand{border-bottom:0;padding:12px 14px;}
-    .nav{display:flex;flex:1;padding:0 8px;overflow-x:auto;align-items:center;}
+    .nav{display:flex;flex:1;padding:0 8px;flex-wrap:wrap;align-items:center;} /* narrow windows: tabs WRAP onto more rows — never a sideways scroll, never cut off */
     .nav .lbl{display:none;}
-    .tab{width:auto;white-space:nowrap;padding:14px 12px;margin-bottom:0;}
+    .tab{width:auto;white-space:nowrap;padding:11px 12px;margin-bottom:0;}
     .tab.active{box-shadow:inset 0 -3px 0 #E4002B;background:transparent;}
     .sidefoot{display:none;}
     .board{grid-template-columns:repeat(2,minmax(0,1fr));} .year-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .pp-grid{grid-template-columns:1fr;} .prep-grid{grid-template-columns:1fr;} .docs-grid{grid-template-columns:1fr;} .doc-list{max-height:34vh;}
