@@ -614,13 +614,29 @@ async function HARNESS() {
     check('legacy text APPENDS when discussed already had content (no overwrite, no loss)', b.discussed.includes('already here') && b.discussed.includes('from the old field'));
     check('string "steps" migrate to checklist items, preserving ✓ done-state', c.steps.length === 2 && c.steps[0].text === 's1' && c.steps[0].done === false && c.steps[1].text === 'done one' && c.steps[1].done === true);
     check('array "steps" are kept as-is (id/text/done)', d.steps.length === 1 && d.steps[0].text === 'already an item' && d.steps[0].done === true);
-    check('legacy meeting-entry "notes" moved into discussed, agenda preserved', e.discussed.includes('legacy meeting notes') && e.agenda === 'agenda kept' && !('notes' in e));
+    check('legacy meeting-entry "notes" end up in the AGENDA (entries have one text section now), existing agenda text first', e.agenda.startsWith('agenda kept') && e.agenda.includes('legacy meeting notes') && e.discussed === '' && !('notes' in e));
     // idempotency: normalizing again must not duplicate migrated text or re-split steps
     const twice = normalize(clone(blob));
     const b2 = twice.projects[0].meetingNotes.find(n => n.id === 'b');
     const c2 = twice.projects[0].meetingNotes.find(n => n.id === 'c');
     check('re-normalizing does NOT duplicate migrated text', (b2.discussed.match(/from the old field/g) || []).length === 1);
     check('re-normalizing keeps steps as a stable 2-item checklist (no re-split)', c2.steps.length === 2 && c2.steps[1].done === true);
+    // meeting entries fold "What was discussed?" + "Next jumps" into the single agenda section — never dropped, never duplicated
+    const NL17 = String.fromCharCode(10);
+    const fold = normalize(clone({ meetings: [{ id: 'f', name: 'F', entries: [
+      { id: 'x', date: '2026-08-01', agenda: 'Agenda line', discussed: 'We decided A', jumps: 'Go bigger', steps: [{ id: 's1', text: 'do it', done: false }] },
+      { id: 'y', date: '2026-08-02', agenda: '', discussed: 'Only discussion' },
+      { id: 'z', date: '2026-08-03', agenda: 'Untouched', discussed: '', jumps: '' },
+    ] }] }));
+    const fx = fold.meetings[0].entries.find(n => n.id === 'x'), fy = fold.meetings[0].entries.find(n => n.id === 'y'), fz = fold.meetings[0].entries.find(n => n.id === 'z');
+    check('discussed + jumps fold into the agenda after the existing agenda text, jumps labelled', fx.agenda.startsWith('Agenda line') && fx.agenda.includes('We decided A') && fx.agenda.includes('Next jumps:' + NL17 + 'Go bigger') && fx.discussed === '' && fx.jumps === '');
+    check('next steps are untouched by the fold', fx.steps.length === 1 && fx.steps[0].text === 'do it');
+    check('an entry with only discussion becomes an agenda holding exactly that text', fy.agenda === 'Only discussion' && fy.discussed === '');
+    check('an entry with nothing to fold is left alone', fz.agenda === 'Untouched');
+    const fold2 = normalize(clone(fold));
+    check('folding is idempotent — re-normalizing never duplicates the moved text', (fold2.meetings[0].entries.find(n => n.id === 'x').agenda.match(/We decided A/g) || []).length === 1);
+    const pn = normalize(clone({ projects: [{ id: 'pp', name: 'P', meetingNotes: [{ id: 'q', date: '2026-08-01', discussed: 'project note stays', jumps: 'keep' }] }] })).projects[0].meetingNotes[0];
+    check('project meeting notes are NOT folded (they keep their own sections)', pn.discussed === 'project note stays' && pn.jumps === 'keep');
   }
 
   // ============================================================

@@ -106,6 +106,7 @@ Backend code lives in `convex/` (see `SETUP-Convex.txt`); prod `cheerful-rat-350
 
 ### 4.3 Meetings
 - Recurring meetings: name, cadence, attendees. Meeting page: **action items** (tasks that flow into To-Do/Calendar tinted with the meeting accent), a searchable **meeting log** of dated entries (see 4.10), delete with confirm.
+- **Meeting-log entries have ONE free-text section — Agenda — plus the Next-steps checklist** (since Sep 2026). Anything older versions stored under "What was discussed?" / "Next Jumps" folds into the agenda automatically on load (`foldEntryIntoAgenda`: appended after existing agenda text, jumps labelled `Next jumps:`, idempotent, never dropped — S17). Collapsed-card snippets show the agenda's first line. **Project-page meeting notes are a different structure and keep their own sections** (What was discussed? / Next steps / Next Jumps).
 
 ### 4.10 Meeting notes — structured editor (shared: project pages **and** the meeting log)
 One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both places. **[ALWAYS CHECK — both surfaces]**
@@ -116,7 +117,7 @@ One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both
 - **Next steps → tasks**: a button turns each **un-ticked** step into a real task (on the project or meeting) that flows into To-Do, then **ticks that step's checkbox** so re-running never duplicates. Confirm dialog previews exactly what will be created.
 - **Pin** (★, sorts to top), **Copy** (⧉, whole note to clipboard as text), **Delete** (styled confirm).
 - Meeting-log extras: **search** the log, **⤓ Last agenda** (copy previous entry's agenda), **⤓ Carry over open steps** (pull the previous entry's un-ticked next-step items into this entry's Next-steps checklist), single-open accordion, "Latest" badge.
-- **Migration [ALWAYS CHECK — data safety]**: legacy free-text (`text` on project notes, `notes` on meeting entries) moves into **What was discussed?** and is NEVER dropped — if that section already had content the legacy text is appended; idempotent, never duplicates (S17).
+- **Migration [ALWAYS CHECK — data safety]**: legacy free-text (`text` on project notes, `notes` on meeting entries) moves into **What was discussed?** (project notes) or, for meeting entries, ends up in the **Agenda** via the fold, and is NEVER dropped — if that section already had content the legacy text is appended; idempotent, never duplicates (S17).
 
 ### 4.4 Calendar — month grid; shows project deadlines, task deadlines, meetings; month navigation; overdue tint; click-through to items.
 

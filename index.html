@@ -1186,6 +1186,20 @@ function normMeetingNote(o, legacyKey){
   o.createdAt ??= Date.now(); o.updatedAt ??= o.createdAt;
   return o;
 }
+/* Meeting-log entries keep ONE free-text section — the agenda — plus the next-steps checklist.
+   Text that older versions stored under "What was discussed?" or "Next jumps" folds into the
+   agenda (appended after existing agenda text, jumps labelled) and is NEVER dropped; idempotent
+   because the source fields are emptied once moved. Project meeting notes keep their own
+   sections and are not touched by this. */
+function foldEntryIntoAgenda(en){
+  const d=(en.discussed||"").trim(), j=(en.jumps||"").trim();
+  if(!d && !j) return en;
+  const parts=[]; if(d) parts.push(d); if(j) parts.push("Next jumps:\n"+j);
+  const cur=(en.agenda||"").trim();
+  en.agenda = (cur ? cur+"\n\n" : "") + parts.join("\n\n");
+  en.discussed=""; en.jumps="";
+  return en;
+}
 function normalize(d){
   d = d || {};
   d.projects = Array.isArray(d.projects) ? d.projects : [];
@@ -1223,7 +1237,7 @@ function normalize(d){
   d.meetings.forEach(m=>{
     m.id ||= uid(); m.name ??= "Untitled meeting"; m.cadence ??= ""; m.attendees ??= ""; m.createdAt ??= Date.now();
     m.entries = Array.isArray(m.entries) ? m.entries : [];
-    m.entries.forEach(en=>{ en.id ||= uid(); en.date ??= ""; en.agenda ??= ""; normMeetingNote(en,"notes"); });
+    m.entries.forEach(en=>{ en.id ||= uid(); en.date ??= ""; en.agenda ??= ""; normMeetingNote(en,"notes"); foldEntryIntoAgenda(en); });
     m.tasks = Array.isArray(m.tasks) ? m.tasks : []; m.tasks.forEach(normTask);
   });
   d.settings = d.settings || {}; d.settings.theme ??= "light";
@@ -2082,8 +2096,9 @@ function sectionText(o,k){ return k==="steps" ? stepsText(o.steps) : (o[k]||"");
 function mnoteDateLabel(isoStr){ const d=parseISO(isoStr); return d ? d.toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short",year:"numeric"}) : "No date"; }
 function mnoteFirstLine(v){ const l=(v||"").split("\n").map(s=>s.trim()).find(Boolean); return l ? l.replace(/^[-•*✓]\s*/,"") : ""; }
 function mnoteSnippet(o){
+  const a=(o.agenda||"").trim(); if(a) return mnoteFirstLine(a); /* meeting entries: the agenda IS the note */
   for(const s of MNOTE_SECTIONS){ const v=sectionText(o,s.k).trim(); if(v) return mnoteFirstLine(v); }
-  return mnoteFirstLine(o.agenda||"");
+  return "";
 }
 function mnoteSort(arr){ return [...arr].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0) || (b.date||"").localeCompare(a.date||"") || (b.createdAt||0)-(a.createdAt||0)); }
 function mnoteByDate(arr){ return [...arr].sort((a,b)=>(b.date||"").localeCompare(a.date||"") || (b.createdAt||0)-(a.createdAt||0)); }
@@ -2117,8 +2132,8 @@ function mnoteStepsHTML(o){
     <input class="mn-step-add" data-stadd placeholder="＋ Add a next step… press Enter" autocomplete="off">
   </div>`;
 }
-function mnoteSectionsHTML(o){
-  return MNOTE_SECTIONS.map(s=> s.k==="steps" ? mnoteStepsHTML(o)
+function mnoteSectionsHTML(o, sections){
+  return (sections||MNOTE_SECTIONS).map(s=> s.k==="steps" ? mnoteStepsHTML(o)
     : `<div class="mnote-sec"><label>${s.label}</label>
     <textarea class="mnote-ta" data-sec="${s.k}" rows="1" placeholder="${esc(s.ph)}">${esc(o[s.k]||"")}</textarea></div>`).join("");
 }
@@ -2148,7 +2163,7 @@ function mnoteCardHTML(o, opts){
         <button class="btn sm" data-mnmk title="Create a task for every Next-steps line that isn't ticked off yet — they'll appear in your To-Do">⇢ Next steps → tasks</button>
       </div>
       ${opts.beforeSections||""}
-      ${mnoteSectionsHTML(o)}
+      ${mnoteSectionsHTML(o, opts.sections)}
     </div>`:""}
   </div>`;
 }
@@ -2997,9 +3012,10 @@ function meetingPanelHTML(m){
       return mnoteCardHTML(en,{
         open: en.id===meetOpenEntryId,
         latest: latestId===en.id,
+        sections: MNOTE_SECTIONS.filter(s=>s.k==="steps"), /* entries: the agenda holds everything, plus next steps */
         beforeSections: `<div class="mnote-sec">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><label style="margin:0">Agenda</label><span class="grow"></span>${hasPrev?`<button class="btn sm" data-enimport title="Copy the agenda from the previous entry">⤓ Last agenda</button><button class="btn sm" data-encarry title="Bring the previous entry's unticked next steps into this one">⤓ Carry over open steps</button>`:""}</div>
-          <textarea class="mnote-ta" data-enagenda rows="1" placeholder="What's on the table this time…">${esc(en.agenda)}</textarea>
+          <textarea class="mnote-ta" data-enagenda rows="1" placeholder="Agenda, key points, decisions, who said what — everything for this meeting…">${esc(en.agenda)}</textarea>
         </div>`,
       });
     }).join("")|| (mtgSearch ? `<div style="font-size:12.5px;color:var(--faint);padding:6px 0">No entries match “${esc(mtgSearch)}”.</div>` : `<div style="font-size:12.5px;color:var(--faint);padding:6px 0">No entries yet — create one for today's meeting.</div>`)}
@@ -3047,7 +3063,7 @@ function renderMeetings(){
   const addT=()=>{ const inp=$("mtgNewTask"); const txt=(inp.value||"").trim(); if(!txt){ inp.focus(); return; } cur2.tasks.push({id:uid(),text:txt,done:false,deadline:todayISO(),deadlineWeek:false,notes:""}); save(); refreshTaskViews(); const i2=$("mtgNewTask"); if(i2) i2.focus(); };
   $("mtgAddTask").onclick=addT;
   $("mtgNewTask").addEventListener("keydown",e=>{ if(e.key==="Enter") addT(); });
-  $("mtgNewEntry").onclick=()=>{ const en={id:uid(),date:todayISO(),agenda:"",discussed:"",steps:"",jumps:"",pinned:false,createdAt:Date.now(),updatedAt:Date.now()}; cur2.entries.push(en); meetOpenEntryId=en.id; save(); renderMeetings(); const a=host.querySelector("[data-enagenda]"); if(a) a.focus(); };
+  $("mtgNewEntry").onclick=()=>{ const en={id:uid(),date:todayISO(),agenda:"",steps:[],pinned:false,createdAt:Date.now(),updatedAt:Date.now()}; cur2.entries.push(en); meetOpenEntryId=en.id; save(); renderMeetings(); const a=host.querySelector("[data-enagenda]"); if(a) a.focus(); };
   const srch=$("mtgSearch");
   if(srch) srch.addEventListener("input",e=>{ mtgSearch=e.target.value; renderMeetings(); const s=$("mtgSearch"); if(s){ s.focus(); const v=s.value; s.setSelectionRange(v.length,v.length); } });
   bindMeetingEntries(host,cur2);
