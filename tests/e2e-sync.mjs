@@ -58,9 +58,9 @@ const consts = [
 
 const dataLayer = slice('function seed(){', 'let data = load();'); // seed, normTask, normalize, normalizePersonal, load
 const syncBlock = slice('const STASH_FAMILIES=', 'function setSync'); // counts, shrink guards, save, mirror, adopt, sync, restore
-const listBlock = slice('/* ---- plain-text smart lists', '/* ---- end smart lists ---- */'); // pure textarea list helpers (listEnter/listTab/listBackspace)
+const noteBlock = slice('/* ---- note text ⇄ HTML converters', '/* ---- end note converters ---- */'); // pure note converters (plainToHTML / htmlToText / noteText)
 
-const REAL_CODE = consts + '\n' + dataLayer + '\n' + syncBlock + '\n' + listBlock;
+const REAL_CODE = consts + '\n' + dataLayer + '\n' + syncBlock + '\n' + noteBlock;
 
 /* ---- the harness: prelude shims + scenarios; real code injected at the marker ---- */
 async function HARNESS() {
@@ -678,41 +678,31 @@ async function HARNESS() {
   }
 
   // ============================================================
-  //  S20 — plain-text smart lists (meeting notes / project notes / week prep textareas)
+  //  S20 — note converters: plain text (incl. the old "  • " / "  1) " smart-list lines) ⇄ rich HTML
   // ============================================================
-  scen('S20 Plain-text smart lists: Enter continues + renumbers, Tab indents, Backspace removes an empty marker');
+  scen('S20 Note converters: old plain-text lists become real lists; HTML reads back as text');
   {
-    const r1 = listEnter('- apple', 7);           check('bullet continues on Enter', !!r1 && r1.value === '- apple\n- ' && r1.pos === 10, r1 && JSON.stringify(r1));
-    const r2 = listEnter('1. one', 6);            check('numbered list increments (1. → 2.)', !!r2 && r2.value === '1. one\n2. ');
-    const r3 = listEnter('1) one', 6);            check('"1)" style increments too', !!r3 && r3.value === '1) one\n2) ');
-    const r4 = listEnter('- ', 2);                check('Enter on an empty item ends the list', !!r4 && r4.value === '' && r4.pos === 0);
-    const r5 = listEnter('1. a\n2. b\n3. c', 4);  check('inserting mid-list renumbers the lines below', !!r5 && r5.value === '1. a\n2. \n3. b\n4. c', r5 && JSON.stringify(r5.value));
-    const r6 = listEnter('  - x', 5);             check('indentation is preserved on the new item', !!r6 && r6.value === '  - x\n  - ');
-    const r7 = listEnter('- hello world', 7);     check('splitting mid-line moves the rest onto the new item', !!r7 && r7.value === '- hello\n- world' && r7.pos === 10, r7 && JSON.stringify(r7));
-    check('a normal line is left alone on Enter', listEnter('plain text', 10) === null);
-    const t1 = listTab('- a', 3, 3, false);        check('Tab indents a list line', !!t1 && t1.value === '  - a' && t1.selStart === 5);
-    const t2 = listTab('  - a', 5, 5, true);       check('Shift+Tab outdents', !!t2 && t2.value === '- a' && t2.selStart === 3);
-    check('Tab on a non-list line is not intercepted', listTab('plain', 5, 5, false) === null);
-    const t3 = listTab('- a\n- b', 0, 7, false);   check('Tab with a multi-line selection indents every line', !!t3 && t3.value === '  - a\n  - b', t3 && JSON.stringify(t3.value));
-    const b1 = listBackspace('- ', 2);             check('Backspace on an empty item removes the marker', !!b1 && b1.value === '' && b1.pos === 0);
-    check('Backspace inside a real item behaves normally', listBackspace('- a', 3) === null);
-    const a1 = listAutoFormat('- ', 2);           check('typing "- " becomes an indented bullet "  • "', !!a1 && a1.value === '  • ' && a1.pos === 4, a1 && JSON.stringify(a1));
-    const a2 = listAutoFormat('* ', 2);           check('"* " becomes a bullet too', !!a2 && a2.value === '  • ');
-    const a3 = listAutoFormat('1. ', 3);          check('"1. " becomes an indented numbered item', !!a3 && a3.value === '  1. ' && a3.pos === 5);
-    const a4 = listAutoFormat('1) ', 3);          check('"1) " style works too', !!a4 && a4.value === '  1) ');
-    const a5 = listAutoFormat('    - ', 6);       check('an existing indent is respected (no extra indent)', !!a5 && a5.value === '    • ');
-    const a6 = listAutoFormat('- hello', 2);      check('converting before existing text keeps the text', !!a6 && a6.value === '  • hello' && a6.pos === 4);
-    check('mid-line "- " is NOT a list trigger', listAutoFormat('say - ', 6) === null);
-    check('a year like "2026. " does NOT become a list', listAutoFormat('2026. ', 6) === null);
-    check('already-formatted "  • " does not re-trigger', listAutoFormat('  • ', 4) === null);
-    const chain = listEnter('  • first', 9);      check('the converted bullet then continues on Enter', !!chain && chain.value === '  • first' + String.fromCharCode(10) + '  • ');
-    // hanging indent is switched on only while the box holds a list line (pure detector)
     const NL = String.fromCharCode(10);
-    check('hasListLine: a plain paragraph is not a list', !hasListLine('Questions to ask:' + NL + 'plain second line'));
-    check('hasListLine: a bullet line anywhere in the box counts', hasListLine('Questions to ask:' + NL + '  • Should we develop a tool'));
-    check('hasListLine: numbered "1)" / "2." lines count', hasListLine('x' + NL + '   1) first') && hasListLine('  2. second'));
-    check('hasListLine: a year like "2026. " is not a list', !hasListLine('2026. was a year'));
-    check('hasListLine: empty / missing text is not a list', !hasListLine('') && !hasListLine(undefined));
+    check('bullet lines become a <ul>', plainToHTML('  • a' + NL + '  • b') === '<ul><li>a</li><li>b</li></ul>', plainToHTML('  • a' + NL + '  • b'));
+    check('numbered lines become an <ol> (any numbering, "." or ")")', plainToHTML('1) x' + NL + '2. y') === '<ol><li>x</li><li>y</li></ol>');
+    check('a deeper indent nests the list inside the item', plainToHTML('  • a' + NL + '    • b' + NL + '  • c') === '<ul><li>a<ul><li>b</li></ul></li><li>c</li></ul>', plainToHTML('  • a' + NL + '    • b' + NL + '  • c'));
+    check('switching marker type at the same level starts a new list', plainToHTML('- a' + NL + '1. b') === '<ul><li>a</li></ul><ol><li>b</li></ol>');
+    check('the old inconsistent indents (col-0 first item, 2-space siblings, 4-space child) read as ONE flat list with a nested child', plainToHTML('1) a' + NL + '  2) b' + NL + '    - c' + NL + '  3) d') === '<ol><li>a</li><li>b<ul><li>c</li></ul></li><li>d</li></ol>', plainToHTML('1) a' + NL + '  2) b' + NL + '    - c' + NL + '  3) d'));
+    check('plain lines become blocks, blank lines empty blocks, and lists close before them', plainToHTML('Questions:' + NL + '  1) one' + NL + '' + NL + 'after') === '<div>Questions:</div><ol><li>one</li></ol><div><br></div><div>after</div>', plainToHTML('Questions:' + NL + '  1) one' + NL + '' + NL + 'after'));
+    check('text is escaped — no HTML injection from old notes', plainToHTML('a <b> & c') === '<div>a &lt;b&gt; &amp; c</div>');
+    check('empty text gives an empty editor (placeholder shows)', plainToHTML('') === '' && plainToHTML(undefined) === '');
+    check('the agenda fold output converts line by line', plainToHTML('Agenda line' + NL + NL + 'Next jumps:' + NL + 'Go bigger') === '<div>Agenda line</div><div><br></div><div>Next jumps:</div><div>Go bigger</div>');
+    const back = htmlToText('<div>Head</div><ul><li>a</li><li>b</li></ul><ol><li>x</li><li>y</li></ol>');
+    check('htmlToText restores bullets, numbers and line breaks (lists are separated from other blocks by a blank line)', back === 'Head' + NL + NL + '• a' + NL + '• b' + NL + NL + '1. x' + NL + '2. y', JSON.stringify(back));
+    const nested = htmlToText('<ol><li>a<ul><li>c</li></ul></li><li>b</li></ol>');
+    check('nested lists read back indented under their parent item, numbering stays with the parent list', nested === '1. a' + NL + '  • c' + NL + '2. b', JSON.stringify(nested));
+    check('htmlToText decodes entities and drops unknown tags', htmlToText('<p>a &amp; b &lt;c&gt;</p><span>d</span>') === 'a & b <c>' + NL + 'd');
+    check('a rich → text → html round trip keeps the list structure', plainToHTML(htmlToText('<ul><li>a</li><li>b</li></ul>')) === '<ul><li>a</li><li>b</li></ul>');
+    check('noteText passes plain values through and converts rich ones', noteText('  • keep', false) === '  • keep' && noteText('<ul><li>k</li></ul>', true) === '• k');
+    check('noteHTML converts plain values and passes rich ones through', noteHTML('- a', false) === '<ul><li>a</li></ul>' && noteHTML('<div>x</div>', true) === '<div>x</div>');
+    // the rich flags exist on every note-bearing object after normalize
+    const rf = normalize({ projects: [{ id: 'p', name: 'P', notes: 'n', meetingNotes: [{ id: 'm', date: '2026-09-01', discussed: 'd' }] }], meetings: [{ id: 'mm', name: 'M', entries: [{ id: 'e', date: '2026-09-01', agenda: 'a' }] }], weekPrep: [{ id: 'w', weekStart: '2026-09-07', notes: 'x' }] });
+    check('normalize gives every note-bearing object a boolean rich flag (false = still plain text)', rf.projects[0].notesRich === false && rf.projects[0].meetingNotes[0].rich === false && rf.meetings[0].entries[0].rich === false && rf.weekPrep[0].rich === false);
   }
 
   // ============================================================

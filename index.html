@@ -239,10 +239,25 @@
   .mnote-bar input[type=date]{padding:5px 8px;border:1px solid var(--border);background:var(--surface-2);font-size:11.5px;color:var(--text);}
   .mnote-sec{margin-top:9px;}
   .mnote-sec label{display:block;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);margin-bottom:3px;}
-  .mnote-ta{width:100%;border:1px solid transparent;background:transparent;padding:6px 8px;font-family:inherit;font-size:12.5px;line-height:1.6;color:var(--text);resize:none;overflow:hidden;min-height:30px;outline:none;transition:border-color .12s,background .12s;}
-  .mnote-ta:hover{border-color:var(--border-soft);}
-  .mnote-ta:focus{border-color:var(--primary);background:var(--surface-2);}
-  .mnote-ta::placeholder{color:var(--faint);}
+  /* compact rich note editor — real lists (bullets, numbers, nesting, hanging indents) in every note box */
+  .note-wrap{width:100%;}
+  .doc-tools.mini{margin:0 0 3px;gap:3px;opacity:.55;transition:opacity .12s;}
+  .note-wrap:focus-within .doc-tools.mini,.note-wrap:hover .doc-tools.mini{opacity:1;}
+  .doc-tools.mini button{padding:3px 7px;font-size:9.5px;}
+  .note-ed{width:100%;min-height:34px;border:1px solid transparent;background:transparent;padding:6px 8px;font-family:inherit;font-size:12.5px;line-height:1.6;color:var(--text);outline:none;transition:border-color .12s,background .12s;overflow-wrap:anywhere;}
+  .note-ed:hover{border-color:var(--border-soft);}
+  .note-ed:focus{border-color:var(--primary);background:var(--surface-2);}
+  .note-ed:empty::before{content:attr(data-ph);color:var(--faint);pointer-events:none;}
+  .note-ed p,.note-ed div{margin:0;}
+  .note-ed ul,.note-ed ol{margin:3px 0;padding-left:22px;}
+  .note-ed li{margin:1px 0;padding-left:2px;}
+  .note-ed ul ul{list-style:circle;} .note-ed ul ul ul{list-style:square;}
+  .note-ed ol ol{list-style:lower-alpha;} .note-ed ol ol ol{list-style:lower-roman;}
+  .note-ed blockquote{margin:3px 0;padding-left:12px;border-left:2px solid var(--border);}
+  .note-ed [style*="background-color"],.note-ed mark{color:#141519;padding:0 2px;}
+  .field .note-ed{border-color:var(--border);background:var(--surface);min-height:120px;} /* project notes + week prep: framed like the inputs around them */
+  .field .note-ed:focus{border-color:var(--primary);}
+  #wpNotes{min-height:200px;}
   .mn-steps{display:flex;flex-direction:column;gap:1px;}
   .mn-step{display:flex;align-items:center;gap:8px;padding:1px 0;}
   .mn-step .check-sm{width:16px;height:16px;}
@@ -277,7 +292,6 @@
   .field input,.field select,.field textarea{width:100%;padding:8px 11px;border:1px solid var(--border);background:var(--surface);outline:none;transition:.12s;font-weight:500;}
   .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--primary);}
   .field textarea{resize:vertical;min-height:60px;line-height:1.5;}
-  .field textarea[data-hang],textarea[data-hang]{transition-property:border-color,background-color;} /* the hanging-indent switch must not animate (must outrank .field textarea's catch-all transition): autoGrow measures with the final padding, and text must not slide */
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
   .title-input{font-size:19px;font-weight:800;letter-spacing:-.02em;border:none;background:transparent;width:100%;outline:none;padding:2px 0;color:var(--text);}
   .section-h{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin:22px 0 10px;display:flex;align-items:center;gap:8px;}
@@ -385,6 +399,8 @@
   /* ===== working documents ===== */
   .docs-grid{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:16px;align-items:start;}
   .doc-list{background:var(--surface);border:1px solid var(--border);max-height:72vh;overflow-y:auto;}
+  .docs-grid.list-hidden{grid-template-columns:minmax(0,1fr);} .docs-grid.list-hidden .doc-list{display:none;} /* Meetings: the list can be collapsed */
+  #mtgJump{padding:6px 8px;border:1px solid var(--border);background:var(--surface);font-weight:600;font-size:11.5px;color:var(--muted);max-width:240px;outline:none;}
   .doc-item{padding:11px 13px;border-bottom:1px solid var(--border-soft);cursor:pointer;transition:.1s;}
   .doc-item:hover{background:var(--surface-2);}
   .doc-item.active{background:var(--primary-soft);box-shadow:inset 3px 0 0 var(--primary);}
@@ -1024,8 +1040,8 @@
                       guards, LWW push+ack, quarantine, snapshots [S0-S15]
    Cloud ............ convex.* via push()/cloudQuery(); the SERVER
                       enforces session + trusted device           [S16]
-   Smart lists ...... pure listAutoFormat/Enter/Tab/Backspace +
-                      bulletKeys(ta, onChange)                    [S20]
+   Note editors ..... noteEditorHTML/bindNoteEditor (compact rich editor
+                      in every note box) + pure plainToHTML/htmlToText [S20]
    Rich editor ...... bindRichEditor(body, tools, opts) - Docs + Self Notes
    Note cards ....... mnoteCardHTML/bindMnoteCards - projects + meeting log
    Dialogs .......... uiConfirm/uiPrompt (promises), openPM/closePM
@@ -1182,7 +1198,7 @@ function normMeetingNote(o, legacyKey){
   }
   delete o[legacyKey];
   o.discussed ??= ""; o.steps = normMeetingSteps(o.steps); o.jumps ??= "";
-  o.pinned = !!o.pinned;
+  o.pinned = !!o.pinned; o.rich = !!o.rich; /* rich: the text sections hold sanitized HTML (note editor) */
   o.createdAt ??= Date.now(); o.updatedAt ??= o.createdAt;
   return o;
 }
@@ -1213,7 +1229,7 @@ function normalize(d){
     p.involved ??= ""; p.informed ??= ""; p.docLink ??= ""; p.valueProp ??= "";
     // migrate legacy working-notes fields into project notes (no data loss)
     if(p.notes===undefined){ let n=""; if(p.lastDiscussed) n+="Last discussed: "+p.lastDiscussed+"\n"; if(p.nextSteps) n+=p.nextSteps; p.notes=n; }
-    p.notes ??= ""; delete p.lastDiscussed; delete p.nextSteps;
+    p.notes ??= ""; delete p.lastDiscussed; delete p.nextSteps; p.notesRich = !!p.notesRich;
     if(!Array.isArray(p.meetingNotes)) p.meetingNotes = [];
     p.meetingNotes.forEach(m=>{ m.id ||= uid(); m.date ??= ""; normMeetingNote(m,"text"); });
     if(!PROGRESS.includes(p.prevProgress)) p.prevProgress = (p.progress==="Done")?"In Progress":p.progress;
@@ -1223,7 +1239,7 @@ function normalize(d){
   });
   d.tasks = Array.isArray(d.tasks) ? d.tasks : []; d.tasks.forEach(normTask);
   d.weekPrep = Array.isArray(d.weekPrep) ? d.weekPrep : [];
-  d.weekPrep.forEach(w=>{ w.id ||= uid(); w.weekStart ??= ""; w.notes ??= ""; if(!Array.isArray(w.items)) w.items=[]; w.items.forEach(it=>{ it.id ||= uid(); it.text ??= ""; it.done = !!it.done; }); w.updatedAt ??= 0; });
+  d.weekPrep.forEach(w=>{ w.id ||= uid(); w.weekStart ??= ""; w.notes ??= ""; if(!Array.isArray(w.items)) w.items=[]; w.items.forEach(it=>{ it.id ||= uid(); it.text ??= ""; it.done = !!it.done; }); w.rich = !!w.rich; w.updatedAt ??= 0; });
   d.docs = Array.isArray(d.docs) ? d.docs : [];
   d.docs.forEach(doc=>{ doc.id ||= uid(); doc.title ??= ""; doc.body ??= ""; doc.rich = !!doc.rich; doc.createdAt ??= Date.now(); doc.updatedAt ??= doc.createdAt; });
   d.glossary = Array.isArray(d.glossary) ? d.glossary : [];
@@ -1956,7 +1972,7 @@ function renderProjectPage(){
     <button class="btn ghost sm" id="ppAddMeeting" style="margin-top:2px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add meeting note</button>
 
     <div class="section-h">Notes <span class="line"></span></div>
-    <div class="field"><textarea data-f="notes" rows="5" placeholder="Freeform notes for this project…">${esc(p.notes)}</textarea></div>
+    <div class="field">${noteEditorHTML('data-nf="notes"', p.notes, p.notesRich, "Freeform notes for this project…")}</div>
     <div style="font-size:11.5px;color:var(--faint);margin:8px 0 30px">Created ${new Date(p.createdAt||Date.now()).toLocaleDateString()}</div>
   `;
   $("ppBack").onclick=()=>switchTab("projects");
@@ -1964,13 +1980,13 @@ function renderProjectPage(){
   $("ppDone").onclick=()=>toggleProjectDone(p);
   $("ppName").addEventListener("input",()=>{ p.name=$("ppName").value; save(); renderProjects(); });
   $("projectPageBody").querySelectorAll("[data-f]").forEach(el=>{ const f=el.dataset.f; const ev=(el.tagName==="SELECT")?"change":"input"; el.addEventListener(ev,()=>{ p[f]=el.value; save(); if(["progress","priority","category"].includes(f)){ renderProjects(); populateCategoryFilter(); } }); });
-  const ppNotes=$("projectPageBody").querySelector('textarea[data-f="notes"]'); if(ppNotes) bulletKeys(ppNotes, v=>{ p.notes=v; save(); }); /* smart lists in the project notes too */
+  bindNoteEditor($("projectPageBody").querySelector('.note-ed[data-nf="notes"]'), h=>{ p.notes=h; p.notesRich=true; save(); }); /* rich note editor (real lists) for the project notes */
   $("ppDeadline").onclick=()=>openPicker($("ppDeadline"),{deadline:p.deadline,isWk:p.deadlineWeek},sel=>{ p.deadline=sel.deadline; p.deadlineWeek=sel.isWk; save(); renderProjectPage(); renderProjects(); renderCalendar(); renderYear(); });
   bindColorField($("projectPageBody"), ()=>p, renderProjectPage);
   renderPPTasks(p);
   $("ppAddTask").onclick=()=>{ p.tasks.push({id:uid(),text:"",done:false,deadline:todayISO(),deadlineWeek:false,notes:""}); save(); renderPPTasks(p); const inps=$("ppTasks").querySelectorAll(".trow-text"); if(inps.length) inps[inps.length-1].focus(); };
   renderPPMeetings(p);
-  $("ppAddMeeting").onclick=()=>{ const m={id:uid(),date:todayISO(),discussed:"",steps:"",jumps:"",pinned:false,createdAt:Date.now(),updatedAt:Date.now()}; p.meetingNotes.unshift(m); openMNotes.add(m.id); save(); renderPPMeetings(p); const t=$("ppMeetings").querySelector(".mnote-ta"); if(t) t.focus(); };
+  $("ppAddMeeting").onclick=()=>{ const m={id:uid(),date:todayISO(),discussed:"",steps:"",jumps:"",pinned:false,createdAt:Date.now(),updatedAt:Date.now()}; p.meetingNotes.unshift(m); openMNotes.add(m.id); save(); renderPPMeetings(p); const t=$("ppMeetings").querySelector(".note-ed"); if(t) t.focus(); };
 }
 function renderPPTasks(p){
   const host=$("ppTasks");
@@ -1989,114 +2005,106 @@ const MNOTE_SECTIONS = [
   { k:"jumps",     label:"Next Jumps",          ph:"The bigger leaps this unlocks — where this is heading next" },
 ];
 /* Enter continues a "- " list; Enter on an empty bullet ends it */
-/* ---- plain-text smart lists (textareas): pure helpers + binder ----
-   Recognises bullet lines ("- ", "* ", "• ", "– ") and numbered lines ("1. ", "1) ").
-   Enter continues the list (numbers increment and the lines below renumber), Enter on
-   an empty item ends the list, Tab / Shift+Tab indent / outdent, Backspace on an empty
-   item removes the marker. Shift+Enter is always a plain newline. Pure functions return
-   null when the key should behave normally. */
+/* ---- note text ⇄ HTML converters (pure; tested in S20) ----
+   Every note box (meeting agenda, project notes, project meeting-note sections, week prep) is
+   a RICH editor now — real <ul>/<ol> lists with hanging indents and nesting, driven by the same
+   bindRichEditor as Documents. Values that older versions stored as plain text (including the
+   former "  • " / "  1) " smart-list lines) are converted on the fly when displayed and become
+   HTML the first time they are edited (the owning object's rich flag flips then). Every reading
+   path (snippets, search, copy, Excel export) goes through noteText(). */
 const LIST_RE=/^(\s*)(?:([-•*–])|(\d+)([.)]))([ \t]+)(.*)$/;
-function listLineStart(v,pos){ return v.lastIndexOf("\n",pos-1)+1; }
-function listLineEnd(v,pos){ const e=v.indexOf("\n",pos); return e<0?v.length:e; }
-function listRenumber(v,from,indent,delim,startNum){ /* renumber consecutive numbered lines at this indent, starting at `from` */
-  let i=from, n=startNum, out=v;
-  while(i<=out.length){
-    const e=listLineEnd(out,i); const line=out.slice(i,e);
-    const m=line.match(/^(\s*)(\d+)([.)])([ \t]+)/);
-    if(!m || m[1]!==indent || m[3]!==delim) break;
-    const fixed=indent+n+delim+m[4]+line.slice(m[0].length);
-    out=out.slice(0,i)+fixed+out.slice(e);
-    i=i+fixed.length+1; n++;
-    if(i>out.length) break;
+const noteEsc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function plainToHTML(text){
+  const lines=String(text||"").replace(/\r/g,"").split("\n");
+  let html="", stack=[]; /* open lists: {tag, indent} — a deeper indent nests inside the current item */
+  const pop=()=>{ html+="</li></"+stack.pop().tag+">"; };
+  lines.forEach(line=>{
+    const m=line.match(LIST_RE);
+    if(m){
+      /* indent → level: the old smart lists used 2 spaces per level with "  • " as the TOP level, and a
+         hand-typed marker at column 0 is that same top level — so 0 and 2 spaces are level 0, 4 is level 1… */
+      const tag=m[2]?"ul":"ol", ind=Math.max(0,Math.round((m[1].replace(/\t/g,"  ").length-2)/2)), item=noteEsc(m[6]);
+      while(stack.length && ind<stack[stack.length-1].indent) pop();
+      if(stack.length && ind===stack[stack.length-1].indent){
+        if(stack[stack.length-1].tag===tag) html+="</li><li>"+item;
+        else { pop(); html+="<"+tag+"><li>"+item; stack.push({tag,indent:ind}); }
+      } else { html+="<"+tag+"><li>"+item; stack.push({tag,indent:ind}); }
+    } else {
+      while(stack.length) pop();
+      html+= line.trim() ? "<div>"+noteEsc(line)+"</div>" : "<div><br></div>";
+    }
+  });
+  while(stack.length) pop();
+  return html.replace(/(<div><br><\/div>)+$/,"");
+}
+function htmlToText(html){
+  let s=String(html||"");
+  /* lists: convert the INNERMOST list first, so nested items come out indented under their parent
+     ("1. a" / "  • c" / "2. b") instead of being numbered as siblings */
+  const INNER=/<(ul|ol)[^>]*>((?:(?!<ul|<ol)[\s\S])*?)<\/\1>/i;
+  let guard=0;
+  while(INNER.test(s) && guard++<500){
+    s=s.replace(INNER,(m,tag,inner)=>{
+      let i=0;
+      const items=inner.split(/<li[^>]*>/i).slice(1).map(x=>x.replace(/<\/li>/gi,""));
+      return "\n"+items.map(x=>{
+        const lines=x.replace(/^\n+|\n+$/g,"").split("\n");
+        const mark=tag.toLowerCase()==="ol" ? (++i)+". " : "• ";
+        return mark+lines[0]+(lines.length>1 ? "\n"+lines.slice(1).map(l=>"  "+l).join("\n") : "");
+      }).join("\n")+"\n";
+    });
   }
-  return out;
+  s=s.replace(/<\/(p|div|h1|h2|h3|blockquote|tr)>/gi,"\n").replace(/<br\s*\/?>/gi,"\n");
+  s=s.replace(/<[^>]+>/g,"");
+  s=s.replace(/&nbsp;/g," ").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,"&");
+  return s.replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n").trim();
 }
-function listEnter(v,pos){
-  const ls=listLineStart(v,pos);
-  const m=v.slice(ls,pos).match(LIST_RE); if(!m) return null;
-  const indent=m[1], bullet=m[2], num=m[3], delim=m[4], content=m[6];
-  if(!content.trim()) return { value:v.slice(0,ls)+v.slice(pos), pos:ls };        /* empty item → leave the list */
-  const marker = bullet ? bullet : (+num+1)+delim;
-  const rest=v.slice(pos).replace(/^[ \t]+/,"");                                   /* splitting mid-line: don't carry the space */
-  const ins="\n"+indent+marker+" ";
-  let value=v.slice(0,pos)+ins+rest; const np=pos+ins.length;
-  if(num){ const nextLine=listLineEnd(value,np)+1; if(nextLine<=value.length) value=listRenumber(value,nextLine,indent,delim,+num+2); }
-  return { value, pos:np };
+function noteText(v,rich){ return rich ? htmlToText(v) : String(v||""); }
+function noteHTML(v,rich){ return rich ? String(v||"") : plainToHTML(v); }
+/* ---- end note converters ---- */
+/* ---- compact rich note editor: Outlook-style lists in every note box ----
+   A mini toolbar (lists, indent, bold, italic, highlight, clear) above a contenteditable box;
+   typing "- " / "1. " autoformats, Tab / Shift+Tab nest, Ctrl+Shift+8 / 7 toggle lists. The
+   caller stores the sanitized HTML and flips the object's rich flag. */
+const NOTE_ICON_OUT=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 6H3M21 12h-9M21 18H3M7 9l-4 3 4 3"/></svg>`;
+const NOTE_ICON_IN=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 6H3M21 12h-9M21 18H3M3 9l4 3-4 3"/></svg>`;
+function noteEditorHTML(attrs, v, rich, ph){
+  return `<div class="note-wrap"><div class="doc-tools mini">
+    <button data-cmd="ul" title="Bullet list — or type “- ” at the start of a line (Ctrl+Shift+8)">•&nbsp;List</button>
+    <button data-cmd="ol" title="Numbered list — or type “1. ” at the start of a line (Ctrl+Shift+7)">1.&nbsp;List</button>
+    <button data-cmd="outdent" title="Decrease indent (Shift+Tab)">${NOTE_ICON_OUT}</button>
+    <button data-cmd="indent" title="Increase indent (Tab)">${NOTE_ICON_IN}</button>
+    <span class="sep"></span>
+    <button data-cmd="bold" title="Bold (Ctrl+B)" style="font-weight:800">B</button>
+    <button data-cmd="i" title="Italic (Ctrl+I)" style="font-style:italic">I</button>
+    <button data-cmd="hl" title="Highlight the selection" style="background:#ffe86b;color:#141519">HL</button>
+    <button data-cmd="clear" title="Remove formatting from the selection">Clear</button>
+  </div><div class="note-ed" contenteditable="true" ${attrs} data-ph="${esc(ph||"")}">${sanitizeDocHTML(noteHTML(v,rich))}</div></div>`;
 }
-function listTab(v,selStart,selEnd,shift){
-  const first=listLineStart(v,selStart);
-  if(!LIST_RE.test(v.slice(first,listLineEnd(v,first)))) return null;             /* only act on list lines */
-  const last=listLineStart(v,Math.max(selStart,selEnd>selStart?selEnd-1:selEnd));
-  let cursor=first, s2=selStart, e2=selEnd, firstDelta=0;
-  const lines=[]; while(cursor<=last){ const e=listLineEnd(v,cursor); lines.push([cursor,e]); if(e>=v.length) break; cursor=e+1; }
-  let acc=v; let shiftTotal=0;
-  lines.forEach(([a,b],idx)=>{
-    const start=a+shiftTotal, end=b+shiftTotal; const line=acc.slice(start,end);
-    let nl, d;
-    if(shift){ const rm=line.match(/^( {1,2}|\t)/); d=rm?-rm[0].length:0; nl=rm?line.slice(rm[0].length):line; }
-    else { d=2; nl="  "+line; }
-    acc=acc.slice(0,start)+nl+acc.slice(end); shiftTotal+=d;
-    if(idx===0) firstDelta=d;
-  });
-  if(selStart===selEnd){ s2=e2=Math.max(first,selStart+firstDelta); }
-  else { s2=first; e2=selEnd+shiftTotal; }
-  return { value:acc, selStart:s2, selEnd:e2 };
-}
-function listBackspace(v,pos){
-  const ls=listLineStart(v,pos);
-  const m=v.slice(ls,pos).match(LIST_RE); if(!m || m[6].length) return null;     /* only an empty item, caret right after the marker */
-  return { value:v.slice(0,ls)+v.slice(pos), pos:ls };
-}
-/* Word-style autoformat while typing: "- ", "* " or "• " at the start of a line instantly becomes an
-   indented bullet ("  • "), and "1. " / "1) " (1–2 digits, so years like "2026." don't trigger) an
-   indented numbered item — the same visible cue Word gives that a list has started. */
-function listAutoFormat(v,pos){
-  const ls=listLineStart(v,pos);
-  const before=v.slice(ls,pos);
-  let m=before.match(/^( *)([-*•]) $/);
-  if(m){ const nl=(m[1]||"  ")+"• "; if(before===nl) return null; return { value:v.slice(0,ls)+nl+v.slice(pos), pos:ls+nl.length }; }
-  m=before.match(/^( *)([0-9]{1,2})([.)]) $/);
-  if(m){ const nl=(m[1]||"  ")+m[2]+m[3]+" "; if(before===nl) return null; return { value:v.slice(0,ls)+nl+v.slice(pos), pos:ls+nl.length }; }
-  return null;
-}
-/* Hanging indent (like Word): when a list item wraps, its continuation lines line up under the
-   item's text instead of falling back to the margin. A textarea can't style lines individually,
-   so the indent is uniform per box and only switched on while the box contains a list line;
-   its size is measured from the list markers in the box's own font. */
-function hasListLine(v){ return /^ *([-•*]|[0-9]{1,2}[.)]) /m.test(v||""); }
-function hangApply(ta){
-  try{
-    const on=hasListLine(ta.value); if((ta.dataset.hang==="on")===on) return;
-    if(!ta.dataset.hangW){ const cs=getComputedStyle(ta); let w=0;
-      try{ const c=document.createElement("canvas").getContext("2d"); c.font=[cs.fontStyle,cs.fontWeight,cs.fontSize,cs.fontFamily].join(" "); w=(c.measureText("  • ").width+c.measureText("  1. ").width)/2; }catch(e){}
-      if(!(w>0)) w=(parseFloat(cs.fontSize)||13)*1.4;
-      ta.dataset.hangW=""+w; ta.dataset.hangPad=""+(parseFloat(cs.paddingLeft)||0); }
-    const w=+ta.dataset.hangW, pad=+ta.dataset.hangPad;
-    ta.style.paddingLeft = on ? (pad+w)+"px" : ""; ta.style.textIndent = on ? (-w)+"px" : "";
-    ta.dataset.hang = on ? "on" : "off"; autoGrow(ta);
-  }catch(e){}
-}
-function bulletKeys(ta, onChange){
-  const apply=(r,s,e)=>{ ta.value=r.value; ta.selectionStart=s; ta.selectionEnd=e; hangApply(ta); autoGrow(ta); onChange(ta.value); };
-  hangApply(ta);
-  ta.addEventListener("input",()=>{ hangApply(ta); if(ta.selectionStart!==ta.selectionEnd) return; const r=listAutoFormat(ta.value, ta.selectionStart); if(r) apply(r, r.pos, r.pos); });
-  ta.addEventListener("keydown",e=>{
-    const v=ta.value, s=ta.selectionStart, en=ta.selectionEnd;
-    if(e.key==="Enter" && !e.shiftKey && s===en){ const r=listEnter(v,s); if(r){ e.preventDefault(); apply(r,r.pos,r.pos); } }
-    else if(e.key==="Tab"){ const r=listTab(v,s,en,e.shiftKey); if(r){ e.preventDefault(); apply(r,r.selStart,r.selEnd); } }
-    else if(e.key==="Backspace" && s===en){ const r=listBackspace(v,s); if(r){ e.preventDefault(); apply(r,r.pos,r.pos); } }
+function bindNoteEditor(ed, onHTML){ /* ed = the .note-ed element; onHTML(sanitizedHTML) fires on every change */
+  if(!ed) return;
+  bindRichEditor(ed, ed.parentElement, { onChange:()=>onHTML(sanitizeDocHTML(ed.innerHTML)) });
+  /* contenteditable leaves an empty <ul><li> behind when you delete everything or type over a
+     select-all — the next "- " would then land INSIDE that stray item (no autoformat, a stray
+     bullet). Start from a truly empty box in both cases. Autoformat itself never uses these keys. */
+  const isBlank=()=>!ed.textContent.trim() && !ed.querySelector("img");
+  const reset=()=>{ if(ed.innerHTML!==""){ ed.innerHTML=""; onHTML(""); } const r=document.createRange(); r.selectNodeContents(ed); r.collapse(true); const s=window.getSelection(); s.removeAllRanges(); s.addRange(r); };
+  ed.addEventListener("keyup",e=>{ if((e.key==="Backspace"||e.key==="Delete") && isBlank()) reset(); });
+  ed.addEventListener("keydown",e=>{
+    if(e.key.length!==1 || e.ctrlKey || e.metaKey || e.altKey) return;
+    const s=window.getSelection(); if(!s.rangeCount || s.isCollapsed || !ed.contains(s.anchorNode)) return;
+    if(s.toString().trim()===ed.textContent.trim() && ed.textContent.trim()) reset(); /* typing over "select all" → clean slate */
   });
 }
-/* ---- end smart lists ---- */
 /* "Next steps" checklist helpers ({id,text,done}) */
 function stepOpen(steps){ return (steps||[]).filter(s=>!s.done && (s.text||"").trim()); }
 function stepsText(steps){ return (steps||[]).map(s=>s.text).filter(t=>(t||"").trim()).join("\n"); } /* for search + snippet */
 function stepsCopy(steps){ return (steps||[]).map(s=>(s.done?"✓ ":"- ")+s.text).join("\n"); }        /* for clipboard */
-function sectionText(o,k){ return k==="steps" ? stepsText(o.steps) : (o[k]||""); }
+function sectionText(o,k){ return k==="steps" ? stepsText(o.steps) : noteText(o[k]||"", o.rich); }
 function mnoteDateLabel(isoStr){ const d=parseISO(isoStr); return d ? d.toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short",year:"numeric"}) : "No date"; }
 function mnoteFirstLine(v){ const l=(v||"").split("\n").map(s=>s.trim()).find(Boolean); return l ? l.replace(/^[-•*✓]\s*/,"") : ""; }
 function mnoteSnippet(o){
-  const a=(o.agenda||"").trim(); if(a) return mnoteFirstLine(a); /* meeting entries: the agenda IS the note */
+  const a=noteText(o.agenda||"",o.rich).trim(); if(a) return mnoteFirstLine(a); /* meeting entries: the agenda IS the note */
   for(const s of MNOTE_SECTIONS){ const v=sectionText(o,s.k).trim(); if(v) return mnoteFirstLine(v); }
   return "";
 }
@@ -2111,8 +2119,8 @@ function mnoteRelTime(ts){
 }
 function mnoteCopyText(o, title){
   const out=[title];
-  if((o.agenda||"").trim()) out.push("","Agenda",o.agenda.trim());
-  MNOTE_SECTIONS.forEach(s=>{ const v=(s.k==="steps"?stepsCopy(o.steps):(o[s.k]||"")).trim(); if(v) out.push("",s.label,v); });
+  const ag=noteText(o.agenda||"",o.rich).trim(); if(ag) out.push("","Agenda",ag);
+  MNOTE_SECTIONS.forEach(s=>{ const v=(s.k==="steps"?stepsCopy(o.steps):noteText(o[s.k]||"",o.rich)).trim(); if(v) out.push("",s.label,v); });
   return out.join("\n");
 }
 async function copyToClipboard(txt){
@@ -2135,12 +2143,12 @@ function mnoteStepsHTML(o){
 function mnoteSectionsHTML(o, sections){
   return (sections||MNOTE_SECTIONS).map(s=> s.k==="steps" ? mnoteStepsHTML(o)
     : `<div class="mnote-sec"><label>${s.label}</label>
-    <textarea class="mnote-ta" data-sec="${s.k}" rows="1" placeholder="${esc(s.ph)}">${esc(o[s.k]||"")}</textarea></div>`).join("");
+    ${noteEditorHTML('data-sec="'+s.k+'"', o[s.k]||"", o.rich, s.ph)}</div>`).join("");
 }
 function mnoteCardHTML(o, opts){
   opts=opts||{};
   const open=!!opts.open, n=stepOpen(o.steps).length, snip=mnoteSnippet(o);
-  const empty=!MNOTE_SECTIONS.some(s=>sectionText(o,s.k).trim()) && !(o.agenda||"").trim();
+  const empty=!MNOTE_SECTIONS.some(s=>sectionText(o,s.k).trim()) && !noteText(o.agenda||"",o.rich).trim();
   return `<div class="mnote ${open?"open":""} ${o.pinned?"pinned":""}" data-mn="${o.id}">
     <div class="mnote-head" data-mntoggle>
       <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
@@ -2196,12 +2204,10 @@ function bindMnoteCards(host, arr, opts){
     const body=card.querySelector(".mnote-body"); if(!body) return;
     const dt=body.querySelector("[data-mndate]");
     if(dt) dt.addEventListener("change",e=>{ o.date=e.target.value; o.updatedAt=Date.now(); save(); opts.rerender(); });
-    body.querySelectorAll(".mnote-ta[data-sec]").forEach(ta=>{
-      autoGrow(ta);
-      const k=ta.dataset.sec;
-      const set=v=>{ o[k]=v; o.updatedAt=Date.now(); save(); };
-      ta.addEventListener("input",()=>{ set(ta.value); autoGrow(ta); });
-      bulletKeys(ta,set);
+    body.querySelectorAll(".note-ed[data-sec]").forEach(ed=>{
+      const k=ed.dataset.sec;
+      /* the first edit flips the whole note to rich — convert its OTHER text sections in the same step */
+      bindNoteEditor(ed, h=>{ if(!o.rich){ MNOTE_SECTIONS.forEach(s=>{ if(s.k!=="steps" && s.k!==k) o[s.k]=plainToHTML(o[s.k]||""); }); o.rich=true; } o[k]=h; o.updatedAt=Date.now(); save(); });
     });
     /* Next-steps checklist — tick with a checkbox; edits repaint just the list so focus stays put */
     const stepsBox=body.querySelector(".mn-steps"), addStep=body.querySelector("[data-stadd]");
@@ -2587,7 +2593,7 @@ function renderWeekPrep(){
           <button class="btn sm" id="wpAddItem">Add</button>
         </div>
         <div class="section-h">Notes for the week <span class="line"></span></div>
-        <div class="field"><textarea id="wpNotes" rows="10" placeholder="What's happening that week? Meetings to prepare, people to chase, decisions coming up, risks to watch…">${esc(notes)}</textarea></div>
+        <div class="field">${noteEditorHTML('id="wpNotes"', notes, !!(w&&w.rich), "What's happening that week? Meetings to prepare, people to chase, decisions coming up, risks to watch…")}</div>
         ${w&&w.updatedAt?`<div style="font-size:11px;color:var(--faint)">Last edited ${new Date(w.updatedAt).toLocaleString()}</div>`:""}
       </div>
       <div>
@@ -2604,8 +2610,7 @@ function renderWeekPrep(){
   $("wpNext").onclick=()=>{ prepWeekStart=iso(addDays(parseISO(prepWeekStart),7)); renderWeekPrep(); };
   $("wpThisBtn").onclick=()=>{ prepWeekStart=nowWs; renderWeekPrep(); };
   $("wpNextBtn").onclick=()=>{ prepWeekStart=nextWs; renderWeekPrep(); };
-  $("wpNotes").addEventListener("input",e=>{ const p=ensurePrep(prepWeekStart); p.notes=e.target.value; p.updatedAt=Date.now(); save(); });
-  bulletKeys($("wpNotes"), v=>{ const p=ensurePrep(prepWeekStart); p.notes=v; p.updatedAt=Date.now(); save(); });
+  bindNoteEditor($("wpNotes"), h=>{ const p=ensurePrep(prepWeekStart); p.notes=h; p.rich=true; p.updatedAt=Date.now(); save(); });
   const addItem=()=>{ const inp=$("wpNewItem"); const txt=(inp.value||"").trim(); if(!txt){ inp.focus(); return; } const p=ensurePrep(prepWeekStart); p.items.push({id:uid(),text:txt,done:false}); p.updatedAt=Date.now(); save(); renderWeekPrep(); $("wpNewItem").focus(); };
   $("wpAddItem").onclick=addItem;
   $("wpNewItem").addEventListener("keydown",e=>{ if(e.key==="Enter") addItem(); });
@@ -2977,7 +2982,7 @@ function meetingEntriesSorted(m){ return mnoteByDate(m.entries); } /* chronologi
 let mtgSearch="";
 /* accordion adapter so the shared note cards can drive the meeting log's single-open behaviour */
 const meetOpenSet = { has:id=>meetOpenEntryId===id, add:id=>{ meetOpenEntryId=id; }, delete:id=>{ if(meetOpenEntryId===id) meetOpenEntryId=null; } };
-function meetingEntryMatch(en,q){ return [en.agenda,en.discussed,stepsText(en.steps),en.jumps,en.date].some(v=>(v||"").toLowerCase().includes(q)); }
+function meetingEntryMatch(en,q){ return [noteText(en.agenda,en.rich),noteText(en.discussed,en.rich),stepsText(en.steps),noteText(en.jumps,en.rich),en.date].some(v=>(v||"").toLowerCase().includes(q)); }
 function meetingPanelHTML(m){
   const entries=mnoteSort(m.entries);
   const latestId=(mnoteByDate(m.entries)[0]||{}).id;
@@ -3015,13 +3020,14 @@ function meetingPanelHTML(m){
         sections: MNOTE_SECTIONS.filter(s=>s.k==="steps"), /* entries: the agenda holds everything, plus next steps */
         beforeSections: `<div class="mnote-sec">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><label style="margin:0">Agenda</label><span class="grow"></span>${hasPrev?`<button class="btn sm" data-enimport title="Copy the agenda from the previous entry">⤓ Last agenda</button><button class="btn sm" data-encarry title="Bring the previous entry's unticked next steps into this one">⤓ Carry over open steps</button>`:""}</div>
-          <textarea class="mnote-ta" data-enagenda rows="1" placeholder="Agenda, key points, decisions, who said what — everything for this meeting…">${esc(en.agenda)}</textarea>
+          ${noteEditorHTML('data-enagenda', en.agenda, en.rich, "Agenda, key points, decisions, who said what — everything for this meeting…")}
         </div>`,
       });
     }).join("")|| (mtgSearch ? `<div style="font-size:12.5px;color:var(--faint);padding:6px 0">No entries match “${esc(mtgSearch)}”.</div>` : `<div style="font-size:12.5px;color:var(--faint);padding:6px 0">No entries yet — create one for today's meeting.</div>`)}
     </div>
   </div>`;
 }
+let mtgListHidden=false; try{ mtgListHidden=localStorage.getItem("psmUI_mtgList")==="hidden"; }catch(e){} /* per-device UI preference: the meetings list can be collapsed */
 function renderMeetings(){
   const host=$("meetingsBody"); if(!host) return;
   const lastDate=m=>m.entries.reduce((mx,e)=>(e.date&&e.date>mx?e.date:mx),"");
@@ -3032,10 +3038,12 @@ function renderMeetings(){
     <div class="toolbar">
       <h1 class="page-title">Recurring meetings</h1>
       <div class="grow"></div>
+      ${data.meetings.length?`<button class="btn ghost sm" id="mtgListToggle" title="${mtgListHidden?'Show the meetings list':'Hide the meetings list — the meeting takes the full width'}">${mtgListHidden?'☰ Show list':'⇤ Hide list'}</button>`:""}
+      ${mtgListHidden&&meetings.length>1?`<select id="mtgJump" title="Switch meeting">${meetings.map(m=>`<option value="${m.id}"${cur&&m.id===cur.id?" selected":""}>${esc(m.name||"Untitled meeting")}</option>`).join("")}</select>`:""}
       <button class="btn primary" id="mtgNew"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New meeting</button>
     </div>
     ${data.meetings.length?`
-    <div class="docs-grid">
+    <div class="docs-grid${mtgListHidden?" list-hidden":""}">
       <div class="doc-list">${meetings.map(m=>{
         const openN=m.tasks.filter(t=>!t.done).length; const last=lastDate(m);
         return `<div class="doc-item ${cur&&m.id===cur.id?'active':''}" data-mtg="${m.id}">
@@ -3053,6 +3061,8 @@ function renderMeetings(){
     const n=$("mtgName"); if(n){ n.focus(); n.select(); }
   };
   host.querySelectorAll(".doc-item[data-mtg]").forEach(it=>it.addEventListener("click",()=>{ curMeetingId=it.dataset.mtg; meetOpenEntryId=null; renderMeetings(); }));
+  const tg=$("mtgListToggle"); if(tg) tg.onclick=()=>{ mtgListHidden=!mtgListHidden; try{ localStorage.setItem("psmUI_mtgList", mtgListHidden?"hidden":"shown"); }catch(e){} renderMeetings(); };
+  const jump=$("mtgJump"); if(jump) jump.addEventListener("change",e=>{ curMeetingId=e.target.value; meetOpenEntryId=null; renderMeetings(); });
   const cur2=cur?data.meetings.find(m=>m.id===cur.id):null;
   if(!cur2 || !$("mtgPanel")) return;
   $("mtgName").addEventListener("input",e=>{ cur2.name=e.target.value; save(); const li=host.querySelector(`.doc-item[data-mtg="${cur2.id}"] .dt`); if(li) li.textContent=cur2.name||"Untitled meeting"; });
@@ -3079,13 +3089,13 @@ function bindMeetingEntries(host,cur2){
     afterTasks: ()=>{ refreshTaskViews(); },
     bindExtra: (body,en)=>{
       const ag=body.querySelector("[data-enagenda]");
-      if(ag){ autoGrow(ag); ag.addEventListener("input",()=>{ en.agenda=ag.value; en.updatedAt=Date.now(); save(); autoGrow(ag); }); bulletKeys(ag,v=>{ en.agenda=v; en.updatedAt=Date.now(); save(); }); }
+      bindNoteEditor(ag, h=>{ if(!en.rich){ ["discussed","jumps"].forEach(kk=>{ if(en[kk]) en[kk]=plainToHTML(en[kk]); }); en.rich=true; } en.agenda=h; en.updatedAt=Date.now(); save(); });
       const prevOf=()=>{ const i=entriesChron.findIndex(x=>x.id===en.id); return i>-1?entriesChron[i+1]:null; };
       const imp=body.querySelector("[data-enimport]");
       if(imp) imp.addEventListener("click",async()=>{
         const prev=prevOf(); if(!prev){ toast("No earlier entry to import from"); return; }
-        if(en.agenda.trim() && !await uiConfirm("Replace this agenda with the one from "+mnoteDateLabel(prev.date)+"?",{title:"Import agenda?",yes:"Replace",danger:false})) return;
-        en.agenda=prev.agenda; en.updatedAt=Date.now(); save(); renderMeetings();
+        if(noteText(en.agenda,en.rich).trim() && !await uiConfirm("Replace this agenda with the one from "+mnoteDateLabel(prev.date)+"?",{title:"Import agenda?",yes:"Replace",danger:false})) return;
+        en.agenda=noteHTML(prev.agenda,prev.rich); en.rich=true; en.updatedAt=Date.now(); save(); renderMeetings();
         toast("Agenda imported from "+mnoteDateLabel(prev.date));
       });
       const carry=body.querySelector("[data-encarry]");
@@ -3264,7 +3274,7 @@ async function exportExcel(){
     catch(e){ console.warn("xlsx CDN failed",u,e&&e.message); }
   }
   if(!XLSX||!XLSX.utils){ toast("Couldn't load the Excel library"); return; }
-  const pRows=data.projects.map(p=>({ Project:p.name, Category:p.category, Progress:p.progress, Priority:p.priority, "Overall deadline":p.deadline?fmtDL(p.deadline,p.deadlineWeek):"", "Deadline type":p.deadline?(p.deadlineWeek?"Week":"Day"):"", "Involved":p.involved, "Keep informed":p.informed, "Business value":p.valueProp, "Tasks":p.tasks.length, "Done":p.tasks.filter(t=>t.done).length, "Notes":p.notes }));
+  const pRows=data.projects.map(p=>({ Project:p.name, Category:p.category, Progress:p.progress, Priority:p.priority, "Overall deadline":p.deadline?fmtDL(p.deadline,p.deadlineWeek):"", "Deadline type":p.deadline?(p.deadlineWeek?"Week":"Day"):"", "Involved":p.involved, "Keep informed":p.informed, "Business value":p.valueProp, "Tasks":p.tasks.length, "Done":p.tasks.filter(t=>t.done).length, "Notes":noteText(p.notes,p.notesRich) }));
   const tRows=allTasks().map(({t,project})=>({ Task:t.text, Project:project?project.name:"(Ad-hoc)", Done:t.done?"Yes":"No", Deadline:t.deadline?fmtDL(t.deadline,t.deadlineWeek):"", "Deadline type":t.deadline?(t.deadlineWeek?"Week":"Day"):"", Notes:t.notes }));
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pRows.length?pRows:[{Project:""}]), "Projects");
