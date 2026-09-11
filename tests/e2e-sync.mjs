@@ -715,6 +715,8 @@ async function HARNESS() {
     const dn2 = htmlToText('<ul><li><p>a</p></li><ul><li><p>b</p></li><ul><li><p>c</p></li></ul></ul><li><p>d</p></li></ul>');
     check('directly nested lists after an item read back as deeper levels', dn2 === '• a' + NL + '  • b' + NL + '    • c' + NL + '• d', JSON.stringify(dn2));
     check('an indented paragraph keeps its text', htmlToText('<p style="margin-left: 56px">deep</p>') === 'deep');
+    const cont = htmlToText('<ol><li><p>a</p></li></ol><p></p><ol start="2"><li><p>b</p></li><li><p>c</p></li></ol>');
+    check('a continued numbered list (<ol start>) keeps its numbers in text', cont === '1. a' + NL + NL + '2. b' + NL + '3. c', JSON.stringify(cont));
     check('a Tiptap → text → html round trip keeps the list structure', plainToHTML(htmlToText('<ul><li><p>a</p></li><li><p>b</p></li></ul>')) === '<ul><li>a</li><li>b</li></ul>');
     // paste mode (zeroBase): column 0 is the top level and every 2 spaces / tab nest one level — what other apps produce
     check('pasted text nests on 2-space indents from column 0 (zeroBase)', plainToHTML('- a' + NL + '  - b' + NL + '- c', { zeroBase: true }) === '<ul><li>a<ul><li>b</li></ul></li><li>c</li></ul>', plainToHTML('- a' + NL + '  - b' + NL + '- c', { zeroBase: true }));
@@ -898,6 +900,7 @@ sCheck('editors never inject CSS (CSP) and hand back sanitized HTML on every upd
 sCheck('every rich surface mounts through bindRichEditor (Docs, Self Notes, note boxes via bindNoteEditor)', (src.match(/bindRichEditor\(/g) || []).length >= 4 && /return bindRichEditor\(ed, ed\.parentElement/.test(src));
 sCheck('the CSP still allows only this origin + the Convex CDNs for scripts (the editor is local)', /script-src 'self' 'unsafe-inline' https:\/\/esm\.sh https:\/\/cdn\.jsdelivr\.net https:\/\/esm\.run;/.test(src));
 sCheck('indent/outdent work everywhere: lists nest directly (own list nodes), psmIndent + psmListSteps extensions, toolbar buttons call indent()/outdent(), the sanitizer keeps margin-left', /content:LIST_CONTENT/.test(src) && /name:"psmIndent", priority:50/.test(src) && /name:"psmListSteps", priority:1000/.test(src) && /indent:\(\)=>c\(\)\.indent\(\)\.run\(\), outdent:\(\)=>c\(\)\.outdent\(\)\.run\(\)/.test(src) && /bulletList:false, orderedList:false/.test(src) && /\.\.\.psmEditorExtensions\(T\)/.test(src) && /ch\.style\.marginLeft=ml/.test(src));
+sCheck('numbered lists separated by blank lines continue their numbering (psmListNumbering plugin, start kept by the sanitizer)', /name:"psmListNumbering"/.test(src) && /appendTransaction:/.test(src) && /a\.name==="start" && ch\.tagName==="OL"/.test(src) && /setMeta\("preventUpdate",true\)/.test(src));
 sCheck('smart paste is wired: plain-text lists (zeroBase) and Outlook/Word MsoListParagraph lists become real lists', /clipboardTextParser:/.test(src) && /plainToHTML\(text,\{zeroBase:true\}\)/.test(src) && /transformPastedHTML: html=>msoListsToHTML\(html\)/.test(src) && /function msoListsToHTML\(html\)\{/.test(src));
 console.log('  ' + sPass + ' passed, ' + sFail + ' failed');
 

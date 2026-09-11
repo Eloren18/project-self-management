@@ -2112,11 +2112,11 @@ function htmlToText(html){
   let s=String(html||"");
   /* lists: convert the INNERMOST list first, so nested items come out indented under their parent
      ("1. a" / "  • c" / "2. b") instead of being numbered as siblings */
-  const INNER=/<(ul|ol)[^>]*>((?:(?!<ul|<ol)[\s\S])*?)<\/\1>/i;
+  const INNER=/<(ul|ol)([^>]*)>((?:(?!<ul|<ol)[\s\S])*?)<\/\1>/i;
   let guard=0;
   while(INNER.test(s) && guard++<500){
-    s=s.replace(INNER,(m,tag,inner)=>{
-      let i=0;
+    s=s.replace(INNER,(m,tag,attrs,inner)=>{
+      let i=(parseInt((attrs.match(/\bstart="?(\d+)/i)||[])[1],10)||1)-1;         /* <ol start="4"> = continued numbering */
       /* Tiptap wraps every item's text in <p> (and breaks lines with <br>): fold those into
          plain newlines FIRST so an item reads as "text" + optional continuation lines, and a
          nested list that was already converted sits directly under its parent item text */
@@ -2707,6 +2707,7 @@ function sanitizeDocHTML(html){
       [...ch.attributes].forEach(a=>{
         if(a.name==="style"){ const bg=ch.style.backgroundColor, ta=ch.style.textAlign, ml=ch.style.marginLeft; ch.removeAttribute("style"); if(bg) ch.style.backgroundColor=bg; if(ta) ch.style.textAlign=ta; if(/^\d+px$/.test(ml)) ch.style.marginLeft=ml; } /* highlight, alignment, paragraph indent — nothing else */
         else if(a.name==="align" && /^(left|center|right|justify)$/i.test(a.value)){ /* keep alignment */ }
+        else if(a.name==="start" && ch.tagName==="OL" && /^\d+$/.test(a.value)){ /* keep continued numbering */ }
         else ch.removeAttribute(a.name);
       });
     });
@@ -2850,7 +2851,35 @@ function psmEditorExtensions(T){
       };
     },
   });
-  _psmExts=[ T.BulletList.extend({content:LIST_CONTENT}), T.OrderedList.extend({content:LIST_CONTENT}), Indent, ListSteps ];
+  /* Numbered lists separated only by blank lines continue their numbering (Word's "continue
+     numbering"): "1. a" / blank / "1. b" renders 1. and 2. — the second list gets start=2, kept
+     up to date as the first list grows or shrinks. Anything that is not a blank line between
+     them (text, a heading, a bullet list) starts a fresh list at 1. */
+  const listItemsIn=list=>{ let n=0; list.forEach(ch=>{ if(ch.type.name==="listItem") n++; }); return n; };
+  const continueNumbering=(doc,tr)=>{                                             /* sets start on every follow-on list; true when something changed */
+    let changed=false;
+    const scan=(node,base)=>{
+      let prev=null, pos=base;
+      node.forEach(ch=>{
+        if(ch.type.name==="orderedList"){
+          const want=prev ? prev.start+prev.count : 1;                             /* not a continuation → (back to) 1; the rule is the only source of start */
+          if((ch.attrs.start||1)!==want){ tr.setNodeMarkup(pos,undefined,{...ch.attrs,start:want}); changed=true; }
+          prev={start:want, count:listItemsIn(ch)};
+        } else if(!(ch.type.name==="paragraph" && ch.content.size===0)) prev=null;   /* anything but a blank line ends the run */
+        if(!ch.isTextblock && ch.childCount) scan(ch,pos+1);
+        pos+=ch.nodeSize;
+      });
+    };
+    scan(doc,0);
+    return changed;
+  };
+  const ListNumbering=T.Extension.create({
+    name:"psmListNumbering",
+    addProseMirrorPlugins(){ return [ new T.Plugin({ appendTransaction:(trs,oldState,newState)=>{ if(!trs.some(t=>t.docChanged)) return null; const tr=newState.tr; return continueNumbering(newState.doc,tr) ? tr : null; } }) ]; },
+    onCreate(){ const {state,view}=this.editor; const tr=state.tr;                 /* older content: fix the display now, store it with the next real edit */
+      if(continueNumbering(state.doc,tr)){ tr.setMeta("preventUpdate",true); tr.setMeta("addToHistory",false); view.dispatch(tr); } },
+  });
+  _psmExts=[ T.BulletList.extend({content:LIST_CONTENT}), T.OrderedList.extend({content:LIST_CONTENT}), Indent, ListSteps, ListNumbering ];
   return _psmExts;
 }
 function bindRichEditor(body, toolsHost, opts){

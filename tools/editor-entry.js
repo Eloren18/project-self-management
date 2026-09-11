@@ -13,6 +13,7 @@ import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
 import { DOMParser as PMDOMParser, DOMSerializer as PMDOMSerializer } from "@tiptap/pm/model";
 import { canJoin, liftTarget } from "@tiptap/pm/transform";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
 
-export { Editor, Extension, Node, Mark, StarterKit, BulletList, OrderedList, Placeholder, Highlight, TextAlign, PMDOMParser, PMDOMSerializer, canJoin, liftTarget };
+export { Editor, Extension, Node, Mark, StarterKit, BulletList, OrderedList, Placeholder, Highlight, TextAlign, PMDOMParser, PMDOMSerializer, canJoin, liftTarget, Plugin, PluginKey };
 export const version = "3.31.3";
