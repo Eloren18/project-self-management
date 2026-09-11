@@ -12,8 +12,8 @@ code blocks out of index.html and drives them through these interfaces only.
 | Data layer | normalize(blob), load() | every migration/coercion ever shipped (legacy fields, checklists, detox, periods); personal namespace isolated so one side can never corrupt the other | S12, S17–S19 |
 | Sync & safety | save() — the ONE call every feature makes | monotonic clock, localStorage + IndexedDB mirror + weekday backups, per-namespace shrink guards, LWW push with real ack, bad-remote quarantine, cloud snapshots, truthful pill | S0–S15 |
 | Cloud transport | push() / cloudQuery() over convex.* string names | the SERVER enforces session + trusted device (convex/lib.ts requireTrusted); the client never authorizes | S16 (static) + convex/ |
-| Smart lists | pure listAutoFormat/listEnter/listTab/listBackspace + bulletKeys(ta, onChange) | Word-style list starts, continuation, renumbering, indent, marker removal — for every plain textarea | S20 |
-| Rich editor | bindRichEditor(body, toolsHost, opts) | autoformat, Tab-nesting, shortcuts, smart paste, toolbar, sanitizer discipline — Documents and Self Notes share it | browser checks |
+| Note converters | pure plainToHTML(text, {zeroBase}) / htmlToText(html) / noteText / noteHTML | legacy plain-text notes (old "  • " smart-list lines) → real list HTML on display, editor HTML → text for snippets/search/copy, paste-mode nesting from column 0 — the only list logic left outside Tiptap | S20 |
+| Rich editor | bindRichEditor(body, toolsHost, opts) on Tiptap/ProseMirror (vendor/tiptap.js, built by tools/build-editor.mjs) | autoformat, Tab-nesting, shortcuts, smart paste (plain text + Outlook/Word lists), toolbar with active states, sanitizer discipline — Documents, Self Notes and every note box share it | S16 static + S20 + browser checks |
 | Note cards | mnoteCardHTML(o, opts) / bindMnoteCards(host, arr, opts) | the structured meeting-note editor used by project pages AND the meeting log (sections, checklist steps, steps→tasks, pin/copy) | S17 + browser |
 | Dialogs & modals | uiConfirm/uiPrompt (Promise) + openPM/closePM | consistent open/close choreography; no native prompt/confirm anywhere | browser checks |
 
@@ -35,7 +35,7 @@ call-site names).
 - **Single file**: `index.html` — vanilla JS ES module, no framework, no router. "Pages" are `<section class="page">` toggled by `switchTab()`. Rendering = innerHTML template literals + rebinding.
 - **State**: one module-scope `data` object. Persistence: `localStorage["psmData_v1"]` + Convex `workspaces` row (whole-blob JSON string, last-write-wins by `updatedAt`; InstantDB until Aug 2026). `save()` → localStorage + `push()` to cloud.
 - **Styling**: CSS custom properties on `html[data-theme]`; components are plain classes (`.btn`, `.chip`, `.trow`, `.modal-back/.modal`, `.empty`, `.section-h`).
-- **Docs editor** (`renderDocs`): contenteditable + `sanitizeDocHTML` whitelist + toolbar of execCommand ops. Reused for Self Notes.
+- **Docs editor** (`renderDocs`): a Tiptap editor mounted by `bindRichEditor` — the mount element's HTML at bind time is the initial content, every update hands back `sanitizeDocHTML(editor.getHTML())`, old execCommand HTML is normalised on load (`legacyToEditorHTML`). Reused for Self Notes and, via `bindNoteEditor`, every note box. Mounted editors are tracked in `liveEditors` and destroyed once their element leaves the DOM.
 - **Calendar**: month grid built from date cells; deadline-driven. Personal adapts the grid/drag patterns with start-time + duration semantics instead (deadline code untouched).
 - **Pomodoro engine** (from `../Claude Pomodoro App/index.html`): focus 25m / short 5m / long 15m, long break every 4 focus blocks; `endAt`-anchored 250ms ticker; `complete()` cycles focus→break→focus and credits the active task. Adapted 1:1 into the Now view (same durations, same cycle logic).
 

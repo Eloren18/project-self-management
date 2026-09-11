@@ -694,15 +694,28 @@ async function HARNESS() {
     check('a deeper indent nests the list inside the item', plainToHTML('  • a' + NL + '    • b' + NL + '  • c') === '<ul><li>a<ul><li>b</li></ul></li><li>c</li></ul>', plainToHTML('  • a' + NL + '    • b' + NL + '  • c'));
     check('switching marker type at the same level starts a new list', plainToHTML('- a' + NL + '1. b') === '<ul><li>a</li></ul><ol><li>b</li></ol>');
     check('the old inconsistent indents (col-0 first item, 2-space siblings, 4-space child) read as ONE flat list with a nested child', plainToHTML('1) a' + NL + '  2) b' + NL + '    - c' + NL + '  3) d') === '<ol><li>a</li><li>b<ul><li>c</li></ul></li><li>d</li></ol>', plainToHTML('1) a' + NL + '  2) b' + NL + '    - c' + NL + '  3) d'));
-    check('plain lines become blocks, blank lines empty blocks, and lists close before them', plainToHTML('Questions:' + NL + '  1) one' + NL + '' + NL + 'after') === '<div>Questions:</div><ol><li>one</li></ol><div><br></div><div>after</div>', plainToHTML('Questions:' + NL + '  1) one' + NL + '' + NL + 'after'));
-    check('text is escaped — no HTML injection from old notes', plainToHTML('a <b> & c') === '<div>a &lt;b&gt; &amp; c</div>');
+    check('plain lines become paragraphs, blank lines empty paragraphs (Tiptap\'s block shape), and lists close before them', plainToHTML('Questions:' + NL + '  1) one' + NL + '' + NL + 'after') === '<p>Questions:</p><ol><li>one</li></ol><p></p><p>after</p>', plainToHTML('Questions:' + NL + '  1) one' + NL + '' + NL + 'after'));
+    check('text is escaped — no HTML injection from old notes', plainToHTML('a <b> & c') === '<p>a &lt;b&gt; &amp; c</p>');
     check('empty text gives an empty editor (placeholder shows)', plainToHTML('') === '' && plainToHTML(undefined) === '');
-    check('the agenda fold output converts line by line', plainToHTML('Agenda line' + NL + NL + 'Next jumps:' + NL + 'Go bigger') === '<div>Agenda line</div><div><br></div><div>Next jumps:</div><div>Go bigger</div>');
+    check('the agenda fold output converts line by line', plainToHTML('Agenda line' + NL + NL + 'Next jumps:' + NL + 'Go bigger') === '<p>Agenda line</p><p></p><p>Next jumps:</p><p>Go bigger</p>');
     const back = htmlToText('<div>Head</div><ul><li>a</li><li>b</li></ul><ol><li>x</li><li>y</li></ol>');
     check('htmlToText restores bullets, numbers and line breaks (lists are separated from other blocks by a blank line)', back === 'Head' + NL + NL + '• a' + NL + '• b' + NL + NL + '1. x' + NL + '2. y', JSON.stringify(back));
     const nested = htmlToText('<ol><li>a<ul><li>c</li></ul></li><li>b</li></ol>');
     check('nested lists read back indented under their parent item, numbering stays with the parent list', nested === '1. a' + NL + '  • c' + NL + '2. b', JSON.stringify(nested));
     check('htmlToText decodes entities and drops unknown tags', htmlToText('<p>a &amp; b &lt;c&gt;</p><span>d</span>') === 'a & b <c>' + NL + 'd');
+    // what Tiptap actually stores: every list item's text sits in a <p>, line breaks are <br>
+    const tt = htmlToText('<p>Head</p><ul><li><p>a</p></li><li><p>b<br>more</p></li></ul>');
+    check('Tiptap list items (<li><p>…</p></li>) read back as plain bullets, a soft break indents under its item', tt === 'Head' + NL + NL + '• a' + NL + '• b' + NL + '  more', JSON.stringify(tt));
+    const ttn = htmlToText('<ol><li><p>a</p><ul><li><p>c</p></li></ul></li><li><p>b</p></li></ol>');
+    check('nested Tiptap lists read back indented under their parent item with no blank line in between', ttn === '1. a' + NL + '  • c' + NL + '2. b', JSON.stringify(ttn));
+    check('an empty Tiptap paragraph is one blank line', htmlToText('<p>a</p><p></p><p>b</p>') === 'a' + NL + NL + 'b');
+    check('a Tiptap → text → html round trip keeps the list structure', plainToHTML(htmlToText('<ul><li><p>a</p></li><li><p>b</p></li></ul>')) === '<ul><li>a</li><li>b</li></ul>');
+    // paste mode (zeroBase): column 0 is the top level and every 2 spaces / tab nest one level — what other apps produce
+    check('pasted text nests on 2-space indents from column 0 (zeroBase)', plainToHTML('- a' + NL + '  - b' + NL + '- c', { zeroBase: true }) === '<ul><li>a<ul><li>b</li></ul></li><li>c</li></ul>', plainToHTML('- a' + NL + '  - b' + NL + '- c', { zeroBase: true }));
+    check('…tabs count as one level and a jump of several levels nests once', plainToHTML('1. a' + NL + '\t\t1. b' + NL + '2. c', { zeroBase: true }) === '<ol><li>a<ol><li>b</li></ol></li><li>c</li></ol>', plainToHTML('1. a' + NL + '\t\t1. b' + NL + '2. c', { zeroBase: true }));
+    check('an indent between two open levels joins the shallower list instead of opening a stray one', plainToHTML('- a' + NL + '        - b' + NL + '    - c', { zeroBase: true }) === '<ul><li>a<ul><li>b</li></ul></li><li>c</li></ul>', plainToHTML('- a' + NL + '        - b' + NL + '    - c', { zeroBase: true }));
+    check('legacy mode is unchanged: 0 and 2 spaces are both the top level', plainToHTML('- a' + NL + '  - b') === '<ul><li>a</li><li>b</li></ul>');
+    check('Word-style glyph bullets (· ▪ ◦) are list markers too', plainToHTML('· a' + NL + '▪ b' + NL + '◦ c') === '<ul><li>a</li><li>b</li><li>c</li></ul>');
     check('a rich → text → html round trip keeps the list structure', plainToHTML(htmlToText('<ul><li>a</li><li>b</li></ul>')) === '<ul><li>a</li><li>b</li></ul>');
     check('noteText passes plain values through and converts rich ones', noteText('  • keep', false) === '  • keep' && noteText('<ul><li>k</li></ul>', true) === '• k');
     check('noteHTML converts plain values and passes rich ones through', noteHTML('- a', false) === '<ul><li>a</li></ul>' && noteHTML('<div>x</div>', true) === '<div>x</div>');
@@ -871,6 +884,14 @@ sCheck('snapshots:add gates automatic snapshots server-side and prunes via metad
 sCheck('the Excel export is gone (no SheetJS, no exportBtn) and the CSP no longer allows its CDNs', !/exportExcel|xlsx|SheetJS|exportBtn/i.test(src) && !/script-src[^;]*unpkg\.com/.test(src));   // jsdelivr/esm.run stay: they are the Convex client's own fallbacks
 sCheck('pushes are batched and flushed on hide/close (schedulePush/flushPush wired to visibilitychange + pagehide)', /function schedulePush\(\)/.test(src) && /visibilitychange/.test(src) && /pagehide",\s*\(\)=>flushPush\(\)/.test(src) && /mirrorWrite\(json\);\n  schedulePush\(\);/.test(src));
 sCheck('package.json pins convex to the deployed major/minor line (^1.45)', /"convex":\s*"\^1\.45/.test(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')));
+// Rich text runs on the vendored Tiptap bundle (Sep 2026): no execCommand editors, no contenteditable templates, the bundle is present and referenced
+const tiptapJs = (() => { try { return readFileSync(join(__dirname, '..', 'vendor', 'tiptap.js'), 'utf8'); } catch { return ''; } })();
+sCheck('the rich editors run on the vendored Tiptap bundle (vendor/tiptap.js present, > 100 KB, loaded by index.html)', tiptapJs.length > 100000 && /var Tiptap=/.test(tiptapJs) && /<script src="vendor\/tiptap\.js"><\/script>/.test(src));
+sCheck('no execCommand editor and no contenteditable template is left in index.html', !/document\.execCommand/.test(src) && !/<div[^>]*contenteditable="true"/.test(src));
+sCheck('editors never inject CSS (CSP) and hand back sanitized HTML on every update', /injectCSS:false/.test(src) && /onUpdate:\(\{editor\}\)=>onChange\(editor\.isEmpty \? "" : sanitizeDocHTML\(editor\.getHTML\(\)\)\)/.test(src));
+sCheck('every rich surface mounts through bindRichEditor (Docs, Self Notes, note boxes via bindNoteEditor)', (src.match(/bindRichEditor\(/g) || []).length >= 4 && /return bindRichEditor\(ed, ed\.parentElement/.test(src));
+sCheck('the CSP still allows only this origin + the Convex CDNs for scripts (the editor is local)', /script-src 'self' 'unsafe-inline' https:\/\/esm\.sh https:\/\/cdn\.jsdelivr\.net https:\/\/esm\.run;/.test(src));
+sCheck('smart paste is wired: plain-text lists (zeroBase) and Outlook/Word MsoListParagraph lists become real lists', /clipboardTextParser:/.test(src) && /plainToHTML\(text,\{zeroBase:true\}\)/.test(src) && /transformPastedHTML: html=>msoListsToHTML\(html\)/.test(src) && /function msoListsToHTML\(html\)\{/.test(src));
 console.log('  ' + sPass + ' passed, ' + sFail + ' failed');
 
 const totalPass = res.pass + sPass, totalFail = res.fail + sFail;

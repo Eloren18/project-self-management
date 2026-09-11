@@ -244,19 +244,19 @@
   .doc-tools.mini{margin:0 0 3px;gap:3px;opacity:.55;transition:opacity .12s;}
   .note-wrap:focus-within .doc-tools.mini,.note-wrap:hover .doc-tools.mini{opacity:1;}
   .doc-tools.mini button{padding:3px 7px;font-size:9.5px;}
-  .note-ed{width:100%;min-height:34px;border:1px solid transparent;background:transparent;padding:6px 8px;font-family:inherit;font-size:12.5px;line-height:1.6;color:var(--text);outline:none;transition:border-color .12s,background .12s;overflow-wrap:anywhere;}
+  .note-ed{width:100%;min-height:34px;border:1px solid transparent;background:transparent;padding:6px 8px;font-family:inherit;font-size:12.5px;line-height:1.6;color:var(--text);transition:border-color .12s,background .12s;overflow-wrap:anywhere;cursor:text;}
   .note-ed:hover{border-color:var(--border-soft);}
-  .note-ed:focus{border-color:var(--primary);background:var(--surface-2);}
-  .note-ed:empty::before{content:attr(data-ph);color:var(--faint);pointer-events:none;}
+  .note-ed:focus-within{border-color:var(--primary);background:var(--surface-2);}
+  .note-ed .ProseMirror{outline:none;min-height:20px;}
   .note-ed p,.note-ed div{margin:0;}
   .note-ed ul,.note-ed ol{margin:3px 0;padding-left:22px;}
   .note-ed li{margin:1px 0;padding-left:2px;}
   .note-ed ul ul{list-style:circle;} .note-ed ul ul ul{list-style:square;}
   .note-ed ol ol{list-style:lower-alpha;} .note-ed ol ol ol{list-style:lower-roman;}
   .note-ed blockquote{margin:3px 0;padding-left:12px;border-left:2px solid var(--border);}
-  .note-ed [style*="background-color"],.note-ed mark{color:#141519;padding:0 2px;}
+  .note-ed [style*="background-color"],.note-ed mark{color:#141519 !important;padding:0 2px;}
   .field .note-ed{border-color:var(--border);background:var(--surface);min-height:120px;} /* project notes + week prep: framed like the inputs around them */
-  .field .note-ed:focus{border-color:var(--primary);}
+  .field .note-ed:focus-within{border-color:var(--primary);}
   #wpNotes{min-height:200px;}
   .mn-steps{display:flex;flex-direction:column;gap:1px;}
   .mn-step{display:flex;align-items:center;gap:8px;padding:1px 0;}
@@ -412,19 +412,35 @@
   .doc-tools button{border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:10.5px;font-weight:700;padding:5px 9px;letter-spacing:.3px;text-transform:uppercase;transition:.1s;display:inline-flex;align-items:center;gap:4px;}
   .doc-tools button:hover{color:var(--text);border-color:#b9bdc9;background:var(--surface-2);}
   .doc-tools .sep{width:1px;background:var(--border);margin:2px 3px;flex:none;}
-  .doc-body{min-height:52vh;outline:none;line-height:1.65;font-size:13.5px;margin-top:14px;color:var(--text);}
-  .doc-body:empty::before{content:attr(data-ph);color:var(--faint);pointer-events:none;}
+  .doc-body{min-height:52vh;line-height:1.65;font-size:13.5px;margin-top:14px;color:var(--text);cursor:text;}
+  .doc-body .ProseMirror{outline:none;min-height:52vh;}
   .doc-body h1{font-size:21px;font-weight:800;margin:20px 0 8px;letter-spacing:-.02em;border-bottom:2px solid var(--text);padding-bottom:4px;}
   .doc-body h1:first-child,.doc-body h2:first-child{margin-top:0;}
   .doc-body h2{font-size:15px;font-weight:800;margin:16px 0 5px;text-transform:uppercase;letter-spacing:.5px;}
   .doc-body p,.doc-body div{margin:0 0 4px;}
   .doc-body ul,.doc-body ol{margin:6px 0;padding-left:24px;}
-  .doc-body li{margin:2px 0;}
+  .doc-body li{margin:2px 0;} .doc-body li p{margin:0;}
   .doc-body ul ul{list-style:circle;} .doc-body ul ul ul{list-style:square;}
   .doc-body ol ol{list-style:lower-alpha;} .doc-body ol ol ol{list-style:lower-roman;}
   .doc-body h3{font-size:13.5px;font-weight:800;margin:12px 0 4px;}
   .doc-body blockquote{margin:4px 0;padding-left:16px;border-left:2px solid var(--border);}
-  .doc-body [style*="background-color"],.doc-body mark{color:#141519;padding:0 2px;}
+  .doc-body [style*="background-color"],.doc-body mark{color:#141519 !important;padding:0 2px;}
+  .doc-tools button.on{color:var(--text);border-color:var(--primary);background:var(--primary-soft);}
+  /* ProseMirror base rules (Tiptap would inject these as a <style>; the CSP forbids that, so they live here — injectCSS:false) */
+  .ProseMirror{position:relative;word-wrap:break-word;white-space:pre-wrap;white-space:break-spaces;-webkit-font-variant-ligatures:none;font-variant-ligatures:none;font-feature-settings:"liga" 0;}
+  .ProseMirror [contenteditable="false"]{white-space:normal;}
+  .ProseMirror [contenteditable="false"] [contenteditable="true"]{white-space:pre-wrap;}
+  .ProseMirror pre{white-space:pre-wrap;}
+  img.ProseMirror-separator{display:inline !important;border:none !important;margin:0 !important;width:0 !important;height:0 !important;}
+  .ProseMirror-gapcursor{display:none;pointer-events:none;position:absolute;}
+  .ProseMirror-gapcursor:after{content:"";display:block;position:absolute;top:-2px;width:20px;border-top:1px solid var(--text);animation:ProseMirror-cursor-blink 1.1s steps(2,start) infinite;}
+  @keyframes ProseMirror-cursor-blink{to{visibility:hidden;}}
+  .ProseMirror-hideselection *::selection{background:transparent;}
+  .ProseMirror-hideselection *::-moz-selection{background:transparent;}
+  .ProseMirror-hideselection *{caret-color:transparent;}
+  .ProseMirror-focused .ProseMirror-gapcursor{display:block;}
+  .ProseMirror-selectednode{outline:2px solid var(--primary);}
+  .ProseMirror p.is-editor-empty:first-child::before{content:attr(data-placeholder);color:var(--faint);float:left;height:0;pointer-events:none;} /* Placeholder extension */
 
   /* ===== glossary ===== */
   .gl-row{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--border);margin-bottom:8px;transition:.12s;}
@@ -1027,6 +1043,9 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- Rich-text editor engine: Tiptap + ProseMirror, vendored (tools/build-editor.mjs → vendor/tiptap.js)
+     so it loads from this origin under the CSP and works offline. Sets window.Tiptap. -->
+<script src="vendor/tiptap.js"></script>
 <script type="module">
 /* ================================================================
    MODULE MAP — the deep seams of this single-file app (grouped by
@@ -1039,9 +1058,10 @@
                       guards, LWW push+ack, quarantine, snapshots [S0-S15]
    Cloud ............ convex.* via push()/cloudQuery(); the SERVER
                       enforces session + trusted device           [S16]
-   Note editors ..... noteEditorHTML/bindNoteEditor (compact rich editor
+   Note editors ..... noteEditorHTML/bindNoteEditor (compact Tiptap editor
                       in every note box) + pure plainToHTML/htmlToText [S20]
-   Rich editor ...... bindRichEditor(body, tools, opts) - Docs + Self Notes
+   Rich editor ...... bindRichEditor(body, tools, opts) on Tiptap/ProseMirror
+                      (vendor/tiptap.js) - Docs, Self Notes, every note box
    Note cards ....... mnoteCardHTML/bindMnoteCards - projects + meeting log
    Dialogs .......... uiConfirm/uiPrompt (promises), openPM/closePM
    Rule ............. features call save() and re-render; they never
@@ -2060,9 +2080,10 @@ const MNOTE_SECTIONS = [
    former "  • " / "  1) " smart-list lines) are converted on the fly when displayed and become
    HTML the first time they are edited (the owning object's rich flag flips then). Every reading
    path (snippets, search, copy) goes through noteText(). */
-const LIST_RE=/^(\s*)(?:([-•*–])|(\d+)([.)]))([ \t]+)(.*)$/;
+const LIST_RE=/^(\s*)(?:([-•*–▪·◦])|(\d+)([.)]))([ \t]+)(.*)$/;
 const noteEsc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-function plainToHTML(text){
+function plainToHTML(text, opts){
+  const zeroBase=!!(opts&&opts.zeroBase); /* pasted text: the top level sits at column 0, every 2 spaces (or a tab) nest one level */
   const lines=String(text||"").replace(/\r/g,"").split("\n");
   let html="", stack=[]; /* open lists: {tag, indent} — a deeper indent nests inside the current item */
   const pop=()=>{ html+="</li></"+stack.pop().tag+">"; };
@@ -2071,19 +2092,21 @@ function plainToHTML(text){
     if(m){
       /* indent → level: the old smart lists used 2 spaces per level with "  • " as the TOP level, and a
          hand-typed marker at column 0 is that same top level — so 0 and 2 spaces are level 0, 4 is level 1… */
-      const tag=m[2]?"ul":"ol", ind=Math.max(0,Math.round((m[1].replace(/\t/g,"  ").length-2)/2)), item=noteEsc(m[6]);
-      while(stack.length && ind<stack[stack.length-1].indent) pop();
+      const sp=m[1].replace(/\t/g,"  ").length, tag=m[2]?"ul":"ol", item=noteEsc(m[6]);
+      let ind= zeroBase ? Math.round(sp/2) : Math.max(0,Math.round((sp-2)/2)), popped=false;
+      while(stack.length && ind<stack[stack.length-1].indent){ pop(); popped=true; }
+      if(popped && stack.length && ind>stack[stack.length-1].indent) ind=stack[stack.length-1].indent; /* an indent between two open levels joins the shallower one instead of opening a stray list */
       if(stack.length && ind===stack[stack.length-1].indent){
         if(stack[stack.length-1].tag===tag) html+="</li><li>"+item;
         else { pop(); html+="<"+tag+"><li>"+item; stack.push({tag,indent:ind}); }
       } else { html+="<"+tag+"><li>"+item; stack.push({tag,indent:ind}); }
     } else {
       while(stack.length) pop();
-      html+= line.trim() ? "<div>"+noteEsc(line)+"</div>" : "<div><br></div>";
+      html+= line.trim() ? "<p>"+noteEsc(line)+"</p>" : "<p></p>";                  /* Tiptap's own block shape (an empty <p> is one blank line) */
     }
   });
   while(stack.length) pop();
-  return html.replace(/(<div><br><\/div>)+$/,"");
+  return html.replace(/(<p><\/p>)+$/,"");
 }
 function htmlToText(html){
   let s=String(html||"");
@@ -2094,7 +2117,10 @@ function htmlToText(html){
   while(INNER.test(s) && guard++<500){
     s=s.replace(INNER,(m,tag,inner)=>{
       let i=0;
-      const items=inner.split(/<li[^>]*>/i).slice(1).map(x=>x.replace(/<\/li>/gi,""));
+      /* Tiptap wraps every item's text in <p> (and breaks lines with <br>): fold those into
+         plain newlines FIRST so an item reads as "text" + optional continuation lines, and a
+         nested list that was already converted sits directly under its parent item text */
+      const items=inner.split(/<li[^>]*>/i).slice(1).map(x=>x.replace(/<\/li>/gi,"").replace(/<\/p>/gi,"\n").replace(/<p[^>]*>/gi,"").replace(/<br\s*\/?>/gi,"\n").replace(/\n{2,}/g,"\n"));
       return "\n"+items.map(x=>{
         const lines=x.replace(/^\n+|\n+$/g,"").split("\n");
         const mark=tag.toLowerCase()==="ol" ? (++i)+". " : "• ";
@@ -2110,10 +2136,10 @@ function htmlToText(html){
 function noteText(v,rich){ return rich ? htmlToText(v) : String(v||""); }
 function noteHTML(v,rich){ return rich ? String(v||"") : plainToHTML(v); }
 /* ---- end note converters ---- */
-/* ---- compact rich note editor: Outlook-style lists in every note box ----
-   A mini toolbar (lists, indent, bold, italic, highlight, clear) above a contenteditable box;
-   typing "- " / "1. " autoformats, Tab / Shift+Tab nest, Ctrl+Shift+8 / 7 toggle lists. The
-   caller stores the sanitized HTML and flips the object's rich flag. */
+/* ---- compact rich note editor: the same Tiptap editor as Documents, in every note box ----
+   A mini toolbar (lists, indent, bold, italic, highlight, clear) above the editor; typing
+   "- " / "1. " autoformats, Tab / Shift+Tab nest, Ctrl+Shift+8 / 7 toggle lists (all of it
+   is bindRichEditor). The caller stores the sanitized HTML and flips the object's rich flag. */
 const NOTE_ICON_OUT=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 6H3M21 12h-9M21 18H3M7 9l-4 3 4 3"/></svg>`;
 const NOTE_ICON_IN=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 6H3M21 12h-9M21 18H3M3 9l4 3-4 3"/></svg>`;
 function noteEditorHTML(attrs, v, rich, ph){
@@ -2125,24 +2151,13 @@ function noteEditorHTML(attrs, v, rich, ph){
     <span class="sep"></span>
     <button data-cmd="bold" title="Bold (Ctrl+B)" style="font-weight:800">B</button>
     <button data-cmd="i" title="Italic (Ctrl+I)" style="font-style:italic">I</button>
-    <button data-cmd="hl" title="Highlight the selection" style="background:#ffe86b;color:#141519">HL</button>
+    <button data-cmd="hl" title="Highlight the selection (Ctrl+Shift+H)" style="background:#ffe86b;color:#141519">HL</button>
     <button data-cmd="clear" title="Remove formatting from the selection">Clear</button>
-  </div><div class="note-ed" contenteditable="true" ${attrs} data-ph="${esc(ph||"")}">${sanitizeDocHTML(noteHTML(v,rich))}</div></div>`;
+  </div><div class="note-ed" ${attrs} data-ph="${esc(ph||"")}">${sanitizeDocHTML(noteHTML(v,rich))}</div></div>`;
 }
-function bindNoteEditor(ed, onHTML){ /* ed = the .note-ed element; onHTML(sanitizedHTML) fires on every change */
-  if(!ed) return;
-  bindRichEditor(ed, ed.parentElement, { onChange:()=>onHTML(sanitizeDocHTML(ed.innerHTML)) });
-  /* contenteditable leaves an empty <ul><li> behind when you delete everything or type over a
-     select-all — the next "- " would then land INSIDE that stray item (no autoformat, a stray
-     bullet). Start from a truly empty box in both cases. Autoformat itself never uses these keys. */
-  const isBlank=()=>!ed.textContent.trim() && !ed.querySelector("img");
-  const reset=()=>{ if(ed.innerHTML!==""){ ed.innerHTML=""; onHTML(""); } const r=document.createRange(); r.selectNodeContents(ed); r.collapse(true); const s=window.getSelection(); s.removeAllRanges(); s.addRange(r); };
-  ed.addEventListener("keyup",e=>{ if((e.key==="Backspace"||e.key==="Delete") && isBlank()) reset(); });
-  ed.addEventListener("keydown",e=>{
-    if(e.key.length!==1 || e.ctrlKey || e.metaKey || e.altKey) return;
-    const s=window.getSelection(); if(!s.rangeCount || s.isCollapsed || !ed.contains(s.anchorNode)) return;
-    if(s.toString().trim()===ed.textContent.trim() && ed.textContent.trim()) reset(); /* typing over "select all" → clean slate */
-  });
+function bindNoteEditor(ed, onHTML){ /* ed = the .note-ed element (its innerHTML is the initial content); onHTML(sanitizedHTML) fires on every change */
+  if(!ed) return null;
+  return bindRichEditor(ed, ed.parentElement, { onChange:onHTML });
 }
 /* "Next steps" checklist helpers ({id,text,done}) */
 function stepOpen(steps){ return (steps||[]).filter(s=>!s.done && (s.text||"").trim()); }
@@ -2696,80 +2711,107 @@ function sanitizeDocHTML(html){
   })(root);
   return root.innerHTML;
 }
-function docHTML(dd){ return dd.rich ? sanitizeDocHTML(dd.body) : esc(dd.body).replace(/\n/g,"<br>"); }
+function docHTML(dd){ return dd.rich ? sanitizeDocHTML(dd.body) : plainToHTML(dd.body); } /* what the editor is mounted with */
 function docText(dd){ if(!dd.rich) return dd.body||""; const t=document.createElement("div"); t.innerHTML=sanitizeDocHTML(dd.body); return t.textContent||""; }
-/* ---- shared rich-text editor behaviour (Documents + Self Notes) ----
-   Word-style autoformat while typing: "- " / "* " / "• " → bullet list, "1. " / "1) " → numbered
-   list, "# " / "## " / "### " → header, "> " → quote. Tab / Shift+Tab indent / outdent list
-   items, Enter on an empty item ends the list (native), Enter after a header returns to normal
-   text, Ctrl+Shift+8 / 7 toggle bullet / numbered lists, and pasted plain text that looks
-   like a list becomes a real list. Everything runs through execCommand so Ctrl+Z undoes it. */
+/* ---- shared rich-text editor: Tiptap (ProseMirror) from the vendored vendor/tiptap.js ----
+   ONE engine for every rich box — Documents, Self Notes and the compact note editors. The
+   Word/Outlook behaviour comes from the document schema, not from execCommand: typing "- " /
+   "* " / "1. " / "# " / "> " at the start of a line converts it (Ctrl+Z undoes), Enter continues
+   a list and Enter on an empty item ends it, Tab / Shift+Tab nest and un-nest items, Backspace
+   at the start of an item lifts it out, Ctrl+B / I / U, Ctrl+Shift+8 / 7 toggle lists,
+   Ctrl+Shift+H highlights, Ctrl+Z / Y undo / redo. Pasted plain text that looks like a list
+   becomes a real list; pasted HTML (Outlook, Word, the web) is reduced to the schema. Every
+   change hands the caller the editor's HTML run through sanitizeDocHTML, so storage stays on
+   the same whitelist as before (Tiptap writes <ul><li><p>…</p></li></ul>, <strong>, <em>,
+   <mark style="background-color">, <p style="text-align">).
+     body      = the mount element; its innerHTML at call time is the initial content
+     toolsHost = the element holding the [data-cmd] toolbar buttons (default: body's parent)
+     opts      = { hlColor, onChange(html) }
+   Returns the Editor (null when the bundle is missing — the box degrades to a bare editable). */
+const liveEditors=new Set();                                                       /* mounted editors; swept when their element leaves the DOM (ProseMirror holds document listeners) */
+function legacyToEditorHTML(html){
+  /* HTML the old execCommand editors wrote → what the schema expects: a blank line was
+     <div><br></div> (as-is it would become a paragraph holding a line break = TWO empty lines)
+     and plain lines were <div>s (converted so a text-align survives). Idempotent on editor output. */
+  let s=String(html||"");
+  s=s.replace(/<(div|p)(\s[^>]*)?>\s*<br\s*\/?>\s*<\/\1>/gi,"<p></p>");
+  s=s.replace(/<div(\s[^>]*)?>((?:(?!<\/?(?:div|ul|ol|li|h[1-3]|blockquote|p)\b)[\s\S])*?)<\/div>/gi,(m,a,inner)=>"<p"+(a||"")+">"+inner+"</p>");
+  return s;
+}
+function msoListsToHTML(html){
+  /* Outlook / Word paste bullets as flat <p class=MsoListParagraph style="…mso-list:l0 level2…"> lines with
+     the marker glyph inline (· o § or 1. a.) — rebuild real nested lists from the level and the marker.
+     Anything else (or a parse problem) passes through untouched. */
+  if(!/MsoListParagraph|mso-list:/i.test(html)) return html;
+  try{
+    const doc=new DOMParser().parseFromString(html,"text/html");
+    const isList=p=>!!p && p.tagName==="P" && (/mso-list:/i.test(p.getAttribute("style")||"") || /MsoListParagraph/i.test(p.className));
+    [...doc.querySelectorAll("p")].filter(isList).forEach(p=>{
+      if(!p.isConnected) return;                                                   /* already folded into an earlier group */
+      const group=[p]; let n=p.nextElementSibling; while(isList(n)){ group.push(n); n=n.nextElementSibling; }
+      const lines=group.map(q=>{
+        const lv=parseInt(((q.getAttribute("style")||"").match(/level(\d+)/i)||[])[1]||"1",10);
+        const t=q.textContent.replace(/\s+/g," ").trim();
+        const mm=t.match(/^(\d+[.)]|[a-z][.)]|[ivx]+[.)]|[•·o§▪◦\-–*])\s+(.*)$/i);
+        const numbered=!!mm && /^[0-9a-z]/i.test(mm[1]) && !/^o$/i.test(mm[1]);
+        return "  ".repeat(Math.max(0,lv-1))+(numbered?"1. ":"- ")+(mm?mm[2]:t);
+      });
+      const box=doc.createElement("div"); box.innerHTML=plainToHTML(lines.join("\n"),{zeroBase:true});
+      p.before(...box.childNodes); group.forEach(q=>q.remove());
+    });
+    return doc.body.innerHTML;
+  }catch(e){ return html; }
+}
 function bindRichEditor(body, toolsHost, opts){
   opts=opts||{}; const hl=opts.hlColor||"#ffe86b"; const onChange=opts.onChange||(()=>{});
-  const exec=(cmd,val)=>{ document.execCommand("styleWithCSS",false,false); document.execCommand(cmd,false,val); };
-  const BLOCK=/^(P|DIV|LI|H1|H2|H3|BLOCKQUOTE)$/;
-  const blockOf=node=>{ let n=(node&&node.nodeType===3)?node.parentNode:node; while(n&&n!==body&&!BLOCK.test(n.tagName)) n=n.parentNode; return (n&&n!==body)?n:null; };
-  const inside=tag=>{ const s=window.getSelection(); if(!s.rangeCount) return null; let n=s.anchorNode; n=(n&&n.nodeType===3)?n.parentNode:n; while(n&&n!==body){ if(n.tagName===tag) return n; n=n.parentNode; } return null; };
-  const caretCtx=()=>{ /* text from the start of the current block up to the caret */
-    const s=window.getSelection(); if(!s.rangeCount||!s.isCollapsed) return null;
-    const n=s.anchorNode; if(!n||!body.contains(n)) return null;
-    const blk=blockOf(n)||body; const r=document.createRange(); r.setStart(blk,0); r.setEnd(n,s.anchorOffset);
-    return { text:r.toString().replace(/ /g," "), range:r, blk };
+  const T=window.Tiptap; const btns=[...(toolsHost||body.parentNode).querySelectorAll(".doc-tools button")];
+  btns.forEach(b=>b.addEventListener("mousedown",e=>e.preventDefault()));         /* keep the text selection while clicking the toolbar */
+  if(!T || !T.Editor){                                                             /* bundle missing → bare editable box: nothing is lost, only the tools */
+    body.contentEditable="true"; body.addEventListener("input",()=>onChange(sanitizeDocHTML(body.innerHTML))); return null;
+  }
+  for(const e of liveEditors){ if(!e.options.element.isConnected){ try{ e.destroy(); }catch(_){ } liveEditors.delete(e); } }
+  const content=legacyToEditorHTML(body.innerHTML); body.innerHTML=""; body.removeAttribute("contenteditable");
+  /* highlights the old editors stored as <span style="background-color"> (execCommand's hiliteColor) must survive */
+  const Highlight=T.Highlight.extend({ parseHTML(){ return [ {tag:"mark"}, {tag:"span",getAttrs:el=>el.style.backgroundColor?null:false}, {tag:"font",getAttrs:el=>el.style.backgroundColor?null:false} ]; } });
+  const ed=new T.Editor({
+    element: body, content, injectCSS:false,                                       /* injectCSS:false — the CSP forbids injected <style>; the rules live in the stylesheet */
+    extensions:[
+      T.StarterKit.configure({ heading:{levels:[1,2,3]}, link:false, code:false, codeBlock:false, horizontalRule:false }),
+      Highlight.configure({multicolor:true}),
+      T.TextAlign.configure({types:["heading","paragraph"]}),
+      T.Placeholder.configure({placeholder: body.dataset.ph||""}),
+    ],
+    editorProps:{
+      attributes:{ spellcheck:"true" },
+      transformPastedHTML: html=>msoListsToHTML(html),                               /* Outlook / Word lists arrive as real lists */
+      clipboardTextParser:(text,$ctx,plain,view)=>{                                 /* plain text whose lines look like a list → a real list (else the default paragraphs) */
+        if(!text.replace(/\r/g,"").split("\n").some(l=>LIST_RE.test(l))) return undefined;
+        const dom=document.createElement("div"); dom.innerHTML=plainToHTML(text,{zeroBase:true});
+        return T.PMDOMParser.fromSchema(view.state.schema).parseSlice(dom,{context:$ctx});
+      },
+    },
+    onUpdate:({editor})=>onChange(editor.isEmpty ? "" : sanitizeDocHTML(editor.getHTML())),
+  });
+  liveEditors.add(ed);
+  body.addEventListener("mousedown",e=>{ if(e.target===body){ e.preventDefault(); ed.commands.focus("end"); } }); /* clicking the box's padding focuses the text */
+  const c=()=>ed.chain().focus();
+  const CMD={
+    bold:()=>c().toggleBold().run(), i:()=>c().toggleItalic().run(), u:()=>c().toggleUnderline().run(), s:()=>c().toggleStrike().run(),
+    ul:()=>c().toggleBulletList().run(), ol:()=>c().toggleOrderedList().run(),
+    indent:()=>c().sinkListItem("listItem").run(), outdent:()=>c().liftListItem("listItem").run(),
+    h1:()=>c().toggleHeading({level:1}).run(), h2:()=>c().toggleHeading({level:2}).run(), h3:()=>c().toggleHeading({level:3}).run(),
+    p:()=>c().setParagraph().run(), quote:()=>c().toggleBlockquote().run(),
+    hl:()=>c().toggleHighlight({color:hl}).run(),
+    left:()=>c().setTextAlign("left").run(), center:()=>c().setTextAlign("center").run(), right:()=>c().setTextAlign("right").run(),
+    undo:()=>c().undo().run(), redo:()=>c().redo().run(),
+    clear:()=>c().unsetAllMarks().clearNodes().run(),
   };
-  const AUTO=[ [/^(?:-|\*|•|–) $/,"ul"], [/^1[.)] $/,"ol"], [/^# $/,"H1"], [/^## $/,"H2"], [/^### $/,"H3"], [/^> $/,"BLOCKQUOTE"] ];
-  const maybeAuto=()=>{
-    const c=caretCtx(); if(!c) return;
-    if(c.blk!==body && c.blk.tagName==="LI") return;                              /* already in a list */
-    const hit=AUTO.find(([re])=>re.test(c.text)); if(!hit) return;
-    setTimeout(()=>{                                                               /* let the input settle, then transform */
-      const c2=caretCtx(); if(!c2||!hit[0].test(c2.text)) return;
-      const s=window.getSelection(); s.removeAllRanges(); s.addRange(c2.range);
-      document.execCommand("delete");                                              /* remove the typed marker (undoable) */
-      const k=hit[1];
-      if(k==="ul") exec("insertUnorderedList"); else if(k==="ol") exec("insertOrderedList"); else exec("formatBlock",k);
-      onChange();
-    },0);
-  };
-  body.addEventListener("input",()=>{ maybeAuto(); onChange(); });
-  body.addEventListener("keydown",e=>{
-    const mod=e.ctrlKey||e.metaKey;
-    if(e.key==="Tab"){ if(inside("LI")){ e.preventDefault(); exec(e.shiftKey?"outdent":"indent"); onChange(); } return; }
-    if(mod&&e.shiftKey&&(e.key==="8"||e.key==="*")){ e.preventDefault(); exec("insertUnorderedList"); onChange(); return; }
-    if(mod&&e.shiftKey&&(e.key==="7"||e.key==="&")){ e.preventDefault(); exec("insertOrderedList"); onChange(); return; }
-    if(e.key==="Enter"&&!e.shiftKey){
-      const s=window.getSelection(); if(!s.rangeCount||!s.isCollapsed) return;
-      const blk=blockOf(s.anchorNode); if(!blk) return;
-      const r=document.createRange(); r.setStart(s.anchorNode,s.anchorOffset); r.setEndAfter(blk.lastChild||blk);
-      const atEnd=!r.toString().trim();
-      if(/^H[1-3]$/.test(blk.tagName)&&atEnd){ e.preventDefault(); exec("insertParagraph"); exec("formatBlock","P"); onChange(); }  /* Enter after a header → normal text */
-      else if(blk.tagName==="BLOCKQUOTE"&&!blk.textContent.trim()){ e.preventDefault(); exec("formatBlock","P"); onChange(); }    /* Enter on an empty quote → leave it */
-    }
-  });
-  body.addEventListener("paste",e=>{
-    e.preventDefault();
-    const txt=(e.clipboardData||window.clipboardData).getData("text/plain");
-    const lines=txt.replace(/\r/g,"").split("\n");
-    if(!lines.some(l=>LIST_RE.test(l))){ document.execCommand("insertText",false,txt); onChange(); return; }
-    let html="", open=null;                                                        /* lines that look like a list become a real list */
-    const close=()=>{ if(open){ html+="</"+open+">"; open=null; } };
-    lines.forEach(l=>{ const m=l.match(LIST_RE);
-      if(m){ const tag=m[2]?"ul":"ol"; if(open!==tag){ close(); html+="<"+tag+">"; open=tag; } html+="<li>"+esc(m[6])+"</li>"; }
-      else { close(); if(l.trim()) html+="<div>"+esc(l)+"</div>"; } });
-    close();
-    document.execCommand("insertHTML",false,html); onChange();
-  });
-  const CMD={bold:"bold",i:"italic",u:"underline",s:"strikeThrough",ul:"insertUnorderedList",ol:"insertOrderedList",indent:"indent",outdent:"outdent",left:"justifyLeft",center:"justifyCenter",right:"justifyRight",undo:"undo",redo:"redo"};
-  (toolsHost||body.parentNode).querySelectorAll(".doc-tools button").forEach(b=>{
-    b.addEventListener("mousedown",e=>e.preventDefault());                         /* keep the text selection */
-    b.addEventListener("click",()=>{ const cmd=b.dataset.cmd; body.focus();
-      document.execCommand("styleWithCSS",false,cmd==="hl");                       /* CSS mode only for highlight — everything else emits plain tags the sanitizer keeps */
-      if(cmd==="h1"||cmd==="h2"||cmd==="h3"||cmd==="p") document.execCommand("formatBlock",false,cmd.toUpperCase());
-      else if(cmd==="quote") document.execCommand("formatBlock",false,inside("BLOCKQUOTE")?"P":"BLOCKQUOTE");
-      else if(cmd==="hl") document.execCommand("hiliteColor",false,hl);
-      else if(cmd==="clear"){ document.execCommand("removeFormat"); document.execCommand("formatBlock",false,"P"); }
-      else if(CMD[cmd]) document.execCommand(CMD[cmd]);
-      onChange(); });
-  });
+  const ACTIVE={ bold:["bold"], i:["italic"], u:["underline"], s:["strike"], ul:["bulletList"], ol:["orderedList"], quote:["blockquote"], hl:["highlight"],
+    h1:["heading",{level:1}], h2:["heading",{level:2}], h3:["heading",{level:3}], center:[{textAlign:"center"}], right:[{textAlign:"right"}] };
+  const paint=()=>btns.forEach(b=>{ const a=ACTIVE[b.dataset.cmd]; if(a) b.classList.toggle("on", ed.isActive(...a)); });
+  btns.forEach(b=>b.addEventListener("click",()=>{ const f=CMD[b.dataset.cmd]; if(f) f(); paint(); }));
+  ed.on("transaction",paint);
+  return ed;
 }
 function updateDocMeta(dd){ const m=$("docMeta"); if(m) m.textContent = "Created "+new Date(dd.createdAt).toLocaleDateString()+" · Last edited "+new Date(dd.updatedAt).toLocaleString()+" · "+wordsOf(docText(dd))+" words"; }
 function renderDocs(){
@@ -2826,7 +2868,7 @@ function renderDocs(){
           <button data-cmd="redo" title="Redo (Ctrl+Y)">↻</button>
           <button data-cmd="clear" title="Remove formatting from the selection">Clear</button>
         </div>
-        <div class="doc-body" id="docBody" contenteditable="true" data-ph="Start writing… How we do it today, what else we could try, learnings, links, open questions. Select text and use the buttons above for headers and highlights.">${docHTML(cur)}</div>
+        <div class="doc-body" id="docBody" data-ph="Start writing… How we do it today, what else we could try, learnings, links, open questions. Select text and use the buttons above for headers and highlights.">${docHTML(cur)}</div>
       </div>`:`<div class="empty" style="min-height:200px;display:grid;place-items:center">Select a document on the left.</div>`}
     </div>`
     :`<div class="empty"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/><path d="M9 13h6M9 17h6M9 9h1"/></svg><div>No working documents yet.<br><span style="color:var(--faint)">Create one to collect notes on a bigger topic — how you select stores for campaigns, new capabilities you're learning, anything worth keeping.</span></div></div>`}
@@ -2839,7 +2881,7 @@ function renderDocs(){
   if(cur2 && $("docTitle")){
     /* Typing updates data + the list entry in place — no full re-render, so focus is never lost. */
     $("docTitle").addEventListener("input",e=>{ cur2.title=e.target.value; cur2.updatedAt=Date.now(); save(); const li=host.querySelector(`.doc-item[data-doc="${cur2.id}"] .dt`); if(li) li.textContent=cur2.title||"Untitled"; updateDocMeta(cur2); });
-    const syncBody=()=>{ cur2.body=sanitizeDocHTML($("docBody").innerHTML); cur2.rich=true; cur2.updatedAt=Date.now(); save(); updateDocMeta(cur2); };
+    const syncBody=h=>{ cur2.body=h; cur2.rich=true; cur2.updatedAt=Date.now(); save(); updateDocMeta(cur2); }; /* h = sanitized editor HTML */
     bindRichEditor($("docBody"), host, {hlColor:"#ffe86b", onChange:syncBody});
     $("docDelete").onclick=async()=>{ if(!await uiConfirm("Delete “"+(cur2.title||"Untitled")+"”? This can't be undone.",{title:"Delete document?"})) return; data.docs=data.docs.filter(x=>x.id!==cur2.id); curDocId=null; save(); renderDocs(); };
     updateDocMeta(cur2);
@@ -4782,7 +4824,7 @@ function renderPNotes(){
           <button data-cmd="ul" title="Bullet list — or type “- ” (Ctrl+Shift+8)">•&nbsp;List</button><button data-cmd="ol" title="Numbered list — or type “1. ” (Ctrl+Shift+7)">1.&nbsp;List</button><button data-cmd="outdent" title="Decrease indent (Shift+Tab)">⇤</button><button data-cmd="indent" title="Increase indent (Tab)">⇥</button><button data-cmd="quote" title="Quote — or type “> ”">❝</button><span class="sep"></span>
           <button data-cmd="undo">↺</button><button data-cmd="redo">↻</button><button data-cmd="clear">Clear</button>
         </div>
-        <div class="doc-body" id="pnBody" contenteditable="true" data-ph="Write freely — nobody reads this but you.">${docHTML(cur)}</div>
+        <div class="doc-body" id="pnBody" data-ph="Write freely — nobody reads this but you.">${docHTML(cur)}</div>
       </div>`:`<div class="empty">Select a note.</div>`}</div>`
     :`<div class="empty"><div>A private space for your head.<br><span style="color:var(--faint)">Journal, diary, letters to yourself — anything.</span></div></div>`}`;
   $("pnNew").onclick=()=>{ const dd={id:uid(),title:"",body:"",rich:false,folder:pNoteFolder,createdAt:Date.now(),updatedAt:Date.now()}; P().notes.unshift(dd); pNoteId=dd.id; pNoteSearch=""; save(); renderPNotes(); const t=$("pnTitle"); if(t) t.focus(); };
@@ -4796,7 +4838,7 @@ function renderPNotes(){
     const meta=()=>{ const m=$("pnMeta"); if(m) m.textContent="Created "+new Date(cur2.createdAt).toLocaleDateString()+" · Last edited "+new Date(cur2.updatedAt).toLocaleString()+" · "+wordsOf(docText(cur2))+" words"; };
     meta();
     $("pnTitle").addEventListener("input",e=>{ cur2.title=e.target.value; cur2.updatedAt=Date.now(); save(); const li=host.querySelector(`.doc-item[data-pn="${cur2.id}"] .dt`); if(li) li.textContent=cur2.title||"Untitled"; meta(); });
-    const syncB=()=>{ cur2.body=sanitizeDocHTML($("pnBody").innerHTML); cur2.rich=true; cur2.updatedAt=Date.now(); save(); meta(); };
+    const syncB=h=>{ cur2.body=h; cur2.rich=true; cur2.updatedAt=Date.now(); save(); meta(); }; /* h = sanitized editor HTML */
     bindRichEditor($("pnBody"), host, {hlColor:"#f9e0c7", onChange:syncB});
     $("pnDel").onclick=async()=>{ if(!await uiConfirm("Delete “"+(cur2.title||"Untitled")+"”?")) return; P().notes=P().notes.filter(x=>x.id!==cur2.id); pNoteId=null; save(); renderPNotes(); };
   }

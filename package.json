@@ -1,8 +1,19 @@
 {
   "name": "project-self-management",
   "private": true,
-  "description": "Project Self-Management — static frontend (index.html) + Convex backend (convex/)",
+  "description": "Project Self-Management — static frontend (index.html + vendor/tiptap.js) + Convex backend (convex/)",
+  "scripts": {
+    "build:editor": "node tools/build-editor.mjs",
+    "test": "node tests/e2e-sync.mjs"
+  },
   "devDependencies": {
-    "convex": "^1.45.0"
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/extension-highlight": "^3.31.3",
+    "@tiptap/extension-text-align": "^3.31.3",
+    "@tiptap/extensions": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
+    "convex": "^1.45.0",
+    "esbuild": "^0.28.2"
   }
 }

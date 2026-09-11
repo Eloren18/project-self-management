@@ -38,7 +38,7 @@ change shape, the test follows automatically.
 | S14 | The sync indicator tells the truth: "Synced" only after the cloud acknowledges (else "could be lost") |
 | S15 | A throwing cloud call (`cloudQuery`, `maybeCloudSnapshot`, `push`) can never kill a UI path (the dead shield/account-buttons regression) |
 | S16 | *Static:* every `"module:function"` the app calls exists as an export in `convex/<module>.ts`; every table is in `convex/schema.ts`; `ADMIN_EMAIL` matches index.html ↔ `convex/lib.ts`; data functions require a trusted device; no InstantDB code/CSP remains; the fresh-device seed guard is present |
-| S20 | Note converters: old plain-text lists (`  • ` / `  1) `, indent depth) become real `<ul>/<ol>` HTML; HTML reads back as text with bullets/numbers; escaping; every note-bearing object gets a rich flag |
+| S20 | Note converters: old plain-text lists (`  • ` / `  1) `, indent depth) become real `<ul>/<ol>` HTML (Tiptap's `<p>` block shape); Tiptap's own output (`<li><p>…</p></li>`, `<br>`, empty `<p>`) reads back as text with bullets/numbers; paste mode (`zeroBase`) nests from column 0 and tolerates odd indents; escaping; every note-bearing object gets a rich flag |
 | S21 | Fast typing: the cloud's echo of this device's own write (version tick or a stale own row) never trips the stale-device barrier; a rejected push leaves the unseen cloud version unmarked so the adoption path keeps a restore point |
 | S22 | Push batching: keystrokes coalesce into one push per pause (idle 1.5 s, max wait 8 s), single-flight with re-push on ack, `flushPush()` sends immediately (tab hidden / page closing / back online) |
 
