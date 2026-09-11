@@ -2120,8 +2120,10 @@ function htmlToText(html){
       /* Tiptap wraps every item's text in <p> (and breaks lines with <br>): fold those into
          plain newlines FIRST so an item reads as "text" + optional continuation lines, and a
          nested list that was already converted sits directly under its parent item text */
-      const items=inner.split(/<li[^>]*>/i).slice(1).map(x=>x.replace(/<\/li>/gi,"").replace(/<\/p>/gi,"\n").replace(/<p[^>]*>/gi,"").replace(/<br\s*\/?>/gi,"\n").replace(/\n{2,}/g,"\n"));
-      return "\n"+items.map(x=>{
+      const parts=inner.split(/<li[^>]*>/i);
+      const pre0=parts[0].replace(/^\n+|\n+$/g,""), pre=pre0.trim()?pre0:"";     /* a list nested DIRECTLY at the start (<ul><ul>…: an item indented before any sibling) */
+      const items=parts.slice(1).map(x=>x.replace(/<\/li>/gi,"").replace(/<\/p>/gi,"\n").replace(/<p[^>]*>/gi,"").replace(/<br\s*\/?>/gi,"\n").replace(/\n{2,}/g,"\n"));
+      return "\n"+(pre ? pre.split("\n").map(l=>"  "+l).join("\n")+"\n" : "")+items.map(x=>{
         const lines=x.replace(/^\n+|\n+$/g,"").split("\n");
         const mark=tag.toLowerCase()==="ol" ? (++i)+". " : "• ";
         return mark+lines[0]+(lines.length>1 ? "\n"+lines.slice(1).map(l=>"  "+l).join("\n") : "");
@@ -2131,7 +2133,7 @@ function htmlToText(html){
   s=s.replace(/<\/(p|div|h1|h2|h3|blockquote|tr)>/gi,"\n").replace(/<br\s*\/?>/gi,"\n");
   s=s.replace(/<[^>]+>/g,"");
   s=s.replace(/&nbsp;/g," ").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,"&");
-  return s.replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n").trim();
+  return s.replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n").replace(/^\n+|\s+$/g,""); /* keep a leading indent (a directly nested list can come first) */
 }
 function noteText(v,rich){ return rich ? htmlToText(v) : String(v||""); }
 function noteHTML(v,rich){ return rich ? String(v||"") : plainToHTML(v); }
@@ -2703,7 +2705,7 @@ function sanitizeDocHTML(html){
       walk(ch);
       if(!DOC_TAGS.has(ch.tagName)){ while(ch.firstChild) node.insertBefore(ch.firstChild,ch); ch.remove(); return; }
       [...ch.attributes].forEach(a=>{
-        if(a.name==="style"){ const bg=ch.style.backgroundColor, ta=ch.style.textAlign; ch.removeAttribute("style"); if(bg) ch.style.backgroundColor=bg; if(ta) ch.style.textAlign=ta; }
+        if(a.name==="style"){ const bg=ch.style.backgroundColor, ta=ch.style.textAlign, ml=ch.style.marginLeft; ch.removeAttribute("style"); if(bg) ch.style.backgroundColor=bg; if(ta) ch.style.textAlign=ta; if(/^\d+px$/.test(ml)) ch.style.marginLeft=ml; } /* highlight, alignment, paragraph indent — nothing else */
         else if(a.name==="align" && /^(left|center|right|justify)$/i.test(a.value)){ /* keep alignment */ }
         else ch.removeAttribute(a.name);
       });
@@ -2762,6 +2764,95 @@ function msoListsToHTML(html){
     return doc.body.innerHTML;
   }catch(e){ return html; }
 }
+/* ---- indentation model (Word / Outlook-like) ----
+   • Lists may nest DIRECTLY (a <ul> straight inside a <ul>), so an item can be pushed one level
+     deeper even when it is the first of its list, and levels stack freely — ProseMirror's stock
+     sinkListItem can only nest under a previous sibling. Because the list nodes may contain
+     themselves, ProseMirror's parser keeps that shape on reload instead of "normalising" it.
+   • Paragraphs and headings carry an indent attribute (0..INDENT_MAX, rendered as margin-left),
+     so plain text can be indented too (sub-clauses outside lists).
+   • indent() / outdent() do the right thing wherever the caret is: the toolbar buttons, Tab /
+     Shift+Tab, Ctrl+] / Ctrl+[ and Ctrl+M / Ctrl+Shift+M all call them. Enter on an empty
+     directly-nested item and Backspace at the start of an indented block step one level out. */
+const INDENT_PX=28, INDENT_MAX=8;
+let _psmExts=null;
+function psmEditorExtensions(T){
+  if(_psmExts) return _psmExts;
+  const LIST_CONTENT="(listItem|bulletList|orderedList)+";
+  const isList=n=>!!n && (n.type.name==="bulletList"||n.type.name==="orderedList");
+  const sameList=(a,b)=>!!a && !!b && a.type===b.type;
+  const listRange=state=>{ const {$from,$to}=state.selection; return $from.blockRange($to,isList); }; /* the items around the selection, inside their nearest list */
+  const bumpIndent=delta=>({state,tr,dispatch})=>{                                /* paragraphs / headings outside lists */
+    const {from,to}=state.selection; let changed=false;
+    state.doc.nodesBetween(from,to,(node,pos,parent)=>{
+      if((node.type.name!=="paragraph" && node.type.name!=="heading") || (parent && parent.type.name==="listItem")) return;
+      const cur=node.attrs.indent||0, next=Math.min(INDENT_MAX,Math.max(0,cur+delta));
+      if(next!==cur){ changed=true; if(dispatch) tr.setNodeMarkup(pos,undefined,{...node.attrs,indent:next}); }
+    });
+    return changed;
+  };
+  const Indent=T.Extension.create({
+    name:"psmIndent", priority:50,                                               /* AFTER the stock list keymaps — they get first go, this fills their gaps */
+    addGlobalAttributes(){ return [{ types:["paragraph","heading"], attributes:{ indent:{
+      default:0,
+      parseHTML: el=>{ const ml=parseFloat(el.style.marginLeft)||0; return Math.min(INDENT_MAX,Math.max(0,Math.round(ml/INDENT_PX))); },
+      renderHTML: a=> a.indent ? { style:"margin-left: "+(a.indent*INDENT_PX)+"px" } : {},
+    } } }]; },
+    addCommands(){ return {
+      indent: ()=>({state,tr,dispatch,commands})=>{
+        const range=listRange(state);
+        if(!range) return bumpIndent(1)({state,tr,dispatch});
+        if(commands.sinkListItem("listItem")) return true;                         /* nests under the previous item */
+        const list=range.parent;                                                   /* first item (or one after a nested list): open a list one level deeper right here */
+        if(dispatch){
+          tr.wrap(range,[{type:list.type,attrs:list.attrs}]);
+          const $s=tr.doc.resolve(range.start), after=range.start+$s.nodeAfter.nodeSize, $e=tr.doc.resolve(after);
+          if(sameList($e.nodeBefore,$e.nodeAfter) && T.canJoin(tr.doc,after)) tr.join(after);            /* merge with a nested list that follows … */
+          if(sameList($s.nodeBefore,$s.nodeAfter) && T.canJoin(tr.doc,range.start)) tr.join(range.start); /* … and with one that precedes */
+          tr.scrollIntoView();
+        }
+        return true;
+      },
+      outdent: ()=>({state,tr,dispatch,commands})=>{
+        const range=listRange(state);
+        if(!range) return bumpIndent(-1)({state,tr,dispatch});
+        if(isList(state.selection.$from.node(range.depth-1))){                    /* directly nested list: lift the items into the outer list */
+          const target=T.liftTarget(range); if(target==null) return false;
+          if(dispatch) tr.lift(range,target).scrollIntoView();
+          return true;
+        }
+        return commands.liftListItem("listItem");                                  /* item in item → the parent list; top level → out of the list */
+      },
+    }; },
+    addKeyboardShortcuts(){ return {
+      Tab:()=>this.editor.commands.indent(), "Shift-Tab":()=>this.editor.commands.outdent(),
+      "Mod-]":()=>this.editor.commands.indent(), "Mod-[":()=>this.editor.commands.outdent(),
+      "Mod-m":()=>this.editor.commands.indent(), "Mod-Shift-m":()=>this.editor.commands.outdent(),
+    }; },
+  });
+  const ListSteps=T.Extension.create({
+    name:"psmListSteps", priority:1000,                                          /* BEFORE every other keymap (the stock ones mishandle directly nested items) */
+    addKeyboardShortcuts(){
+      const atItemStart=state=>{ const {$from,empty}=state.selection;
+        if(!empty || $from.parentOffset!==0 || $from.parent.type.name!=="paragraph" || $from.depth<3) return null;
+        const item=$from.node(-1); if(item.type.name!=="listItem" || $from.index(-1)!==0) return null;
+        return { $from, item, direct: isList($from.node(-2)) && isList($from.node(-3)) }; };
+      return {
+        Enter:()=>{ const a=atItemStart(this.editor.state);                       /* Enter on an EMPTY directly-nested item → one level up */
+          if(!a || !a.direct || a.$from.parent.content.size || a.item.childCount!==1) return false;
+          return this.editor.commands.outdent(); },
+        Backspace:()=>{ const s=this.editor.state, {$from,empty}=s.selection;
+          if(!empty || $from.parentOffset!==0) return false;
+          const p=$from.parent;
+          if((p.type.name==="paragraph" || p.type.name==="heading") && p.attrs.indent>0) return this.editor.commands.outdent(); /* indented text → one step back */
+          const a=atItemStart(s); if(!a || !a.direct) return false;
+          return this.editor.commands.outdent(); },                               /* start of a directly-nested item → one level up */
+      };
+    },
+  });
+  _psmExts=[ T.BulletList.extend({content:LIST_CONTENT}), T.OrderedList.extend({content:LIST_CONTENT}), Indent, ListSteps ];
+  return _psmExts;
+}
 function bindRichEditor(body, toolsHost, opts){
   opts=opts||{}; const hl=opts.hlColor||"#ffe86b"; const onChange=opts.onChange||(()=>{});
   const T=window.Tiptap; const btns=[...(toolsHost||body.parentNode).querySelectorAll(".doc-tools button")];
@@ -2776,7 +2867,8 @@ function bindRichEditor(body, toolsHost, opts){
   const ed=new T.Editor({
     element: body, content, injectCSS:false,                                       /* injectCSS:false — the CSP forbids injected <style>; the rules live in the stylesheet */
     extensions:[
-      T.StarterKit.configure({ heading:{levels:[1,2,3]}, link:false, code:false, codeBlock:false, horizontalRule:false }),
+      T.StarterKit.configure({ heading:{levels:[1,2,3]}, link:false, code:false, codeBlock:false, horizontalRule:false, bulletList:false, orderedList:false }),
+      ...psmEditorExtensions(T),                                                 /* lists that nest freely + indent/outdent everywhere (replace the stock lists) */
       Highlight.configure({multicolor:true}),
       T.TextAlign.configure({types:["heading","paragraph"]}),
       T.Placeholder.configure({placeholder: body.dataset.ph||""}),
@@ -2798,7 +2890,7 @@ function bindRichEditor(body, toolsHost, opts){
   const CMD={
     bold:()=>c().toggleBold().run(), i:()=>c().toggleItalic().run(), u:()=>c().toggleUnderline().run(), s:()=>c().toggleStrike().run(),
     ul:()=>c().toggleBulletList().run(), ol:()=>c().toggleOrderedList().run(),
-    indent:()=>c().sinkListItem("listItem").run(), outdent:()=>c().liftListItem("listItem").run(),
+    indent:()=>c().indent().run(), outdent:()=>c().outdent().run(),               /* psmIndent: lists at any point / any depth, or the paragraph itself */
     h1:()=>c().toggleHeading({level:1}).run(), h2:()=>c().toggleHeading({level:2}).run(), h3:()=>c().toggleHeading({level:3}).run(),
     p:()=>c().setParagraph().run(), quote:()=>c().toggleBlockquote().run(),
     hl:()=>c().toggleHighlight({color:hl}).run(),

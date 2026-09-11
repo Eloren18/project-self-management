@@ -709,6 +709,12 @@ async function HARNESS() {
     const ttn = htmlToText('<ol><li><p>a</p><ul><li><p>c</p></li></ul></li><li><p>b</p></li></ol>');
     check('nested Tiptap lists read back indented under their parent item with no blank line in between', ttn === '1. a' + NL + '  • c' + NL + '2. b', JSON.stringify(ttn));
     check('an empty Tiptap paragraph is one blank line', htmlToText('<p>a</p><p></p><p>b</p>') === 'a' + NL + NL + 'b');
+    // directly nested lists (an item indented without a previous sibling: <ul><ul>…) read back one level deeper
+    const dn1 = htmlToText('<ul><ul><li><p>b</p></li></ul><li><p>a</p></li></ul>');
+    check('a list nested directly at the START of a list reads back indented', dn1 === '  • b' + NL + '• a', JSON.stringify(dn1));
+    const dn2 = htmlToText('<ul><li><p>a</p></li><ul><li><p>b</p></li><ul><li><p>c</p></li></ul></ul><li><p>d</p></li></ul>');
+    check('directly nested lists after an item read back as deeper levels', dn2 === '• a' + NL + '  • b' + NL + '    • c' + NL + '• d', JSON.stringify(dn2));
+    check('an indented paragraph keeps its text', htmlToText('<p style="margin-left: 56px">deep</p>') === 'deep');
     check('a Tiptap → text → html round trip keeps the list structure', plainToHTML(htmlToText('<ul><li><p>a</p></li><li><p>b</p></li></ul>')) === '<ul><li>a</li><li>b</li></ul>');
     // paste mode (zeroBase): column 0 is the top level and every 2 spaces / tab nest one level — what other apps produce
     check('pasted text nests on 2-space indents from column 0 (zeroBase)', plainToHTML('- a' + NL + '  - b' + NL + '- c', { zeroBase: true }) === '<ul><li>a<ul><li>b</li></ul></li><li>c</li></ul>', plainToHTML('- a' + NL + '  - b' + NL + '- c', { zeroBase: true }));
@@ -891,6 +897,7 @@ sCheck('no execCommand editor and no contenteditable template is left in index.h
 sCheck('editors never inject CSS (CSP) and hand back sanitized HTML on every update', /injectCSS:false/.test(src) && /onUpdate:\(\{editor\}\)=>onChange\(editor\.isEmpty \? "" : sanitizeDocHTML\(editor\.getHTML\(\)\)\)/.test(src));
 sCheck('every rich surface mounts through bindRichEditor (Docs, Self Notes, note boxes via bindNoteEditor)', (src.match(/bindRichEditor\(/g) || []).length >= 4 && /return bindRichEditor\(ed, ed\.parentElement/.test(src));
 sCheck('the CSP still allows only this origin + the Convex CDNs for scripts (the editor is local)', /script-src 'self' 'unsafe-inline' https:\/\/esm\.sh https:\/\/cdn\.jsdelivr\.net https:\/\/esm\.run;/.test(src));
+sCheck('indent/outdent work everywhere: lists nest directly (own list nodes), psmIndent + psmListSteps extensions, toolbar buttons call indent()/outdent(), the sanitizer keeps margin-left', /content:LIST_CONTENT/.test(src) && /name:"psmIndent", priority:50/.test(src) && /name:"psmListSteps", priority:1000/.test(src) && /indent:\(\)=>c\(\)\.indent\(\)\.run\(\), outdent:\(\)=>c\(\)\.outdent\(\)\.run\(\)/.test(src) && /bulletList:false, orderedList:false/.test(src) && /\.\.\.psmEditorExtensions\(T\)/.test(src) && /ch\.style\.marginLeft=ml/.test(src));
 sCheck('smart paste is wired: plain-text lists (zeroBase) and Outlook/Word MsoListParagraph lists become real lists', /clipboardTextParser:/.test(src) && /plainToHTML\(text,\{zeroBase:true\}\)/.test(src) && /transformPastedHTML: html=>msoListsToHTML\(html\)/.test(src) && /function msoListsToHTML\(html\)\{/.test(src));
 console.log('  ' + sPass + ' passed, ' + sFail + ' failed');
 
