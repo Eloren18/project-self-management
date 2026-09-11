@@ -10,8 +10,10 @@
 
 import type * as admin from "../admin.js";
 import type * as auth from "../auth.js";
+import type * as crons from "../crons.js";
 import type * as devices from "../devices.js";
 import type * as lib from "../lib.js";
+import type * as maintenance from "../maintenance.js";
 import type * as securityLog from "../securityLog.js";
 import type * as snapshots from "../snapshots.js";
 import type * as workspace from "../workspace.js";
@@ -25,8 +27,10 @@ import type {
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   auth: typeof auth;
+  crons: typeof crons;
   devices: typeof devices;
   lib: typeof lib;
+  maintenance: typeof maintenance;
   securityLog: typeof securityLog;
   snapshots: typeof snapshots;
   workspace: typeof workspace;

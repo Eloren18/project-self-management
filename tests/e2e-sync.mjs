@@ -69,7 +69,7 @@ async function HARNESS() {
   // ===== harness state / spies =====
   let data = null, booting = false, granted = true, authedUser = { email: 'keremladkeholland@gmail.com' },
       workspaceId = null, workspaceSub = null, devicesSub = null, logSub = null;
-  let sessionToken = 'tok_test'; const deviceId = 'dev_test';   // a signed-in, trusted test device
+  let sessionToken = 'tok_test'; let deviceId = 'dev_test';     // a signed-in, trusted test device (useDevice gives each simulated device its own id)
   let __toasts = [], __sec = [];
   const __clock = { t: 1000 };
   Date.now = () => __clock.t;                       // deterministic, tie-free virtual clock
@@ -79,6 +79,7 @@ async function HARNESS() {
   const applyTheme = () => {};
   const renderAll = () => {};
   const setSync = () => {};
+  const __realSchedulePush = schedulePush; schedulePush = () => push();   // most scenarios want the old immediate push; S22 restores the real batching scheduler
 
   // ---- localStorage mock (Object.keys returns only data keys → pruneStash works) ----
   function makeLS() {
@@ -135,29 +136,33 @@ async function HARNESS() {
   const cloud = { workspace: null, snapshots: [], devices: [], securityLog: [] };
   let __idc = 0; const newId = p => p + '_' + (++__idc);
   const wsRow = () => cloud.workspace ? { data: cloud.workspace.data, updatedAt: cloud.workspace.updatedAt } : { data: null, updatedAt: 0 };
+  const verRow = () => cloud.workspace ? { updatedAt: cloud.workspace.updatedAt, writerDeviceId: cloud.workspace.writerDeviceId || '' } : { updatedAt: 0, writerDeviceId: '' };
   const convex = {
     mutation(name, args) {
       try {
         if (name === 'workspace:save') {
           const row = cloud.workspace;
-          if (!row) { cloud.workspace = { data: args.data, updatedAt: args.updatedAt }; return Promise.resolve({ accepted: true, updatedAt: args.updatedAt }); }
-          if (args.updatedAt >= row.updatedAt) { row.data = args.data; row.updatedAt = args.updatedAt; return Promise.resolve({ accepted: true, updatedAt: args.updatedAt }); }
+          if (!row) { cloud.workspace = { data: args.data, updatedAt: args.updatedAt, writerDeviceId: args.deviceId }; return Promise.resolve({ accepted: true, updatedAt: args.updatedAt }); }
+          if (args.updatedAt === row.updatedAt) return Promise.resolve({ accepted: true, updatedAt: args.updatedAt });   // idempotent re-push: the server writes nothing
+          if (args.updatedAt > row.updatedAt) { row.data = args.data; row.updatedAt = args.updatedAt; row.writerDeviceId = args.deviceId; return Promise.resolve({ accepted: true, updatedAt: args.updatedAt }); }
           return Promise.resolve({ accepted: false, updatedAt: row.updatedAt });   // stale write ignored, like the server
         }
-        if (name === 'snapshots:add') { cloud.snapshots.push({ id: newId('snap'), ts: args.ts, updatedAt: args.updatedAt, label: args.label, data: args.data }); cloud.snapshots.sort((a, b) => b.ts - a.ts); cloud.snapshots = cloud.snapshots.slice(0, 30); return Promise.resolve({ kept: cloud.snapshots.length }); }
+        if (name === 'snapshots:add') { cloud.snapshots.push({ id: newId('snap'), ts: args.ts, updatedAt: args.updatedAt, label: args.label, data: args.data, bytes: args.data.length, force: !!args.force }); cloud.snapshots.sort((a, b) => b.ts - a.ts); cloud.snapshots = cloud.snapshots.slice(0, 30); return Promise.resolve({ kept: cloud.snapshots.length }); }
         if (name === 'securityLog:add') { cloud.securityLog.push({ id: newId('log'), ts: Date.now(), event: args.event, detail: args.detail, deviceId: args.deviceId }); return Promise.resolve(); }
         return Promise.resolve();
       } catch (e) { return Promise.reject(e); }
     },
     query(name, args) {
-      if (name === 'workspace:get') return Promise.resolve(wsRow());
+      if (name === 'workspace:get') return Promise.resolve(wsRow());          // one-shot blob fetch (only after a foreign version tick)
+      if (name === 'workspace:version') return Promise.resolve(verRow());
       if (name === 'snapshots:list') return Promise.resolve(cloud.snapshots.map(s => ({ id: s.id, ts: s.ts, updatedAt: s.updatedAt, label: s.label, bytes: s.data.length })));
       if (name === 'snapshots:get') { const s = cloud.snapshots.find(x => x.id === (args && args.id)); return Promise.resolve(s ? { data: s.data, ts: s.ts, updatedAt: s.updatedAt, label: s.label } : null); }
       return Promise.resolve(null);
     },
     action() { return Promise.resolve({}); },
     onUpdate(name, args, cb) {   // a real subscription fires immediately with the current value
-      if (name === 'workspace:get') { cloud.wsCb = cb; cb(wsRow()); }   // wsCb lets a test replay a later delivery (the server echoes every write back)
+      if (name === 'workspace:version') { cloud.verCb = cb; cb(verRow()); }   // devices subscribe to the tiny version record; verCb lets a test replay a later tick
+      else if (name === 'workspace:get') { cloud.wsCb = cb; cb(wsRow()); }        // (legacy shape — the app no longer subscribes to the blob)
       else if (name === 'devices:list') cb(cloud.devices.slice());
       else if (name === 'securityLog:list') cb(cloud.securityLog.slice());
       return () => {};
@@ -171,7 +176,8 @@ async function HARNESS() {
 
   // ===== device helpers =====
   const newDevice = n => ({ name: n, ls: makeLS(), idb: makeIDB(), data: null, workspaceId: null });
-  function useDevice(d) { data = d.data; localStorage = d.ls; indexedDB = d.idb; window.indexedDB = d.idb; workspaceId = d.workspaceId; workspaceSub = null; booting = false; granted = true; authedUser = { id: 'kerem' }; }
+  function useDevice(d) { data = d.data; localStorage = d.ls; indexedDB = d.idb; window.indexedDB = d.idb; workspaceId = d.workspaceId; workspaceSub = null; booting = false; granted = true; authedUser = { id: 'kerem' };
+    deviceId = d.name; verSeen = 0; lastSyncedUp = 0; pushInFlight = 0; pushDirty = false; pushDirtySince = 0; pushTimer = 0; }   // per-device runtime state (in the real app each browser has its own)
   function saveDevice(d) { d.data = data; d.workspaceId = workspaceId; }
   function boot(d) { useDevice(d); data = load(); d.data = data; }
   const cloudWs = () => cloud.workspace ? { data: JSON.parse(cloud.workspace.data), updatedAt: cloud.workspace.updatedAt } : undefined;
@@ -198,14 +204,14 @@ async function HARNESS() {
   const seedN = normalize(seed());
 
   // a laptop that already holds REAL data, pushed to a populated cloud
-  function setupSynced() {
+  async function setupSynced() {
     cloud.workspace = null; cloud.snapshots = [];
     const laptop = newDevice('laptop');
-    __clock.t += 1000; boot(laptop); startWorkspaceSync();          // cloud seeded with laptop's seed
+    __clock.t += 1000; await flush(); boot(laptop); startWorkspaceSync(); await flush();          // cloud seeded with laptop's seed
     __clock.t += 1000; data = normalize(clone(REAL)); save();       // cloud <- REAL (authoritative)
     saveDevice(laptop);
     const phone = newDevice('phone');
-    __clock.t += 1000; boot(phone); startWorkspaceSync();           // phone adopts REAL from cloud
+    __clock.t += 1000; await flush(); boot(phone); startWorkspaceSync(); await flush();           // phone adopts REAL from cloud
     saveDevice(phone);
     return { laptop, phone };
   }
@@ -223,15 +229,15 @@ async function HARNESS() {
   scen('S1  Fresh phone login adopts the cloud instead of wiping it');
   cloud.workspace = null; cloud.snapshots = [];
   const lap = newDevice('laptop');
-  __clock.t += 1000; boot(lap); startWorkspaceSync();
+  __clock.t += 1000; await flush(); boot(lap); startWorkspaceSync(); await flush();
   __clock.t += 1000; data = normalize(clone(REAL)); save(); saveDevice(lap);
   const cloudUpBefore = cloudWs().updatedAt;
   const cloudScoreBefore = wScore(cloudWs().data);
 
   const phone = newDevice('phone-fresh');
-  __clock.t += 5000; boot(phone);
+  __clock.t += 5000; await flush(); boot(phone);
   check('fresh phone seeds at updatedAt 0', data.updatedAt === 0);
-  startWorkspaceSync();                                              // <-- the moment the bug happened
+  startWorkspaceSync(); await flush();                                              // <-- the moment the bug happened
   check('phone ADOPTS the cloud (work data intact)', wScore(data) === wScore(REALn), 'phone=' + wScore(data));
   check('phone got the personal data too', pScore(data) === pScore(REALn));
   check('cloud is UNCHANGED after the phone login', wScore(cloudWs().data) === cloudScoreBefore && cloudWs().updatedAt === cloudUpBefore);
@@ -247,14 +253,14 @@ async function HARNESS() {
   cloud.workspace = null; cloud.snapshots = [];
   const REALwork = clone(REAL); delete REALwork.personal;          // work-only, like the lost glossary/tasks/meetings
   const lap2 = newDevice('laptop2');
-  __clock.t += 1000; boot(lap2); startWorkspaceSync();
+  __clock.t += 1000; await flush(); boot(lap2); startWorkspaceSync(); await flush();
   __clock.t += 1000; data = normalize(clone(REALwork)); save(); saveDevice(lap2);
   const phoneOld = newDevice('phone-OLD-seed');
-  __clock.t += 1000; boot(phoneOld);
+  __clock.t += 1000; await flush(); boot(phoneOld);
   data.updatedAt = __clock.t;                                       // the old bug: seed stamped "now"
   const lostBefore = stashCount(phoneOld, 'lost');
   const toastsBefore = __toasts.length;
-  startWorkspaceSync();
+  startWorkspaceSync(); await flush();
   check('the stale-stamp overwrite is now BLOCKED — cloud survives untouched', wScore(cloudWs().data) === wScore(normalize(clone(REALwork))), 'cloud=' + wScore(cloudWs().data));
   check('the blocked device kept its own copy as a restore point + was warned', stashCount(phoneOld, 'lost') === lostBefore + 1 && __toasts.length > toastsBefore);
   check('…and the blocked device adopted the cloud copy', wScore(data) === wScore(normalize(clone(REALwork))));
@@ -267,21 +273,21 @@ async function HARNESS() {
   // ============================================================
   scen('S2  Two devices converge; monotonic clock prevents lost edits');
   {
-    const { laptop, phone } = setupSynced();
+    const { laptop, phone } = await setupSynced();
     // laptop adds a project
-    useDevice(laptop); __clock.t += 1000; data.projects.push({ id: 'pNEW', name: 'Laptop project', category: CATEGORIES[0], tasks: [] }); save(); saveDevice(laptop);
+    await flush(); useDevice(laptop); __clock.t += 1000; data.projects.push({ id: 'pNEW', name: 'Laptop project', category: CATEGORIES[0], tasks: [] }); save(); saveDevice(laptop);
     // phone syncs -> should pick it up
-    useDevice(phone); startWorkspaceSync(); saveDevice(phone);
+    await flush(); useDevice(phone); startWorkspaceSync(); await flush(); saveDevice(phone);
     check('phone adopted the laptop’s new project', data.projects.some(p => p.id === 'pNEW'));
     // phone adds a glossary term
     __clock.t += 1000; data.glossary.push({ id: 'gNEW', term: 'Phone term', definition: 'x' }); save(); saveDevice(phone);
     // laptop syncs -> converges with BOTH changes
-    useDevice(laptop); startWorkspaceSync(); saveDevice(laptop);
+    await flush(); useDevice(laptop); startWorkspaceSync(); await flush(); saveDevice(laptop);
     check('laptop converged: has both the new project AND the new glossary term',
       data.projects.some(p => p.id === 'pNEW') && data.glossary.some(g => g.id === 'gNEW'));
 
     // monotonic clock: frozen/backward clock still yields strictly increasing updatedAt
-    useDevice(laptop); __clock.t = 999999; data.updatedAt = 999999;
+    await flush(); useDevice(laptop); __clock.t = 999999; data.updatedAt = 999999;
     const u0 = data.updatedAt; save(); const u1 = data.updatedAt; save(); const u2 = data.updatedAt;
     check('updatedAt strictly increases even with a frozen clock', u1 > u0 && u2 > u1, u0 + '->' + u1 + '->' + u2);
   }
@@ -291,8 +297,8 @@ async function HARNESS() {
   // ============================================================
   scen('S3  Shrink guard catches a mass-delete but ignores a normal small edit');
   {
-    const { laptop } = setupSynced();
-    useDevice(laptop);
+    const { laptop } = await setupSynced();
+    await flush(); useDevice(laptop);
     const beforePrewipe = stashCount(laptop, 'prewipe');
     __toasts.length = 0; __sec.length = 0;
     __clock.t += 1000;
@@ -304,8 +310,8 @@ async function HARNESS() {
     check('event logged as data_shrunk', __sec.some(e => e.t === 'data_shrunk'));
 
     // now a NORMAL edit must not trip the guard
-    const { laptop: laptop2 } = setupSynced();
-    useDevice(laptop2);
+    const { laptop: laptop2 } = await setupSynced();
+    await flush(); useDevice(laptop2);
     const p0 = stashCount(laptop2, 'prewipe');
     __clock.t += 1000; data.projects[0].tasks.pop(); save();       // delete a single task
     check('a normal small edit does NOT trip the shrink guard', stashCount(laptop2, 'prewipe') === p0);
@@ -316,8 +322,8 @@ async function HARNESS() {
   // ============================================================
   scen('S4  Restore replaces data everywhere, keeps a pre-restore copy, and propagates');
   {
-    const { laptop, phone } = setupSynced();
-    useDevice(laptop);
+    const { laptop, phone } = await setupSynced();
+    await flush(); useDevice(laptop);
     const prevUp = data.updatedAt;
     const beforePre = stashCount(laptop, 'prerestore');
     __toasts.length = 0;
@@ -334,7 +340,7 @@ async function HARNESS() {
     saveDevice(laptop);
     check('cloud now holds the restored copy', cloudWs().data.projects.some(p => p.name === 'RESTORED-MARKER'));
     // other device adopts the restored copy on next sync
-    useDevice(phone); startWorkspaceSync(); saveDevice(phone);
+    await flush(); useDevice(phone); startWorkspaceSync(); await flush(); saveDevice(phone);
     check('phone adopts the restored copy on next sync', data.projects.some(p => p.name === 'RESTORED-MARKER') && data.glossary.some(g => g.id === 'gRESTORE'));
   }
 
@@ -344,14 +350,14 @@ async function HARNESS() {
   scen('S5  IndexedDB mirror recovers data after localStorage is cleared');
   {
     const C = newDevice('device-C');
-    __clock.t += 1000; boot(C); startWorkspaceSync();
+    __clock.t += 1000; await flush(); boot(C); startWorkspaceSync(); await flush();
     __clock.t += 1000; data = normalize(clone(REAL)); save();       // writes localStorage + IDB mirror
     saveDevice(C);
     await flush();                                                  // let the async mirror write land
     check('localStorage main copy exists before the wipe', !!C.ls.getItem(STORAGE_KEY));
 
     C.ls = makeLS();                                                // simulate "clear site data" (localStorage only)
-    boot(C);                                                        // reload -> localStorage empty -> non-authoritative seed
+    await flush(); boot(C);                                                        // reload -> localStorage empty -> non-authoritative seed
     check('after wipe, localStorage reseeds empty (updatedAt 0)', data.updatedAt === 0);
     await mirrorRestoreIfNewer();                                   // the boot-time recovery step
     check('data recovered from the IndexedDB mirror', wScore(data) === wScore(REALn), 'recovered=' + wScore(data));
@@ -364,8 +370,8 @@ async function HARNESS() {
   // ============================================================
   scen('S6  A corrupt remote is quarantined; a broken personal namespace can’t kill work');
   {
-    const { laptop } = setupSynced();
-    useDevice(laptop);
+    const { laptop } = await setupSynced();
+    await flush(); useDevice(laptop);
     const goodScore = wScore(data);
     const beforeBad = stashCount(laptop, 'badremote');
     // (a) a remote copy that fails to normalize (a null project row) must NOT replace working data
@@ -388,15 +394,15 @@ async function HARNESS() {
   // ============================================================
   scen('S7  Concurrent edits resolve by last-write-wins (+ recoverability probe)');
   {
-    const { laptop, phone } = setupSynced();
-    useDevice(phone); granted = false; __clock.t += 1000;          // phone edits OFFLINE (won't push)
+    const { laptop, phone } = await setupSynced();
+    await flush(); useDevice(phone); granted = false; __clock.t += 1000;          // phone edits OFFLINE (won't push)
     data.projects[0].tasks.push({ id: 'tPHONE', text: 'Phone-only task', done: false });
     save(); saveDevice(phone);
-    useDevice(laptop); granted = true; __clock.t += 1000;          // laptop edits ONLINE, later
+    await flush(); useDevice(laptop); granted = true; __clock.t += 1000;          // laptop edits ONLINE, later
     data.glossary.push({ id: 'gLAP', term: 'Laptop term', definition: 'x' });
     save(); saveDevice(laptop);
     check('the online edit reached the cloud', cloudWs().data.glossary.some(g => g.id === 'gLAP'));
-    useDevice(phone); granted = true; startWorkspaceSync(); saveDevice(phone);   // phone reconnects
+    await flush(); useDevice(phone); granted = true; startWorkspaceSync(); await flush(); saveDevice(phone);   // phone reconnects
     check('resolution is deterministic (phone adopted the newer cloud copy)', data.glossary.some(g => g.id === 'gLAP'));
     const phoneKept = data.projects[0].tasks.some(t => t.id === 'tPHONE');
     const recoverable = stashCount(phone, 'lost') > 0 || stashCount(phone, 'prewipe') > 0;
@@ -415,10 +421,10 @@ async function HARNESS() {
   // ============================================================
   scen('S8  A returning device with OLDER local data adopts the cloud (never clobbers it)');
   {
-    const { laptop, phone } = setupSynced();
-    useDevice(phone); __clock.t += 1000; data.glossary.push({ id: 'gADV', term: 'advanced', definition: 'x' }); save(); saveDevice(phone);
+    const { laptop, phone } = await setupSynced();
+    await flush(); useDevice(phone); __clock.t += 1000; data.glossary.push({ id: 'gADV', term: 'advanced', definition: 'x' }); save(); saveDevice(phone);
     const cloudUp = cloudWs().updatedAt, cloudScore = wScore(cloudWs().data);
-    useDevice(laptop); startWorkspaceSync(); saveDevice(laptop);   // laptop still holds its OLD copy
+    await flush(); useDevice(laptop); startWorkspaceSync(); await flush(); saveDevice(laptop);   // laptop still holds its OLD copy
     check('stale laptop adopted the advanced cloud copy', data.glossary.some(g => g.id === 'gADV'));
     check('cloud was NOT overwritten by the stale device', cloudWs().updatedAt === cloudUp && wScore(cloudWs().data) === cloudScore);
   }
@@ -428,8 +434,8 @@ async function HARNESS() {
   // ============================================================
   scen('S9  After adopting a far-future updatedAt, local edits still win (monotonic high-water)');
   {
-    const { laptop } = setupSynced();
-    useDevice(laptop);
+    const { laptop } = await setupSynced();
+    await flush(); useDevice(laptop);
     const future = 4102444800000;                                  // year 2100
     adoptRemote({ ...clone(REAL), updatedAt: future });
     check('device adopted the far-future copy', data.updatedAt === future);
@@ -444,8 +450,8 @@ async function HARNESS() {
   // ============================================================
   scen('S10 Cross-tab storage events adopt a newer copy and ignore an older one');
   {
-    const { laptop } = setupSynced();
-    useDevice(laptop);
+    const { laptop } = await setupSynced();
+    await flush(); useDevice(laptop);
     const storageEvent = json => { try { const d = JSON.parse(json); if ((d.updatedAt || 0) > (data.updatedAt || 0)) adoptRemote(d); } catch (e) {} };
     const newer = clone(data); newer.updatedAt = data.updatedAt + 5000; newer.glossary.push({ id: 'gTAB', term: 'from other tab', definition: 'x' });
     storageEvent(JSON.stringify(newer));
@@ -461,8 +467,8 @@ async function HARNESS() {
   // ============================================================
   scen('S11 Degenerate / corrupt remotes never crash or silently wipe unrecoverably');
   {
-    const { laptop } = setupSynced();
-    useDevice(laptop);
+    const { laptop } = await setupSynced();
+    await flush(); useDevice(laptop);
     const good = wScore(data);
     const beforeLost = stashCount(laptop, 'lost');
     adoptRemote({ updatedAt: 9e15 });                              // an empty "newer" copy (a real "deleted everything")
@@ -471,7 +477,7 @@ async function HARNESS() {
     const lastLost = JSON.parse(laptop.ls[lostKeys[lostKeys.length - 1]]);
     check('the recovery copy actually contains the previous work data', scoreWork(blobCounts(lastLost)) === good);
     // garbage cross-tab messages must not crash or wipe
-    useDevice(laptop); data = normalize(clone(REAL));
+    await flush(); useDevice(laptop); data = normalize(clone(REAL));
     const storageEvent = json => { try { const d = JSON.parse(json); if ((d.updatedAt || 0) > (data.updatedAt || 0)) adoptRemote(d); } catch (e) {} };
     const scoreNow = wScore(data);
     ['not json at all', '', 'null', '12345', '[]'].forEach(storageEvent);
@@ -486,9 +492,9 @@ async function HARNESS() {
     const once = blobCounts(normalize(clone(REAL)));
     const twice = blobCounts(normalize(normalize(clone(REAL))));
     check('normalize(normalize(x)) has identical counts to normalize(x)', JSON.stringify(once) === JSON.stringify(twice));
-    const { laptop, phone } = setupSynced();
-    useDevice(laptop); const lc = blobCounts(data);
-    useDevice(phone); startWorkspaceSync();
+    const { laptop, phone } = await setupSynced();
+    await flush(); useDevice(laptop); const lc = blobCounts(data);
+    await flush(); useDevice(phone); startWorkspaceSync(); await flush();
     check('a save→push→adopt round-trip preserves item counts exactly', JSON.stringify(blobCounts(data)) === JSON.stringify(lc), JSON.stringify(blobCounts(data)));
 
     // quarter goals (Year Plan): sanitized by normalize, counted by the shrink guard, synced with the blob
@@ -496,9 +502,9 @@ async function HARNESS() {
     check('quarterGoals entries are sanitized (id/text/done filled in)', qd.quarterGoals['2026-Q1'].every(g => typeof g.id === 'string' && g.id && typeof g.text === 'string' && typeof g.done === 'boolean'));
     check('a non-array quarter bucket is dropped, arrays survive', qd.quarterGoals['2026-Q2'] === undefined && Array.isArray(qd.quarterGoals['2026-Q3']));
     check('quarter goals count toward the work score (shrink guard covers them)', blobCounts(qd).qGoals === 2 && scoreWork(blobCounts(qd)) >= 2);
-    useDevice(laptop);
+    await flush(); useDevice(laptop);
     data.quarterGoals['2026-Q4'] = [{ id: 'gq', text: 'Year-end review', done: false }]; save();
-    useDevice(phone); startWorkspaceSync();
+    await flush(); useDevice(phone); startWorkspaceSync(); await flush();
     check('quarter goals sync to other devices with the blob', (data.quarterGoals['2026-Q4'] || []).some(g => g.id === 'gq'));
 
     // mandatory/optional label on tasks (To-Do columns): defaults to mandatory, survives normalize + sync
@@ -506,8 +512,8 @@ async function HARNESS() {
     check('tasks default to mandatory (optional:false); a truthy flag becomes true', tk.projects[0].tasks[0].optional === false && tk.projects[0].tasks[1].optional === true && tk.tasks[0].optional === true);
     const tk2 = normalize(tk);
     check('the label is stable through repeated normalize', tk2.tasks[0].optional === true && tk2.projects[0].tasks[0].optional === false);
-    useDevice(laptop); data.tasks.push({ id: 'tOPT', text: 'optional one', optional: true }); save();
-    useDevice(phone); startWorkspaceSync();
+    await flush(); useDevice(laptop); data.tasks.push({ id: 'tOPT', text: 'optional one', optional: true }); save();
+    await flush(); useDevice(phone); startWorkspaceSync(); await flush();
     check('the label syncs to other devices with the blob', data.tasks.some(t => t.id === 'tOPT' && t.optional === true));
   }
 
@@ -516,8 +522,8 @@ async function HARNESS() {
   // ============================================================
   scen('S13 A full local disk (quota exceeded) still syncs to the cloud — nothing lost');
   {
-    const { laptop } = setupSynced();
-    useDevice(laptop);
+    const { laptop } = await setupSynced();
+    await flush(); useDevice(laptop);
     const qLS = makeLS();
     qLS.setItem = function (k, v) { if (k === STORAGE_KEY) { const e = new Error('QuotaExceeded'); e.name = 'QuotaExceededError'; throw e; } this[k] = String(v); };
     // seed the quota-LS with the current main copy path minus the main key (so shrink-guard read is clean)
@@ -541,8 +547,8 @@ async function HARNESS() {
     check('pending + online → "Saving…"', syncView(true, true, false, true).cls === 'sync');
     check('pending + push error → "Not synced" (retrying)', syncView(true, true, true, true).cls === 'err');
     // end-to-end: an edit stays PENDING until the cloud transaction is acknowledged
-    const { laptop } = setupSynced();
-    useDevice(laptop); await flush();
+    const { laptop } = await setupSynced();
+    await flush(); useDevice(laptop); await flush();
     lastSyncedUp = data.updatedAt;                    // baseline: fully synced
     __clock.t += 1000; data.glossary.push({ id: 'gIND', term: 'indicator', definition: 'x' });
     save();                                           // local edit + push (ack resolves async)
@@ -559,8 +565,8 @@ async function HARNESS() {
   // ============================================================
   scen('S15 A throwing cloud call can never kill a UI path (dead shield/account buttons regression)');
   {
-    const { laptop } = setupSynced();
-    useDevice(laptop);
+    const { laptop } = await setupSynced();
+    await flush(); useDevice(laptop);
     const origQ = convex.query;
     convex.query = () => { throw new Error('validation: could not find function "snapshots:list"'); };
     let threw = false, result = 'unset';
@@ -715,26 +721,29 @@ async function HARNESS() {
   // ============================================================
   scen('S21 Fast typing: our own write echoing back mid-edit never trips the stale-device barrier');
   {
-    const { laptop } = setupSynced();
-    useDevice(laptop); await flush();
+    const { laptop } = await setupSynced();
+    await flush(); useDevice(laptop); await flush();
     const origMut = convex.mutation; const held = [];
     convex.mutation = (name, args) => { const p = origMut(name, args); if (name !== 'workspace:save') return p; return new Promise(res => held.push(() => p.then(res))); }; // the cloud applies each write at once; its ack is released later
+    let __fetched = 0; const origQ21 = convex.query; convex.query = (name, args) => { if (name === 'workspace:get') __fetched++; return origQ21(name, args); };
     const lostBefore = stashCount(laptop, 'lost'), toastsBefore = __toasts.length, logBefore = cloud.securityLog.length;
     __clock.t += 1000; data.docs[0].body = 'a';  save(); const T1 = data.updatedAt; const echoT1 = wsRow();   // letter 1 → in flight
     __clock.t += 60;   data.docs[0].body = 'ab'; save(); const T2 = data.updatedAt;                          // letter 2 → in flight
     check('setup: two writes in flight, the cloud already holds the second', T2 > T1 && cloudWs().updatedAt === T2 && echoT1.updatedAt === T1);
-    cloud.wsCb(echoT1);                                                                                     // the echo of letter 1 arrives now (acks still pending)
+    cloud.verCb({ updatedAt: T1, writerDeviceId: deviceId });                                            // the version tick for letter 1: our own write → no blob fetch at all
+    onRemoteRow(echoT1);                                                                                   // …and even if a stale own ROW arrived (out-of-order fetch), the barrier must not bite                                                                                     // the echo of letter 1 arrives now (acks still pending)
     check('letter 2 survives the echo of letter 1 (nothing reverted)', data.docs[0].body === 'ab' && data.updatedAt === T2, JSON.stringify({ body: data.docs[0].body }));
     check('no false "device was behind" warning, no restore point, no security-log entry', __toasts.length === toastsBefore && stashCount(laptop, 'lost') === lostBefore && cloud.securityLog.length === logBefore);
     check('the echo did not trigger a duplicate push while letter 2 was already in flight', held.length === 2, 'pushes=' + held.length);
+    check('an own-device version tick never fetches the blob (no workspace:get call)', !__fetched, 'fetched=' + __fetched);
     held.forEach(f => f()); await flush();
     check('after the acks land: cloud holds letter 2, device marked synced', cloudWs().data.docs[0].body === 'ab' && seenUp() === T2 && lastSyncedUp === T2);
-    convex.mutation = origMut;
+    convex.mutation = origMut; convex.query = origQ21;
 
     // own stamps are persisted: the same echo after an instant close/reopen is still recognized
     cloud.workspace = { data: echoT1.data, updatedAt: echoT1.updatedAt };   // letter 2 never reached the cloud (tab closed at once)…
     localStorage.setItem(STORAGE_KEY + '_synced', '' + (T1 - 1));           // …and no ack was ever recorded
-    saveDevice(laptop); boot(laptop); startWorkspaceSync();
+    saveDevice(laptop); await flush(); boot(laptop); startWorkspaceSync(); await flush();
     check('after a reload, the device pushes letter 2 instead of being "blocked" by its own earlier write', data.docs[0].body === 'ab' && cloudWs().data.docs[0].body === 'ab');
     await flush();
 
@@ -745,8 +754,60 @@ async function HARNESS() {
     __clock.t += 100; data.docs[0].body = 'abx'; save(); await flush();                                     // our push is rejected (older stamp)
     check('a rejected push leaves the unseen cloud version unmarked', seenUp() < foreign.updatedAt && data.updatedAt < foreign.updatedAt);
     const lost0 = stashCount(laptop, 'lost'), toasts0 = __toasts.length;
-    cloud.wsCb(wsRow());
+    onRemoteRow(wsRow());
     check('…so the delivery that follows keeps our edit as a restore point before adopting', stashCount(laptop, 'lost') === lost0 + 1 && __toasts.length > toasts0 && data.docs[0].body === 'other device', JSON.stringify({ body: data.docs[0].body, lost: stashCount(laptop, 'lost') - lost0 }));
+  }
+
+  // ============================================================
+  //  S22 — push batching. Local saves stay instant; the cloud gets one push per pause in typing,
+  //  never more than PUSH_MAX_WAIT_MS behind during continuous typing, single-flight, and
+  //  flushPush() (tab hidden / page closing / back online / restore) sends immediately.
+  //  (This is the bandwidth fix: 500 MB/day came from one 83 KB push per keystroke.)
+  // ============================================================
+  scen('S22 Push batching: keystrokes coalesce into one push per pause; single-flight; flush sends now');
+  {
+    const { laptop } = await setupSynced();
+    await flush(); useDevice(laptop); await flush(); __runTimers(); await flush();        // drain stale timers from earlier scenarios
+    schedulePush = __realSchedulePush;                                      // the real scheduler for this scenario
+    let saves = 0; const origMut = convex.mutation;
+    convex.mutation = (name, args) => { if (name === 'workspace:save') saves++; return origMut(name, args); };
+    __clock.t += 1000;
+    for (let i = 0; i < 5; i++) { data.docs[0].body = 'typing ' + i; save(); __clock.t += 100; }
+    check('five quick saves send nothing until the pause timer fires', saves === 0, 'saves=' + saves);
+    check('meanwhile the pill is truthfully PENDING (newer than anything confirmed)', data.updatedAt > lastSyncedUp);
+    check('only one push timer is pending (each save reschedules the same one)', __timers.length === 1, 'timers=' + __timers.length);
+    __runTimers(); await flush();
+    check('…then exactly ONE push carries the latest copy', saves === 1 && cloudWs().data.docs[0].body === 'typing 4', 'saves=' + saves);
+    check('…and the device is marked synced after the ack', lastSyncedUp === data.updatedAt);
+    // continuous typing never waits longer than PUSH_MAX_WAIT_MS
+    saves = 0; __clock.t += 1000; data.docs[0].body = 'burst 0'; save();
+    let savesAt8s = -1;
+    for (let i = 1; i <= 12; i++) { __clock.t += 800; data.docs[0].body = 'burst ' + i; save(); if (i === 10) savesAt8s = saves; }
+    check('during continuous typing a push goes out synchronously at the 8 s mark (no timer to cancel)', savesAt8s === 1 && saves === 1, 'savesAt8s=' + savesAt8s + ' saves=' + saves);
+    await flush();                                                                    // the ack of that push finds the flag dirty again (saves 11, 12) → sends the tail at once
+    check('…and its ack immediately sends the tail of the burst (single-flight re-push)', saves === 2 && cloudWs().data.docs[0].body === 'burst 12', 'saves=' + saves + ' body=' + cloudWs().data.docs[0].body);
+    __runTimers(); await flush();
+    check('…with nothing left to send afterwards', saves === 2 && lastSyncedUp === data.updatedAt, 'saves=' + saves);
+    // single-flight: a save during an in-flight push waits for the ack, then goes out
+    saves = 0; const held = [];
+    convex.mutation = (name, args) => { const p = origMut(name, args); if (name !== 'workspace:save') return p; saves++; return new Promise(res => held.push(() => p.then(res))); };
+    __clock.t += 1000; data.docs[0].body = 'first'; save(); __runTimers();          // push #1 leaves, ack held
+    __clock.t += 1000; data.docs[0].body = 'second'; save(); __runTimers();         // only marks dirty
+    check('a save during an in-flight push does not start a second push', saves === 1, 'saves=' + saves);
+    held.forEach(fn => fn()); await flush();                                          // ack #1 → sends the newer copy
+    check('the ack sends the newer copy as the next push', saves === 2, 'saves=' + saves);
+    held.forEach(fn => fn()); await flush();
+    check('the cloud ends with the latest edit and the device is marked synced', cloudWs().data.docs[0].body === 'second' && lastSyncedUp === data.updatedAt);
+    // flush on hide / close / online
+    saves = 0; convex.mutation = (name, args) => { if (name === 'workspace:save') saves++; return origMut(name, args); };
+    __clock.t += 1000; data.docs[0].body = 'closing'; save();
+    check('nothing is sent yet after a lone keystroke', saves === 0);
+    flushPush(); await flush();
+    check('flushPush() sends immediately and cancels the pending timer', saves === 1 && cloudWs().data.docs[0].body === 'closing' && __timers.every(x => x.fn !== flushPush));
+    // an idempotent re-push (same stamp) is accepted without a write
+    saves = 0; pushDirty = true; flushPush(); await flush();
+    check('re-pushing an unchanged stamp is accepted (no-op on the server) and stays synced', saves === 1 && lastSyncedUp === data.updatedAt);
+    convex.mutation = origMut; schedulePush = () => push();
   }
 
   // ===== report =====
@@ -758,10 +819,13 @@ async function HARNESS() {
 
 /* ---- run the harness in a vm with the real code injected ---- */
 const body = HARNESS.toString().replace('/*__REAL__*/', REAL_CODE);
+const __timers = []; let __tid = 0; // fake timers: the app's setTimeout calls queue here; __runTimers() fires them (S22 = push batching)
 const ctx = vm.createContext({
   console: { log: console.log, warn: () => {}, error: () => {} },
-  setTimeout: () => 0,
-  clearTimeout: () => {},
+  setTimeout: (fn, ms) => { __timers.push({ id: ++__tid, fn, ms: ms || 0 }); return __tid; },
+  clearTimeout: (id) => { const i = __timers.findIndex(x => x.id === id); if (i >= 0) __timers.splice(i, 1); },
+  __timers,
+  __runTimers: () => { const due = __timers.splice(0, __timers.length); for (const x of due) x.fn(); return due.length; },
   queueMicrotask,
   crypto: globalThis.crypto,
 });
@@ -795,6 +859,18 @@ sCheck('CSP allows the Convex backend and no longer InstantDB/Google', /connect-
 sCheck('openSec() is hardened (renderers wrapped in try/catch)', src.includes('try{ renderSecurity(); }catch') && src.includes('try{ renderRestorePoints(); }catch'));
 sCheck('cloudQuery is hardened (synchronous throws absorbed)', /function cloudQuery\(name, args\)\{[^]*?try\{/.test(src));
 sCheck('a fresh device never seeds the cloud with an untouched seed (updatedAt 0 guard in startWorkspaceSync)', /if\(\(data\.updatedAt\|\|0\) > 0\) push\(\); else renderSync\(\);/.test(src));
+sCheck('workspaceMeta + snapshotBlobs tables exist (version subscription, snapshot split)', /workspaceMeta:\s*defineTable\(/.test(schemaTs) && /snapshotBlobs:\s*defineTable\(/.test(schemaTs));
+sCheck('devices subscribe to workspace:version and fetch the blob one-shot (never subscribe to it)', /onUpdate\("workspace:version"/.test(src) && !/onUpdate\("workspace:get"/.test(src) && /cloudQuery\("workspace:get"\)/.test(src));
+sCheck('consumeCode never throws after a write (returns {ok:false} so the attempt counter commits)', (() => { const a = modSrc('auth'); const i = a.indexOf('export const consumeCode'); const j = a.indexOf('export const', i + 10); return i > 0 && !/\bthrow\s+(new|[A-Za-z_$])/.test(a.slice(i, j > 0 ? j : a.length).replace(/\/\/.*$/gm, '')); })());
+sCheck('used/dead sign-in codes are marked consumed, never deleted by consumeCode', /consumedAt: Date\.now\(\)/.test(modSrc('auth')) && !/ctx\.db\.delete\(otp\._id\)/.test(modSrc('auth')));
+sCheck('session tokens are stored hashed (tokenHash) with a legacy raw-token fallback', /by_tokenHash/.test(libTs) && /tokenHash/.test(modSrc('auth')) && /by_tokenHash/.test(schemaTs));
+sCheck('a daily maintenance cron exists', /crons\.daily\(/.test(modSrc('crons')) && /export const cleanup = internalMutation\(/.test(modSrc('maintenance')));
+sCheck('securityLog:add bounds its inputs and gates untrusted devices', /LOG_DETAIL_MAX/.test(modSrc('securityLog')) && /UNTRUSTED_EVENTS/.test(modSrc('securityLog')));
+sCheck('workspace:save decides on the meta row and patches the blob by id; unchanged re-pushes write nothing', /ctx\.db\.patch\(meta\.blobId/.test(modSrc('workspace')) && /updatedAt === meta\.updatedAt\) return \{ accepted: true/.test(modSrc('workspace')));
+sCheck('snapshots:add gates automatic snapshots server-side and prunes via metadata only', /SNAPSHOT_MIN_GAP_MS/.test(modSrc('snapshots')) && /snapshotBlobs/.test(modSrc('snapshots')));
+sCheck('the Excel export is gone (no SheetJS, no exportBtn) and the CSP no longer allows its CDNs', !/exportExcel|xlsx|SheetJS|exportBtn/i.test(src) && !/script-src[^;]*unpkg\.com/.test(src));   // jsdelivr/esm.run stay: they are the Convex client's own fallbacks
+sCheck('pushes are batched and flushed on hide/close (schedulePush/flushPush wired to visibilitychange + pagehide)', /function schedulePush\(\)/.test(src) && /visibilitychange/.test(src) && /pagehide",\s*\(\)=>flushPush\(\)/.test(src) && /mirrorWrite\(json\);\n  schedulePush\(\);/.test(src));
+sCheck('package.json pins convex to the deployed major/minor line (^1.45)', /"convex":\s*"\^1\.45/.test(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')));
 console.log('  ' + sPass + ' passed, ' + sFail + ' failed');
 
 const totalPass = res.pass + sPass, totalFail = res.fail + sFail;

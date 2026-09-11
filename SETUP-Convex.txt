@@ -86,6 +86,26 @@ SECURITY NOTES
 
 
 ----------------------------------------------------------
+BANDWIDTH & HOUSEKEEPING (Sep 2026)
+----------------------------------------------------------
+- Devices subscribe to a tiny version record (workspaceMeta) and fetch the
+  workspace blob only when another device changed it; keystrokes are batched
+  into one push per pause (flushed at once when the tab is hidden or closed).
+  Expect single-digit MB of database bandwidth per day; if the dashboard shows
+  hundreds of MB again, something is pushing per keystroke.
+- Snapshots: metadata rows (snapshots) + blobs (snapshotBlobs). Automatic
+  snapshots are gated server-side to one per 4h across all devices.
+- Workspace size limit: 250 KB (UTF-8). Today ~85 KB.
+- Daily cron (convex/crons.ts → maintenance:cleanup, 03:15 UTC) removes stale
+  sign-in codes, expired sessions and security-log rows older than 90 days.
+  Run by hand:   npx convex run maintenance:cleanup --prod
+- Session tokens are stored hashed (SHA-256). Old raw-token sessions upgrade
+  themselves the first time that device opens the app after the update.
+- Sign-in codes: 5 wrong tries kill a code (fixed Sep 2026 — the counter used
+  to be rolled back), used codes stay on record so the 30s / 15-per-day limits
+  keep counting.
+
+----------------------------------------------------------
 TROUBLESHOOTING
 ----------------------------------------------------------
 - Code email not arriving: check spam; make sure you typed the admin

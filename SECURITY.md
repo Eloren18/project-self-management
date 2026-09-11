@@ -11,7 +11,9 @@ browser, so editing the page can't bypass it.
 
 Sign-in = enter the email, receive a 6-digit code (sent via Resend), type
 it in. On the server: only the admin email may request a code; codes are
-stored **hashed**, expire after 10 minutes, allow 5 wrong tries, 30 seconds
+stored **hashed**, expire after 10 minutes, allow 5 wrong tries (the counter is
+committed even when the guess fails — a Sep-2026 fix; before that a thrown error
+rolled it back), 30 seconds
 between sends, 15 sends per day. A successful code creates a **session
 token** (256-bit random) kept in this browser's localStorage; sessions
 expire after ~6 months and at most 10 exist at once.
