@@ -1,12 +1,11 @@
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { ADMIN_EMAIL, SNAPSHOT_KEEP, byteLen } from "./lib";
 
-// Every scan below is index-bounded to the single account (ADMIN_EMAIL) and
-// capped: workspaces/meta (1 row), snapshots (≤ 30 metadata rows), devices (≤ 20),
-// sessions (≤ 10). Nothing here ever prints workspace contents.
-
-// CLI-only sanity check:
+// Read-only, CLI-only diagnostics. Every scan is index-bounded to the single
+// account (ADMIN_EMAIL) and capped: workspaces/meta (1 row), snapshots (≤ 30
+// metadata rows — the blobs live in snapshotBlobs and are never read here),
+// devices (≤ 20), sessions (≤ 10). Nothing here ever prints workspace contents.
 //   npx convex run admin:stats            (dev)
 //   npx convex run admin:stats --prod     (production)
 export const stats = internalQuery({
@@ -47,14 +46,13 @@ export const stats = internalQuery({
   },
 });
 
-// Read-only diagnostics for loss investigations: snapshot metadata only (labels
-// carry counts, never contents) and recent security-log events.
+// Snapshot metadata only (labels carry counts, never contents) — for loss investigations.
 export const snapshotIndex = internalQuery({
   args: {},
-  returns: v.array(v.object({ ts: v.string(), updatedAt: v.string(), bytes: v.number(), label: v.string(), inline: v.boolean() })),
+  returns: v.array(v.object({ ts: v.string(), updatedAt: v.string(), bytes: v.number(), label: v.string() })),
   handler: async (ctx) => {
     const snaps = await ctx.db.query("snapshots").withIndex("by_email_ts", (q) => q.eq("email", ADMIN_EMAIL)).order("desc").take(SNAPSHOT_KEEP + 10);
-    return snaps.map((s) => ({ ts: new Date(s.ts).toISOString(), updatedAt: new Date(s.updatedAt).toISOString(), bytes: s.bytes ?? (s.data ? s.data.length : 0), label: s.label, inline: s.data !== undefined }));
+    return snaps.map((s) => ({ ts: new Date(s.ts).toISOString(), updatedAt: new Date(s.updatedAt).toISOString(), bytes: s.bytes ?? (s.data ? s.data.length : 0), label: s.label }));
   },
 });
 
@@ -67,39 +65,6 @@ export const recentLog = internalQuery({
   },
 });
 
-// One-off migration (Sep 2026): move inline snapshot blobs into snapshotBlobs so
-// listing/pruning never reads them again. Idempotent; runs in small batches:
-//   npx convex run admin:migrateSnapshots --prod   (repeat until remaining = 0)
-export const migrateSnapshots = internalMutation({
-  args: { batch: v.optional(v.number()) },
-  returns: v.object({ moved: v.number(), remaining: v.number() }),
-  handler: async (ctx, { batch }) => {
-    const all = await ctx.db.query("snapshots").withIndex("by_email_ts", (q) => q.eq("email", ADMIN_EMAIL)).take(SNAPSHOT_KEEP + 10);
-    const pending = all.filter((s) => s.data !== undefined);
-    let moved = 0;
-    for (const s of pending.slice(0, batch ?? 5)) {
-      const blobId = await ctx.db.insert("snapshotBlobs", { email: s.email, data: s.data! });
-      await ctx.db.patch(s._id, { blobId, bytes: byteLen(s.data!), data: undefined });
-      moved++;
-    }
-    return { moved, remaining: pending.length - moved };
-  },
-});
-
-// DEV-ONLY helper for end-to-end testing: mark a device trusted so a test browser
-// can exercise the full sync path against the dev deployment.
-//   npx convex run admin:devTrustDevice '{"deviceId":"…"}'
-export const devTrustDevice = internalMutation({
-  args: { deviceId: v.string() },
-  returns: v.null(),
-  handler: async (ctx, { deviceId }) => {
-    const now = Date.now();
-    const existing = await ctx.db
-      .query("devices")
-      .withIndex("by_email_device", (q) => q.eq("email", ADMIN_EMAIL).eq("deviceId", deviceId))
-      .first();
-    if (existing) await ctx.db.patch(existing._id, { status: "trusted", approvedBy: "dev-cli", approvedAt: now });
-    else await ctx.db.insert("devices", { email: ADMIN_EMAIL, deviceId, label: "dev test browser", platform: "test", status: "trusted", firstSeen: now, lastSeen: now, approvedBy: "dev-cli", approvedAt: now });
-    return null;
-  },
-});
+// The one-off helpers used for the Sep-2026 rollout (admin:migrateSnapshots —
+// inline snapshot blobs → snapshotBlobs — and admin:devTrustDevice for the dev
+// end-to-end test) were removed after they ran; git history has them.
