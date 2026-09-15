@@ -733,6 +733,27 @@ async function HARNESS() {
   }
 
   // ============================================================
+  //  S23 — Documents: manual order (drag / ▲▼) on top of the old "most recently edited first" list
+  // ============================================================
+  scen('S23 Documents keep a manual order; older data migrates to the previous most-recent-first order');
+  {
+    const mk = (id, t) => ({ id, title: id, body: '', updatedAt: t, createdAt: t });
+    const n1 = normalize({ projects: [], docs: [mk('old', 100), mk('new', 300), mk('mid', 200)] });
+    const ids = arr => docsInOrder(arr).map(d => d.id).join(',');
+    check('documents without an order get one that reproduces the old list (newest edit first)', ids(n1.docs) === 'new,mid,old', ids(n1.docs));
+    check('…as numbers below zero, so nothing collides with hand-placed documents later', n1.docs.every(d => typeof d.order === 'number' && d.order < 0));
+    const n2 = normalize({ projects: [], docs: [...n1.docs, mk('straggler', 50)] });
+    check('a document arriving without an order (older device) surfaces at the top, existing positions untouched', ids(n2.docs) === 'straggler,new,mid,old', ids(n2.docs));
+    const docs = n2.docs;
+    check('moveDocBefore places a document above another one', moveDocBefore(docs, 'old', 'new') && ids(docs) === 'straggler,old,new,mid', ids(docs));
+    check('…and rewrites every order as a clean 0..n-1 sequence', docsInOrder(docs).map(d => d.order).join(',') === '0,1,2,3');
+    check('moveDocBefore with null puts it last', moveDocBefore(docs, 'straggler', null) && ids(docs) === 'old,new,mid,straggler', ids(docs));
+    check('moving a document onto itself or onto an unknown target changes nothing', moveDocBefore(docs, 'old', 'old') === false && moveDocBefore(docs, 'old', 'nope') === false && ids(docs) === 'old,new,mid,straggler');
+    check('editing a document no longer moves it (order wins over updatedAt)', (docs.find(d => d.id === 'mid').updatedAt = 9999, ids(docs) === 'old,new,mid,straggler'));
+    check('a bad order value is repaired instead of breaking the sort', normalize({ projects: [], docs: [{ id: 'x', order: 'abc' }, { id: 'y', order: NaN }] }).docs.every(d => typeof d.order === 'number' && isFinite(d.order)));
+  }
+
+  // ============================================================
   //  S21 — fast typing. The cloud echoes every write back through the subscription BEFORE
   //  acknowledging it, so the echo of letter 1 arrives while the device already holds letter 2
   //  and nothing is marked "seen" yet. That echo is OUR OWN write, never an unseen foreign
@@ -900,6 +921,7 @@ sCheck('editors never inject CSS (CSP) and hand back sanitized HTML on every upd
 sCheck('every rich surface mounts through bindRichEditor (Docs, Self Notes, note boxes via bindNoteEditor)', (src.match(/bindRichEditor\(/g) || []).length >= 4 && /return bindRichEditor\(ed, ed\.parentElement/.test(src));
 sCheck('the CSP still allows only this origin + the Convex CDNs for scripts (the editor is local)', /script-src 'self' 'unsafe-inline' https:\/\/esm\.sh https:\/\/cdn\.jsdelivr\.net https:\/\/esm\.run;/.test(src));
 sCheck('indent/outdent work everywhere: lists nest directly (own list nodes), psmIndent + psmListSteps extensions, toolbar buttons call indent()/outdent(), the sanitizer keeps margin-left', /content:LIST_CONTENT/.test(src) && /name:"psmIndent", priority:50/.test(src) && /name:"psmListSteps", priority:1000/.test(src) && /indent:\(\)=>c\(\)\.indent\(\)\.run\(\), outdent:\(\)=>c\(\)\.outdent\(\)\.run\(\)/.test(src) && /bulletList:false, orderedList:false/.test(src) && /\.\.\.psmEditorExtensions\(T\)/.test(src) && /ch\.style\.marginLeft=ml/.test(src));
+sCheck('the Documents list can be collapsed (per-device preference) and reordered by drag or ▲/▼ through moveDocBefore', /psmUI_docList/.test(src) && /id="docListToggle"/.test(src) && /id="docJump"/.test(src) && /application\/x-psm-doc/.test(src) && /data-dmove="up"/.test(src) && /moveDocBefore\(data\.docs,id,beforeId\)/.test(src) && /const sorted=docsInOrder\(data\.docs\)/.test(src));
 sCheck('numbered lists separated by blank lines continue their numbering (psmListNumbering plugin, start kept by the sanitizer)', /name:"psmListNumbering"/.test(src) && /appendTransaction:/.test(src) && /a\.name==="start" && ch\.tagName==="OL"/.test(src) && /setMeta\("preventUpdate",true\)/.test(src));
 sCheck('smart paste is wired: plain-text lists (zeroBase) and Outlook/Word MsoListParagraph lists become real lists', /clipboardTextParser:/.test(src) && /plainToHTML\(text,\{zeroBase:true\}\)/.test(src) && /transformPastedHTML: html=>msoListsToHTML\(html\)/.test(src) && /function msoListsToHTML\(html\)\{/.test(src));
 console.log('  ' + sPass + ' passed, ' + sFail + ' failed');

@@ -400,12 +400,22 @@
   .docs-grid{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:16px;align-items:start;}
   .doc-list{background:var(--surface);border:1px solid var(--border);max-height:72vh;overflow-y:auto;}
   .docs-grid.list-hidden{grid-template-columns:minmax(0,1fr);} .docs-grid.list-hidden .doc-list{display:none;} /* Meetings: the list can be collapsed */
-  #mtgJump{padding:6px 8px;border:1px solid var(--border);background:var(--surface);font-weight:600;font-size:11.5px;color:var(--muted);max-width:240px;outline:none;}
+  #mtgJump,#docJump{padding:6px 8px;border:1px solid var(--border);background:var(--surface);font-weight:600;font-size:11.5px;color:var(--muted);max-width:240px;outline:none;}
   .doc-item{padding:11px 13px;border-bottom:1px solid var(--border-soft);cursor:pointer;transition:.1s;}
   .doc-item:hover{background:var(--surface-2);}
   .doc-item.active{background:var(--primary-soft);box-shadow:inset 3px 0 0 var(--primary);}
   .doc-item .dt{font-weight:700;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .doc-item .dm{font-size:10.5px;color:var(--faint);margin-top:3px;}
+  /* Documents list: manual order — a drag grip on the left, ▲ / ▼ on the right (visible on hover and on the open document) */
+  .doc-item.reorder{display:flex;align-items:center;gap:8px;}
+  .doc-item .doc-main{flex:1;min-width:0;}
+  .doc-item .grip{color:var(--faint);cursor:grab;flex:none;font-size:13px;letter-spacing:-2px;user-select:none;opacity:0;transition:opacity .1s;}
+  .doc-item:hover .grip,.doc-item.active .grip{opacity:1;} .doc-item .grip:active{cursor:grabbing;}
+  .doc-item .doc-ctl{display:flex;flex-direction:column;gap:2px;flex:none;opacity:0;transition:opacity .1s;}
+  .doc-item:hover .doc-ctl,.doc-item.active .doc-ctl{opacity:1;}
+  .doc-ctl button{border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:8px;line-height:1;padding:3px 5px;cursor:pointer;}
+  .doc-ctl button:hover{color:var(--text);border-color:#b9bdc9;} .doc-ctl button:disabled{opacity:.3;cursor:default;}
+  .doc-item.dragging{opacity:.4;} .doc-item.drag-over{box-shadow:inset 0 3px 0 var(--primary);} .doc-list.drag-tail{box-shadow:inset 0 -3px 0 var(--primary);}
   .doc-editor{background:var(--surface);border:1px solid var(--border);padding:18px 22px;}
   .doc-meta{font-size:11px;color:var(--faint);margin-top:5px;border-bottom:1px solid var(--border-soft);padding-bottom:10px;}
   .doc-tools{display:flex;gap:4px;margin-top:10px;flex-wrap:wrap;align-items:stretch;}
@@ -1260,7 +1270,12 @@ function normalize(d){
   d.weekPrep = Array.isArray(d.weekPrep) ? d.weekPrep : [];
   d.weekPrep.forEach(w=>{ w.id ||= uid(); w.weekStart ??= ""; w.notes ??= ""; if(!Array.isArray(w.items)) w.items=[]; w.items.forEach(it=>{ it.id ||= uid(); it.text ??= ""; it.done = !!it.done; }); w.rich = !!w.rich; w.updatedAt ??= 0; });
   d.docs = Array.isArray(d.docs) ? d.docs : [];
-  d.docs.forEach(doc=>{ doc.id ||= uid(); doc.title ??= ""; doc.body ??= ""; doc.rich = !!doc.rich; doc.createdAt ??= Date.now(); doc.updatedAt ??= doc.createdAt; });
+  d.docs.forEach(doc=>{ doc.id ||= uid(); doc.title ??= ""; doc.body ??= ""; doc.rich = !!doc.rich; doc.createdAt ??= Date.now(); doc.updatedAt ??= doc.createdAt; if(typeof doc.order!=="number" || !isFinite(doc.order)) doc.order=null; });
+  /* manual document order (Sep 2026): documents without one slot in ABOVE the ordered ones, newest edit first —
+     on the first run that reproduces the old "most recently edited first" list; later stragglers (from an older
+     device) surface at the top like new documents. Existing positions are never touched. */
+  { const missing=d.docs.filter(x=>x.order===null).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+    if(missing.length){ let min=Math.min(0,...d.docs.filter(x=>x.order!==null).map(x=>x.order)); missing.reverse().forEach(x=>{ x.order=--min; }); } }
   d.glossary = Array.isArray(d.glossary) ? d.glossary : [];
   d.glossary.forEach(g=>{ g.id ||= uid(); g.term ??= ""; g.definition ??= ""; g.source ??= GLOSSARY_SOURCES[0]; g.category ??= ""; if(typeof g.order!=="number") g.order=null; g.createdAt ??= Date.now(); g.updatedAt ??= g.createdAt; });
   d.glossaryCollapsed = Array.isArray(d.glossaryCollapsed) ? d.glossaryCollapsed.filter(x=>typeof x==="string") : [];
@@ -1367,6 +1382,14 @@ function load(){
 /* ============================================================
    STATE
    ============================================================ */
+/* ---- Documents: manual order (pure; tested in S23) ---- */
+function docsInOrder(docs){ return [...docs].sort((a,b)=>((a.order??0)-(b.order??0)) || ((b.updatedAt||0)-(a.updatedAt||0))); }
+function moveDocBefore(docs, id, beforeId){ /* re-slot one document in front of another (beforeId null = last); rewrites every order as 0..n-1 */
+  const moving=docs.find(x=>x.id===id); if(!moving || id===beforeId) return false;
+  const ordered=docsInOrder(docs).filter(x=>x.id!==id);
+  const idx= beforeId==null ? ordered.length : ordered.findIndex(x=>x.id===beforeId); if(idx<0) return false;
+  ordered.splice(idx,0,moving); ordered.forEach((x,i)=>{ x.order=i; }); return true;
+}
 let data = load();
 let booting = true;
 let authedUser=null, granted=false, deniedShown=false;
@@ -2690,6 +2713,7 @@ function renderWeekPrep(){
 
 /* ---- Working documents (freeform notes on bigger topics) ---- */
 let curDocId=null, docSearch="";
+let docListHidden=false; try{ docListHidden=localStorage.getItem("psmUI_docList")==="hidden"; }catch(e){} /* per-device UI preference: the document list can be collapsed (like the meetings list) */
 function wordsOf(s){ return (String(s||"").trim().match(/\S+/g)||[]).length; }
 /* Sanitize document HTML: whitelist structural/format tags, drop scripts and
    all attributes except a background-color-only style (used for highlights). */
@@ -2938,7 +2962,7 @@ function updateDocMeta(dd){ const m=$("docMeta"); if(m) m.textContent = "Created
 function renderDocs(){
   const host=$("docsBody"); if(!host) return;
   const q=docSearch.toLowerCase().trim();
-  const sorted=[...data.docs].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+  const sorted=docsInOrder(data.docs);                                            /* manual order (drag / ▲▼); new documents go on top */
   const list=q?sorted.filter(dd=>((dd.title||"")+" "+docText(dd)).toLowerCase().includes(q)):sorted;
   let cur=data.docs.find(dd=>dd.id===curDocId);
   if(!cur && list.length){ cur=list[0]; curDocId=cur.id; }
@@ -2946,15 +2970,24 @@ function renderDocs(){
     <div class="toolbar">
       <h1 class="page-title">Working documents</h1>
       <div class="grow"></div>
+      ${data.docs.length?`<button class="btn ghost sm" id="docListToggle" title="${docListHidden?'Show the document list':'Hide the document list — the document takes the full width'}">${docListHidden?'☰ Show list':'⇤ Hide list'}</button>`:""}
+      ${docListHidden&&sorted.length>1?`<select id="docJump" title="Switch document">${sorted.map(dd=>`<option value="${dd.id}"${cur&&dd.id===cur.id?" selected":""}>${esc(dd.title||"Untitled")}</option>`).join("")}</select>`:""}
       <div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="docSearch" placeholder="Search documents…" value="${esc(docSearch)}"></div>
       <button class="btn primary" id="docNew"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New document</button>
     </div>
     ${data.docs.length?`
-    <div class="docs-grid">
-      <div class="doc-list">${list.map(dd=>`
-        <div class="doc-item ${cur&&dd.id===cur.id?'active':''}" data-doc="${dd.id}">
-          <div class="dt">${esc(dd.title||"Untitled")}</div>
-          <div class="dm">${new Date(dd.updatedAt||dd.createdAt).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"})} · ${wordsOf(docText(dd))} words</div>
+    <div class="docs-grid${docListHidden?" list-hidden":""}">
+      <div class="doc-list" id="docList">${list.map((dd,i)=>`
+        <div class="doc-item reorder ${cur&&dd.id===cur.id?'active':''}" data-doc="${dd.id}">
+          <span class="grip" draggable="true" title="Drag onto another document to place it above; drop below the list to make it last">⋮⋮</span>
+          <div class="doc-main">
+            <div class="dt">${esc(dd.title||"Untitled")}</div>
+            <div class="dm">${new Date(dd.updatedAt||dd.createdAt).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"})} · ${wordsOf(docText(dd))} words</div>
+          </div>
+          <div class="doc-ctl">
+            <button data-dmove="up" title="Move up"${i===0?" disabled":""}>▲</button>
+            <button data-dmove="down" title="Move down"${i===list.length-1?" disabled":""}>▼</button>
+          </div>
         </div>`).join("")||`<div style="padding:14px;font-size:12px;color:var(--faint)">No documents match your search.</div>`}
       </div>
       ${cur?`
@@ -2994,10 +3027,33 @@ function renderDocs(){
     </div>`
     :`<div class="empty"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/><path d="M9 13h6M9 17h6M9 9h1"/></svg><div>No working documents yet.<br><span style="color:var(--faint)">Create one to collect notes on a bigger topic — how you select stores for campaigns, new capabilities you're learning, anything worth keeping.</span></div></div>`}
   `;
-  $("docNew").onclick=()=>{ const dd={id:uid(),title:"",body:"",createdAt:Date.now(),updatedAt:Date.now()}; data.docs.unshift(dd); curDocId=dd.id; docSearch=""; save(); renderDocs(); const t=$("docTitle"); if(t) t.focus(); };
+  $("docNew").onclick=()=>{ const dd={id:uid(),title:"",body:"",createdAt:Date.now(),updatedAt:Date.now(),order:(data.docs.length?Math.min(...data.docs.map(x=>x.order??0)):0)-1}; data.docs.unshift(dd); curDocId=dd.id; docSearch=""; save(); renderDocs(); const t=$("docTitle"); if(t) t.focus(); };
   const si=$("docSearch");
   if(si) si.addEventListener("input",e=>{ docSearch=e.target.value; renderDocs(); const s2=$("docSearch"); if(s2){ s2.focus(); s2.setSelectionRange(s2.value.length,s2.value.length); } });
-  host.querySelectorAll(".doc-item").forEach(it=>it.addEventListener("click",()=>{ curDocId=it.dataset.doc; renderDocs(); }));
+  host.querySelectorAll(".doc-item").forEach(it=>it.addEventListener("click",e=>{ if(e.target.closest(".grip,.doc-ctl")) return; curDocId=it.dataset.doc; renderDocs(); }));
+  const tg=$("docListToggle"); if(tg) tg.onclick=()=>{ docListHidden=!docListHidden; try{ localStorage.setItem("psmUI_docList", docListHidden?"hidden":"shown"); }catch(e){} renderDocs(); };
+  const jump=$("docJump"); if(jump) jump.addEventListener("change",e=>{ curDocId=e.target.value; renderDocs(); });
+  /* manual order — ▲ / ▼ step within the visible list; the grip drags a document onto another one (it lands above it)
+     or onto the empty tail of the list (it becomes last). Works on a filtered list too: the move is applied to the full order. */
+  const visible=list.map(dd=>dd.id);
+  const moveTo=(id,beforeId)=>{ if(moveDocBefore(data.docs,id,beforeId)){ save(); renderDocs(); } };
+  host.querySelectorAll("[data-dmove]").forEach(b=>b.addEventListener("click",e=>{ e.stopPropagation(); const id=b.closest(".doc-item").dataset.doc, i=visible.indexOf(id); if(i<0) return;
+    if(b.dataset.dmove==="up" && i>0) moveTo(id, visible[i-1]);
+    else if(b.dataset.dmove==="down" && i<visible.length-1) moveTo(id, visible[i+2]||null); }));
+  host.querySelectorAll(".doc-item").forEach(it=>{
+    const grip=it.querySelector(".grip"); if(!grip) return;
+    grip.addEventListener("dragstart",e=>{ e.stopPropagation(); e.dataTransfer.setData("application/x-psm-doc",it.dataset.doc); e.dataTransfer.effectAllowed="move"; e.dataTransfer.setDragImage(it,14,14); it.classList.add("dragging"); });
+    grip.addEventListener("dragend",()=>{ it.classList.remove("dragging"); host.querySelectorAll(".drag-over,.drag-tail").forEach(x=>x.classList.remove("drag-over","drag-tail")); });
+    it.addEventListener("dragover",e=>{ if(![...e.dataTransfer.types].includes("application/x-psm-doc")) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect="move"; it.classList.add("drag-over"); });
+    it.addEventListener("dragleave",()=>it.classList.remove("drag-over"));
+    it.addEventListener("drop",e=>{ const id=e.dataTransfer.getData("application/x-psm-doc"); if(!id) return; e.preventDefault(); e.stopPropagation(); it.classList.remove("drag-over"); if(id!==it.dataset.doc) moveTo(id, it.dataset.doc); });
+  });
+  const listEl=$("docList");
+  if(listEl){ /* the empty space under the last document is the "make it last" drop zone */
+    listEl.addEventListener("dragover",e=>{ if([...e.dataTransfer.types].includes("application/x-psm-doc")){ e.preventDefault(); listEl.classList.add("drag-tail"); } });
+    listEl.addEventListener("dragleave",e=>{ if(e.target===listEl) listEl.classList.remove("drag-tail"); });
+    listEl.addEventListener("drop",e=>{ const id=e.dataTransfer.getData("application/x-psm-doc"); listEl.classList.remove("drag-tail"); if(!id) return; e.preventDefault(); moveTo(id,null); });
+  }
   const cur2=cur?data.docs.find(dd=>dd.id===cur.id):null;
   if(cur2 && $("docTitle")){
     /* Typing updates data + the list entry in place — no full re-render, so focus is never lost. */
