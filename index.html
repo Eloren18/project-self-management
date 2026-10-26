@@ -4348,8 +4348,7 @@ function dayPageHTML(dt){
         <textarea class="dp-ta write" data-mnote rows="1" placeholder="how was it? how did you feel with them?" style="flex:1;min-width:160px;font-size:12px">${esc(mu.note)}</textarea>
         <button class="pi-act" data-mdel style="margin-top:3px">✕</button>
       </div>`;}).join("")}
-      <select data-meetsel style="width:100%;padding:7px 9px;border:1px solid var(--border);background:var(--surface);margin-top:2px"><option value="">+ log a meetup…</option>${P().people.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select>
-      ${P().people.length?"":`<span style="font-size:11.5px;color:var(--faint)">add people in the People tab first</span>`}
+      <select data-meetsel style="width:100%;padding:7px 9px;border:1px solid var(--border);background:var(--surface);margin-top:2px"><option value="">+ log a meetup…</option>${P().people.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}<option value="__new">＋ New person…</option></select>
   </div>`;
   /* finalize: deliberately close the day. Unfinalized days show as "open" in the Overview. */
   const finalizeBar = plan.finalized
@@ -4431,7 +4430,13 @@ function bindDayPage(host,dt,rerender){
     row.querySelector("[data-mdel]").onclick=()=>{ plan.meetups=plan.meetups.filter(x=>x.id!==mu.id); syncLastSeen(mu.personId); save(); rerender(); };
   });
   const ms=host.querySelector("[data-meetsel]");
-  if(ms) ms.onchange=()=>{ if(!ms.value) return; plan.meetups.push({id:uid(),personId:ms.value,note:"",status:"met",createdAt:Date.now()}); syncLastSeen(ms.value); save(); rerender(); };
+  if(ms) ms.onchange=async()=>{ if(!ms.value) return; let pid=ms.value;
+    if(pid==="__new"){ /* add the person right here — no detour through the People tab */
+      const name=(await uiPrompt("Who did you meet?",{sub:"They're added to your People list; set how often you want to see them there.",placeholder:"name",yes:"Add & log"})||"").trim();
+      if(!name){ ms.value=""; return; }
+      const existing=P().people.find(p=>p.name.trim().toLowerCase()===name.toLowerCase());
+      if(existing) pid=existing.id; else { pid=uid(); P().people.push({id:pid,name,lastSeen:"",freqWeeks:0,notes:""}); } }
+    plan.meetups.push({id:uid(),personId:pid,note:"",status:"met",createdAt:Date.now()}); syncLastSeen(pid); save(); rerender(); };
   /* feelings check-ins: quadrant → word → (tags, note) → log */
   const pickFor=()=>{ if(!moodPick||moodPick.dt!==dt) moodPick={dt,quad:"",emotion:"",tags:[],note:""}; return moodPick; };
   host.querySelectorAll("[data-quad]").forEach(b=>b.onclick=()=>{ const p=pickFor(); if(p.quad===b.dataset.quad){ moodPick=null; } else { p.quad=b.dataset.quad; p.emotion=""; } rerender(); });
