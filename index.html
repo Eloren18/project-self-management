@@ -699,7 +699,8 @@
   .dq{border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:11.5px;padding:4px 9px;cursor:pointer;font-family:inherit;} .dq:hover{border-color:var(--primary);}
   .dq.never{border-color:color-mix(in srgb,var(--p-asap) 45%,var(--border));} .dq.avoid{border-color:#c76a0088;} .dq.notideal{border-color:#858b9988;}
   .dq-chip{display:inline-flex;align-items:center;gap:2px;}
-  .detox-lane .pi-row.slipped{background:color-mix(in srgb,var(--p-asap) 8%,var(--surface));} .check-sm.on.slip{background:var(--p-asap);border-color:var(--p-asap);}
+  .detox-lane .pi-row.slipped{background:color-mix(in srgb,var(--p-asap) 8%,var(--surface));}
+  .detox-group{margin:4px 0 10px;} .detox-group .detox-tier-h{margin:6px 0 4px;} .check-sm.on.slip{background:var(--p-asap);border-color:var(--p-asap);}
   .recap-chip.slip{color:var(--p-asap);}
   .rt-freq{display:inline-flex;align-items:center;gap:6px;} .rt-freq input{padding:5px 6px;border:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--text);}
   .rt-hist{display:flex;gap:2px;flex:none;} .rt-cell{width:18px;height:18px;display:grid;place-items:center;font-size:10px;font-weight:800;border:1px solid var(--border-soft);color:var(--faint);background:var(--surface);}
@@ -1455,6 +1456,10 @@ function normalizePersonal(p){
   /* quick slips: the typical ways of slipping, one tap to log (text + which tier it counts as) */
   p.detox.slipActs = Array.isArray(p.detox.slipActs) ? p.detox.slipActs : [];
   p.detox.slipActs.forEach(a=>{ a.id ||= uid(); a.text ??= ""; a.tier=["never","avoid","notideal"].includes(a.tier)?a.tier:"never"; });
+  /* the old plain-text "rules" lists merged into the slip options (Oct 2026): a rule is a checkbox option of its
+     tier. Same text (case-insensitive) in the same tier is not duplicated; the rule lists are emptied afterwards. */
+  { const have=new Set(p.detox.slipActs.map(a=>a.tier+"|"+(a.text||"").trim().toLowerCase()));
+    ["never","avoid","notideal"].forEach(k=>{ (p.detox.rules[k]||[]).forEach(r=>{ const t=(r.text||"").trim(); if(!t) return; const key=k+"|"+t.toLowerCase(); if(have.has(key)) return; have.add(key); p.detox.slipActs.push({id:r.id||uid(),text:t,tier:k}); }); p.detox.rules[k]=[]; }); }
   return p;
 }
 function load(){
@@ -4132,20 +4137,32 @@ const DETOX_TIERS=[["never","🚫 Never do","never-do"],["avoid","⚠️ Try to 
 function detoxTierColor(k){ return k==="never"?"var(--p-asap)":k==="avoid"?"#c76a00":"#858b99"; }
 /* the detox box on the day page (and the Detox tab's "today"): one checkbox per slip activity — tick = it happened that day */
 function detoxSlipsOn(dt){ return ((P().detox&&P().detox.log)||[]).filter(x=>x.date===dt); }
-function detoxBoxHTML(dt){
+const DETOX_TIER_LABEL={never:"never do",avoid:"try to avoid",notideal:"not ideal"};
+/* opts.manage (Detox tab): the same box, but every option is editable in place, removable, and each tier has an add line */
+function detoxBoxHTML(dt, opts){
+  opts=opts||{}; const manage=!!opts.manage;
   const dx=P().detox; const acts=dx.slipActs||[]; const days=detoxCleanDays(); const slips=detoxSlipsOn(dt);
   const isOn=a=>slips.some(x=>x.tier===a.tier && x.note===a.text);
   const others=slips.filter(x=>!acts.some(a=>a.tier===x.tier&&a.text===x.note));   /* free-text slips logged with "other…" */
   const never=slips.some(x=>x.tier==="never");
+  const row=a=>`<div class="pi-row ${isOn(a)?"slipped":""}" data-slipact="${a.id}" style="align-items:center;border-left-color:${detoxTierColor(a.tier)}">
+      <div class="check-sm ${isOn(a)?"on slip":""}" data-slipchk title="${isOn(a)?"Slipped — tap to undo":"Tap if this happened"}">${isOn(a)?TICK:""}</div>
+      ${manage
+        ?`<input class="detox-rule-txt" data-acttxt value="${esc(a.text)}" placeholder="How you slip…" autocomplete="off" style="flex:1;min-width:0;font-weight:600"><button class="pi-act" data-actdel title="Remove this option">✕</button>`
+        :`<div style="flex:1;min-width:0"><div class="dp-title-disp">${esc(a.text)}</div><div class="pi-sub"><span class="pi-badge detox-b ${a.tier}">${a.tier==="never"?"never do · resets the counter":DETOX_TIER_LABEL[a.tier]}</span></div></div>`}
+    </div>`;
+  const body = manage
+    ? DETOX_TIERS.map(([k,lab,phk])=>`<div class="detox-group ${k}">
+        <div class="detox-tier-h"><span>${lab}</span><span class="grow"></span><span class="hint">${k==="never"?"a tick resets the counter":"a tick only goes to the journal"}</span></div>
+        ${acts.filter(a=>a.tier===k).map(row).join("")||`<div class="wp-empty" style="padding:2px 0 6px">no ${phk} options yet</div>`}
+        <input class="detox-add" data-qadd="${k}" placeholder="＋ add a ${phk} option… Enter" autocomplete="off">
+      </div>`).join("")
+    : (acts.map(row).join("")||`<div class="wp-empty">No slip options yet — add the ways you typically slip in the Detox tab.</div>`);
   return `<div class="lane detox-lane ${never?"slipped":""}" data-lane="detox" style="border-top-color:var(--p-asap)">
-    <h3 style="color:var(--p-asap)">🛡 Detox <span class="grow"></span><span class="hint">🔥 ${days} day${days===1?"":"s"} clean${never?" · slipped":""}</span></h3>
-    ${acts.map(a=>`<div class="pi-row ${isOn(a)?"slipped":""}" data-slipact="${a.id}" style="align-items:center;border-left-color:${detoxTierColor(a.tier)}">
-        <div class="check-sm ${isOn(a)?"on slip":""}" data-slipchk title="${isOn(a)?"Slipped — tap to undo":"Tap if this happened"}">${isOn(a)?TICK:""}</div>
-        <div style="flex:1;min-width:0"><div class="dp-title-disp">${esc(a.text)}</div><div class="pi-sub"><span class="pi-badge detox-b ${a.tier}">${a.tier==="never"?"never do · resets the counter":a.tier==="avoid"?"try to avoid":"not ideal"}</span></div></div>
-      </div>`).join("")}
-    ${others.map(x=>`<div class="pi-row slipped" data-slipother="${x.id}" style="align-items:center;border-left-color:${detoxTierColor(x.tier)}"><div class="check-sm on slip" data-slipundo title="Remove this slip">${TICK}</div><div style="flex:1;min-width:0"><div class="dp-title-disp">${esc(x.note)||"(no note)"}</div><div class="pi-sub"><span class="pi-badge detox-b ${x.tier}">${x.tier==="never"?"never do":x.tier==="avoid"?"try to avoid":"not ideal"}</span></div></div></div>`).join("")}
-    ${acts.length||others.length?"":`<div class="wp-empty">No slip activities yet — add the ways you typically slip in the Detox tab.</div>`}
-    <div class="dp-add" style="display:flex;gap:6px;align-items:center"><button class="btn ghost sm" data-detoxother title="Log a slip with your own line">＋ other…</button><span class="grow"></span><button class="btn ghost sm" data-detoxmanage title="Detox tab — activities, rules, journal">⚙ manage</button></div>
+    <h3 style="color:var(--p-asap)">🛡 Detox${manage?" · today":""} <span class="grow"></span><span class="hint">🔥 ${days} day${days===1?"":"s"} clean${never?" · slipped":""}</span></h3>
+    ${body}
+    ${others.map(x=>`<div class="pi-row slipped" data-slipother="${x.id}" style="align-items:center;border-left-color:${detoxTierColor(x.tier)}"><div class="check-sm on slip" data-slipundo title="Remove this slip">${TICK}</div><div style="flex:1;min-width:0"><div class="dp-title-disp">${esc(x.note)||"(no note)"}</div><div class="pi-sub"><span class="pi-badge detox-b ${x.tier}">${DETOX_TIER_LABEL[x.tier]||x.tier}</span></div></div></div>`).join("")}
+    <div class="dp-add" style="display:flex;gap:6px;align-items:center"><button class="btn ghost sm" data-detoxother title="Log a one-off slip with your own line">＋ other…</button><span class="grow"></span>${manage?"":`<button class="btn ghost sm" data-detoxmanage title="Detox tab — edit the options, see the journal">⚙ manage</button>`}</div>
   </div>`;
 }
 function bindDetoxBox(host,dt,rerender){
@@ -4156,6 +4173,14 @@ function bindDetoxBox(host,dt,rerender){
   host.querySelectorAll("[data-slipundo]").forEach(b=>b.onclick=()=>{ const id=b.closest("[data-slipother]").dataset.slipother; const dx=P().detox; dx.log=dx.log.filter(x=>x.id!==id); save(); rerender(); });
   const dxo=host.querySelector("[data-detoxother]"); if(dxo) dxo.onclick=async()=>{ const note=await uiPrompt("What happened?",{sub:"Logged as a “Never do” slip — resets your counter.",placeholder:"a line on what happened…",yes:"Log it"}); if(note===null) return; detoxLog("never",dt,note); rerender(); };
   const dxm=host.querySelector("[data-detoxmanage]"); if(dxm) dxm.onclick=()=>switchPTab("detox");
+  /* manage mode: rename / remove / add options */
+  host.querySelectorAll("[data-slipact]").forEach(row=>{ const a=(P().detox.slipActs||[]).find(x=>x.id===row.dataset.slipact); if(!a) return;
+    const tx=row.querySelector("[data-acttxt]"); if(tx) tx.addEventListener("input",e=>{ a.text=e.target.value; save(); });
+    const del=row.querySelector("[data-actdel]"); if(del) del.onclick=()=>{ P().detox.slipActs=(P().detox.slipActs||[]).filter(x=>x.id!==a.id); save(); rerender(); };
+  });
+  host.querySelectorAll("[data-qadd]").forEach(qa=>qa.addEventListener("keydown",e=>{ if(e.key!=="Enter") return; const t=(qa.value||"").trim(); if(!t) return; const k=qa.dataset.qadd;
+    P().detox.slipActs=P().detox.slipActs||[]; P().detox.slipActs.push({id:uid(),text:t,tier:k}); save(); rerender();
+    const again=host.querySelector(`[data-qadd="${k}"]`); if(again) again.focus(); }));
 }
 function renderPDetox(){
   const host=$("pDetoxBody"); if(!host) return;
@@ -4164,19 +4189,6 @@ function renderPDetox(){
   const days=detoxCleanDays();
   const win=days>=DETOX_GOAL;
   const milestone = win ? `🏆 30-day milestone cleared — ${days} days and counting` : `${DETOX_GOAL-days} day${DETOX_GOAL-days===1?"":"s"} to your 30-day milestone`;
-  const tierBlock=([k,lab,phk])=>{ const rules=dx.rules[k]||[];
-    return `<div class="detox-tier ${k}">
-      <div class="detox-tier-h"><span>${lab}</span></div>
-      <div class="detox-rules">${rules.map(r=>`<div class="detox-rule" data-rule="${k}|${r.id}"><input class="detox-rule-txt" data-ruletxt value="${esc(r.text)}" placeholder="Write a rule…" autocomplete="off"><button class="pi-act" data-ruledel title="Remove">✕</button></div>`).join("")}</div>
-      <input class="detox-add" data-ruleadd="${k}" placeholder="＋ add a ${phk} rule… Enter" autocomplete="off">
-    </div>`; };
-  /* slip activities: the typical ways you slip — these become the checkboxes in the Detox box on every day */
-  const actBlock=([k,lab,phk])=>{ const acts=(dx.slipActs||[]).filter(a=>a.tier===k);
-    return `<div class="detox-tier ${k}">
-      <div class="detox-tier-h"><span>${lab}</span><span class="grow"></span><span class="hint">${k==="never"?"resets the counter":"journal only"}</span></div>
-      <div class="detox-rules">${acts.map(a=>`<div class="detox-rule" data-act="${a.id}"><input class="detox-rule-txt" data-acttxt value="${esc(a.text)}" placeholder="How you slip…" autocomplete="off"><button class="pi-act" data-actdel title="Remove">✕</button></div>`).join("")||`<div class="wp-empty" style="padding:2px 6px">none yet</div>`}</div>
-      <input class="detox-add" data-qadd="${k}" placeholder="＋ a way you typically slip (${phk})… Enter" autocomplete="off">
-    </div>`; };
   const journal=(dx.log||[]).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
   host.innerHTML=`
     <div class="toolbar"><h1 class="page-title">Detox</h1><div class="grow"></div></div>
@@ -4186,12 +4198,8 @@ function renderPDetox(){
       <div class="dc-milestone">${milestone}</div>
       <div class="dc-bar"><i style="width:${Math.min(100,Math.round(days/DETOX_GOAL*100))}%"></i></div>
     </div>
-    <div class="section-h">Today <span class="line"></span><span class="hint">tick what happened — the same box sits on every day page</span></div>
-    <div id="detoxTodayBox">${detoxBoxHTML(todayISO())}</div>
-    <div class="section-h">Slip activities <span class="line"></span><span class="hint">become the checkboxes above</span></div>
-    ${DETOX_TIERS.map(actBlock).join("")}
-    <div class="section-h">Your rules <span class="line"></span></div>
-    ${DETOX_TIERS.map(tierBlock).join("")}
+    <div class="section-h">Your slip options <span class="line"></span><span class="hint">tick what happened today · edit, remove or add options — the same box sits on every day page</span></div>
+    <div id="detoxTodayBox">${detoxBoxHTML(todayISO(),{manage:true})}</div>
     <div class="section-h">Addiction journal <span class="line"></span></div>
     ${journal.length?journal.map(x=>`<div class="pi-row" data-jrow="${x.id}" style="align-items:flex-start;border-left-color:${detoxTierColor(x.tier)}">
         <span class="pi-badge" style="margin-top:2px">${esc(fmtShort(x.date))}</span>
@@ -4200,20 +4208,6 @@ function renderPDetox(){
         <button class="pi-act" data-jdel title="Remove this entry">✕</button>
       </div>`).join(""):`<div style="font-size:12.5px;color:var(--faint)">No infractions logged. One day at a time.</div>`}`;
   bindDetoxBox($("detoxTodayBox"),todayISO(),renderPDetox);
-  DETOX_TIERS.forEach(([k])=>{
-    const addI=host.querySelector(`[data-ruleadd="${k}"]`);
-    if(addI) addI.addEventListener("keydown",e=>{ if(e.key!=="Enter") return; const t=(addI.value||"").trim(); if(!t) return; dx.rules[k].push({id:uid(),text:t}); save(); renderPDetox(); const a=host.querySelector(`[data-ruleadd="${k}"]`); if(a) a.focus(); });
-    const qa=host.querySelector(`[data-qadd="${k}"]`);
-    if(qa) qa.addEventListener("keydown",e=>{ if(e.key!=="Enter") return; const t=(qa.value||"").trim(); if(!t) return; dx.slipActs=dx.slipActs||[]; dx.slipActs.push({id:uid(),text:t,tier:k}); save(); renderPDetox(); const a=host.querySelector(`[data-qadd="${k}"]`); if(a) a.focus(); });
-  });
-  host.querySelectorAll("[data-act]").forEach(row=>{ const a=(dx.slipActs||[]).find(x=>x.id===row.dataset.act); if(!a) return;
-    row.querySelector("[data-acttxt]").addEventListener("input",e=>{ a.text=e.target.value; save(); });
-    row.querySelector("[data-actdel]").onclick=()=>{ dx.slipActs=(dx.slipActs||[]).filter(x=>x.id!==a.id); save(); renderPDetox(); };
-  });
-  host.querySelectorAll("[data-rule]").forEach(row=>{ const [k,id]=row.dataset.rule.split("|"); const r=(dx.rules[k]||[]).find(x=>x.id===id); if(!r) return;
-    row.querySelector("[data-ruletxt]").addEventListener("input",e=>{ r.text=e.target.value; save(); });
-    row.querySelector("[data-ruledel]").onclick=()=>{ dx.rules[k]=dx.rules[k].filter(x=>x.id!==id); save(); renderPDetox(); };
-  });
   host.querySelectorAll("[data-jrow]").forEach(row=>{ const id=row.dataset.jrow;
     row.querySelector("[data-jdel]").onclick=async()=>{ if(!await uiConfirm("Remove this journal entry?",{title:"Remove entry?"})) return; dx.log=dx.log.filter(x=>x.id!==id); save(); renderPDetox(); };
   });
