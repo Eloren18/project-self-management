@@ -701,6 +701,7 @@
   .dq-chip{display:inline-flex;align-items:center;gap:2px;}
   .detox-lane .pi-row.slipped{background:color-mix(in srgb,var(--p-asap) 8%,var(--surface));} .check-sm.on.slip{background:var(--p-asap);border-color:var(--p-asap);}
   .recap-chip.slip{color:var(--p-asap);}
+  .rt-freq{display:inline-flex;align-items:center;gap:6px;} .rt-freq input{padding:5px 6px;border:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--text);}
   .rt-hist{display:flex;gap:2px;flex:none;} .rt-cell{width:18px;height:18px;display:grid;place-items:center;font-size:10px;font-weight:800;border:1px solid var(--border-soft);color:var(--faint);background:var(--surface);}
   .rt-cell.done{background:var(--s-done);border-color:var(--s-done);color:#fff;} .rt-cell.missed{color:var(--p-asap);border-color:color-mix(in srgb,var(--p-asap) 40%,var(--border));} .rt-cell.open{color:var(--muted);} .rt-cell.off{opacity:.35;}
   .day-log.static{margin-top:12px;} .day-log.static .day-log-h{padding:11px 14px;font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px;}
@@ -1378,13 +1379,17 @@ const MOOD_TAGS=["Work","Family","Partner","Friends","Health","Sleep","Exercise"
 function normRecurring(r){
   if(!r || typeof r!=="object") return null;
   if(r.type==="daily") return {type:"daily"};
+  if(r.type==="freq"){ const per=r.per==="month"?"month":"week"; const max=per==="month"?31:7; return {type:"freq",per,n:Math.min(max,Math.max(1,Math.round(+r.n)||1))}; } /* "n times per week / month", no fixed days */
   if(r.type==="weekly"){ let days=Array.isArray(r.days)?r.days:(typeof r.weekday==="number"?[r.weekday]:[]);
     days=[...new Set(days.map(x=>+x).filter(x=>Number.isInteger(x)&&x>=0&&x<=6))].sort((a,b)=>a-b);
     return days.length ? (days.length===7 ? {type:"daily"} : {type:"weekly",days}) : null; }
   return null;
 }
-function routineDueOn(rule, dt){ if(!rule||!dt) return false; if(rule.type==="daily") return true; const d=parseISO(dt); if(!d) return false; const wd=(d.getDay()+6)%7; return rule.type==="weekly" && Array.isArray(rule.days) && rule.days.includes(wd); }
-function routineLabel(rule){ if(!rule) return "never"; if(rule.type==="daily") return "every day"; const ds=(rule.days||[]).slice().sort((a,b)=>a-b); if(ds.join()==="0,1,2,3,4") return "weekdays"; if(ds.join()==="5,6") return "weekends"; return ds.map(d=>["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][d]).join(" · ")||"no days"; }
+function routineDueOn(rule, dt){ if(!rule||!dt) return false; if(rule.type==="daily"||rule.type==="freq") return true; const d=parseISO(dt); if(!d) return false; const wd=(d.getDay()+6)%7; return rule.type==="weekly" && Array.isArray(rule.days) && rule.days.includes(wd); }
+function routineLabel(rule){ if(!rule) return "never"; if(rule.type==="daily") return "every day"; if(rule.type==="freq") return rule.n+"× / "+rule.per; const ds=(rule.days||[]).slice().sort((a,b)=>a-b); if(ds.join()==="0,1,2,3,4") return "weekdays"; if(ds.join()==="5,6") return "weekends"; return ds.map(d=>["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][d]).join(" · ")||"no days"; }
+/* frequency routines: the period a date falls in (Mon–Sun week or calendar month) and how often the routine was ticked in it */
+function freqPeriod(per, dt){ const d=parseISO(dt); if(!d) return null; if(per==="month") return {start:iso(new Date(d.getFullYear(),d.getMonth(),1)), end:iso(new Date(d.getFullYear(),d.getMonth()+1,0))}; const ws=weekStart(d); return {start:iso(ws), end:iso(addDays(ws,6))}; }
+function freqDoneCount(dayPlans, itemId, per, dt){ const p=freqPeriod(per,dt); if(!p) return 0; let n=0; Object.keys(dayPlans||{}).forEach(k=>{ if(k<p.start||k>p.end) return; if(((dayPlans[k]||{}).entries||[]).some(e=>e.itemId===itemId&&e.done)) n++; }); return n; }
 function normalizePersonal(p){
   p = (p && typeof p==="object") ? p : {};
   p.items = Array.isArray(p.items) ? p.items : [];
@@ -3826,7 +3831,7 @@ function planFor(dt,create){
   let d=P().dayPlans[dt];
   if(!d && create){
     d={date:dt,entries:[],rolledCount:0,committed:false,committedAt:0,bestMoment:"",heavy:false,energy:"medium",triaged:false,happened:[],meetups:[],checkins:[],routineSkip:[],feeling:"",mood:0,finalized:false,finalizedAt:0};
-    P().items.filter(it=>it.status!=="done" && routineDueOn(it.recurringRule,dt))   /* routines due on this weekday land on the fresh day */
+    P().items.filter(it=>routineWantedOn(it,dt))                                    /* routines due on this day (or still owed this week / month) land on the fresh day */
       .forEach(it=>d.entries.push({id:uid(),itemId:it.id,time:"",dur:it.timeEstimate||0,done:false,label:"",since:dt}));
     P().dayPlans[dt]=d;
   }
@@ -4228,7 +4233,7 @@ function dpRowHTML(plan,e){
         ${(e.since&&plan.date&&e.since<plan.date)?`<span class="pi-badge carry" title="carried from ${esc(e.since)}">↪ ${agoLabel(e.since,plan.date)}</span>`:""}
         ${e.label?`<span class="pi-badge">${esc(e.label)}</span>`:""}
         ${e.time?`<span class="pi-badge">${esc(slotLabel(e.time))}${e.dur?" · "+fmtMin(e.dur):""}</span>`:(e.dur?`<span class="pi-badge">${fmtMin(e.dur)}</span>`:"")}
-        ${it.recurringRule?`<span class="pi-badge" title="Routine · ${esc(routineLabel(it.recurringRule))}">↻ ${esc(routineLabel(it.recurringRule))}</span>`:""}
+        ${it.recurringRule?`<span class="pi-badge" title="Routine · ${esc(routineLabel(it.recurringRule))}">↻ ${esc(routineLabel(it.recurringRule))}${it.recurringRule.type==="freq"?" · "+freqDoneCount(P().dayPlans,it.id,it.recurringRule.per,plan.date)+"/"+it.recurringRule.n+" this "+it.recurringRule.per:""}</span>`:""}
         <button class="chip trow-note-btn ${hasNote?"has":""}" data-pnotebtn title="${hasNote?"View / edit the note":"Add a note"}">🗒 ${hasNote?"Notes":"+ note"}</button>
       </div>
       <div class="postit ${openNoteIds.has(it.id)?"":"hidden"}" style="margin-left:0"><textarea data-pnotes placeholder="Note for this…">${esc(it.notes)}</textarea></div>
@@ -4296,16 +4301,24 @@ function dayRecapHTML(dt,plan){
 }
 /* routines land on today / future days by themselves (planFor seeds new days; this catches routines
    created after the day already existed). A routine ✕-ed on a day goes into that day's routineSkip. */
+/* is this routine wanted on that day? weekday / daily rules: due that day; frequency rules ("2× / week"): any day
+   while the period's count of ticked days is still below the target */
+function routineWantedOn(it, dt){
+  const r=it.recurringRule; if(!r || it.status==="done" || !routineDueOn(r,dt)) return false;
+  return r.type!=="freq" || freqDoneCount(P().dayPlans, it.id, r.per, dt) < r.n;
+}
 function ensureRoutineEntries(dt){
   const plan=P().dayPlans[dt]; if(!plan || plan.finalized) return;
   plan.routineSkip=Array.isArray(plan.routineSkip)?plan.routineSkip:[];
-  let added=0;
+  let changed=0;
+  /* a frequency routine already satisfied on other days of the period leaves this day's box again (unticked entries only) */
+  plan.entries=plan.entries.filter(e=>{ const it=pItem(e.itemId); if(!it||!it.recurringRule||it.recurringRule.type!=="freq"||e.done) return true; if(routineWantedOn(it,dt)) return true; changed++; return false; });
   P().items.forEach(it=>{
-    if(it.status==="done" || !routineDueOn(it.recurringRule,dt)) return;
+    if(!routineWantedOn(it,dt)) return;
     if(plan.entries.some(e=>e.itemId===it.id) || plan.routineSkip.includes(it.id)) return;
-    plan.entries.push({id:uid(),itemId:it.id,time:"",dur:it.timeEstimate||0,done:false,label:"",since:dt}); added++;
+    plan.entries.push({id:uid(),itemId:it.id,time:"",dur:it.timeEstimate||0,done:false,label:"",since:dt}); changed++;
   });
-  if(added) save();
+  if(changed) save();
 }
 function dayPageHTML(dt){
   const plan=planFor(dt,true);
@@ -4486,32 +4499,42 @@ function renderPRoutines(){
   const tISO=todayISO();
   const last7=[...Array(7)].map((_,i)=>iso(addDays(new Date(),i-6)));                 /* six days back … today */
   const dayBtns=(sel,ns)=>WD_NAMES.map((w,i)=>`<button type="button" class="rt-day ${sel.includes(i)?"on":""}" data-rtday="${i}" data-ns="${ns}">${w}</button>`).join("");
-  const hist=it=>last7.map(d=>{ const pl=P().dayPlans[d]; const en=pl&&pl.entries.find(e=>e.itemId===it.id); const due=routineDueOn(it.recurringRule,d);
+  const modeSel=(mode,attr)=>`<select ${attr} title="On fixed days, or a number of times per week / month on any days"><option value="days"${mode==="days"?" selected":""}>on days</option><option value="week"${mode==="week"?" selected":""}>times per week</option><option value="month"${mode==="month"?" selected":""}>times per month</option></select>`;
+  const nInput=(n,per,attr)=>`<input type="number" ${attr} min="1" max="${per==="month"?31:7}" value="${n}" title="How many times per ${per}" style="width:56px"> <span class="hint">× per ${per}, any day</span>`;
+  const hist=it=>last7.map(d=>{ const pl=P().dayPlans[d]; const en=pl&&pl.entries.find(e=>e.itemId===it.id); const due=it.recurringRule.type!=="freq"&&routineDueOn(it.recurringRule,d);
       const cls=en?(en.done?"done":(d<tISO?"missed":"open")):(due?"skip":"off");
       const title=WD_NAMES[(parseISO(d).getDay()+6)%7]+" "+fmtShort(d)+" · "+(en?(en.done?"done":(d<tISO?"not done":"open")):(due?"skipped / not opened":"not due"));
       return `<span class="rt-cell ${cls}" title="${esc(title)}">${en?(en.done?"✓":(d<tISO?"✗":"·")):(due?"–":"")}</span>`; }).join("");
+  const progress=it=>{ const r=it.recurringRule; if(r.type!=="freq") return ""; const n=freqDoneCount(P().dayPlans,it.id,r.per,tISO); return `<span class="pi-badge ${n>=r.n?"carry":""}" title="ticked this ${r.per}">${n}/${r.n} this ${r.per}</span>`; };
   host.innerHTML=`
-    <div class="toolbar"><h1 class="page-title">Routines</h1><span style="color:var(--faint);font-size:12.5px;font-weight:600">things that repeat — every day, or on the weekdays you pick</span><div class="grow"></div></div>
-    <p class="wp-hint">Routines land in the ↻ Routines box on each day by themselves. Tick them there like any task; ✕ on a day skips just that day. Stopping a routine keeps what you already ticked.</p>
-    <div class="rt-list">${routines.map(it=>{ const days=it.recurringRule.type==="daily"?[0,1,2,3,4,5,6]:(it.recurringRule.days||[]);
+    <div class="toolbar"><h1 class="page-title">Routines</h1><span style="color:var(--faint);font-size:12.5px;font-weight:600">things that repeat — on fixed days, or a number of times per week / month</span><div class="grow"></div></div>
+    <p class="wp-hint">Routines land in the ↻ Routines box on each day by themselves. Fixed-day routines appear on their days; "times per week / month" routines appear every day until you've ticked them that often in the period, then rest until the next one. ✕ on a day skips just that day; stopping a routine keeps what you already ticked.</p>
+    <div class="rt-list">${routines.map(it=>{ const r=it.recurringRule; const mode=r.type==="freq"?r.per:"days"; const days=r.type==="daily"?[0,1,2,3,4,5,6]:(r.days||[]);
       return `<div class="rt-row" data-rt="${it.id}">
         <input class="rt-title" data-rttitle value="${esc(it.title)}" placeholder="Routine…">
-        <div class="rt-days">${dayBtns(days,it.id)}</div>
+        ${modeSel(mode,"data-rtmode")}
+        ${mode==="days"?`<div class="rt-days">${dayBtns(days,it.id)}</div>`:`<span class="rt-freq">${nInput(r.n,r.per,"data-rtn")}</span>${progress(it)}`}
         <div class="rt-hist" title="last 7 days">${hist(it)}</div>
         <button class="pi-act" data-rtdel title="Stop this routine">✕</button>
       </div>`; }).join("")||`<div class="wp-empty">No routines yet — add the first one below.</div>`}</div>
     <div class="rt-add">
-      <input id="rtNewTitle" placeholder="New routine — e.g. Gym, 20 min reading, stretch, plan tomorrow" autocomplete="off">
+      <input id="rtNewTitle" placeholder="New routine — e.g. Gym, 20 min reading, call mum" autocomplete="off">
+      ${modeSel("days",'id="rtNewMode"')}
       <div class="rt-days" id="rtNewDays">${dayBtns([0,1,2,3,4,5,6],"new")}</div>
+      <span class="rt-freq hidden" id="rtNewFreq">${nInput(1,"week",'id="rtNewN"')}</span>
       <button class="btn primary sm" id="rtAdd">Add routine</button>
     </div>`;
-  const ruleFrom=days=>{ const ds=[...new Set(days)].sort((a,b)=>a-b); return ds.length===7?{type:"daily"}:{type:"weekly",days:ds}; };
+  const ruleFromDays=days=>{ const ds=[...new Set(days)].sort((a,b)=>a-b); return ds.length===7?{type:"daily"}:{type:"weekly",days:ds}; };
   host.querySelectorAll(".rt-row").forEach(row=>{ const it=pItem(row.dataset.rt); if(!it) return;
     row.querySelector("[data-rttitle]").addEventListener("input",e=>{ it.title=e.target.value; save(); });
+    row.querySelector("[data-rtmode]").onchange=e=>{ const m=e.target.value; const r=it.recurringRule;
+      it.recurringRule = m==="days" ? (r.type==="freq"?{type:"daily"}:r) : {type:"freq",per:m,n:Math.min(m==="month"?31:7,(r.type==="freq"?r.n:1))};
+      save(); renderPRoutines(); pR(); };
+    const nI=row.querySelector("[data-rtn]"); if(nI) nI.addEventListener("change",e=>{ const r=it.recurringRule; const max=r.per==="month"?31:7; r.n=Math.min(max,Math.max(1,Math.round(+e.target.value)||1)); e.target.value=r.n; save(); renderPRoutines(); });
     row.querySelectorAll("[data-rtday]").forEach(b=>b.onclick=()=>{ b.classList.toggle("on");
       const days=[...row.querySelectorAll("[data-rtday].on")].map(x=>+x.dataset.rtday);
-      if(!days.length){ b.classList.add("on"); toast("Keep at least one day — or stop the routine with ✕"); return; }
-      it.recurringRule=ruleFrom(days); save(); renderPRoutines(); });
+      if(!days.length){ b.classList.add("on"); toast("Keep at least one day — or switch to “times per week”"); return; }
+      it.recurringRule=ruleFromDays(days); save(); renderPRoutines(); });
     row.querySelector("[data-rtdel]").onclick=async()=>{
       if(!await uiConfirm("Stop “"+(it.title||"this routine")+"”? Past days keep what you ticked; it disappears from today and future days.",{title:"Stop routine?"})) return;
       Object.values(P().dayPlans).forEach(pl=>{ if(pl.date>=tISO) pl.entries=pl.entries.filter(e=>!(e.itemId===it.id && !e.done)); });
@@ -4520,11 +4543,15 @@ function renderPRoutines(){
       if(!used) P().items=P().items.filter(x=>x.id!==it.id);
       save(); renderPRoutines(); };
   });
+  const newMode=$("rtNewMode"), newDays=$("rtNewDays"), newFreq=$("rtNewFreq"), newN=$("rtNewN");
+  newMode.onchange=()=>{ const m=newMode.value; newDays.classList.toggle("hidden",m!=="days"); newFreq.classList.toggle("hidden",m==="days"); if(m!=="days"){ newN.max=m==="month"?31:7; newFreq.querySelector(".hint").textContent="× per "+m+", any day"; } };
   host.querySelectorAll('#rtNewDays [data-rtday]').forEach(b=>b.onclick=()=>b.classList.toggle("on"));
   const add=()=>{ const t=($("rtNewTitle").value||"").trim(); if(!t){ $("rtNewTitle").focus(); return; }
-    const days=[...host.querySelectorAll('#rtNewDays [data-rtday].on')].map(x=>+x.dataset.rtday); if(!days.length){ toast("Pick at least one day"); return; }
-    P().items.push({id:uid(),title:t,notes:"",type:"forMe",timeEstimate:0,energy:"medium",tags:[],status:"open",createdAt:Date.now(),completedAt:0,recurringRule:ruleFrom(days),intention:"",isRest:false,personId:"",bucketId:"",stepId:"",projId:"",focusSessions:0});
-    save(); renderPRoutines(); toast("Routine added ↻ — it's in today's Routines box"); const i2=$("rtNewTitle"); if(i2) i2.focus(); };
+    let rule; const m=newMode.value;
+    if(m==="days"){ const days=[...host.querySelectorAll('#rtNewDays [data-rtday].on')].map(x=>+x.dataset.rtday); if(!days.length){ toast("Pick at least one day"); return; } rule=ruleFromDays(days); }
+    else rule={type:"freq",per:m,n:Math.min(m==="month"?31:7,Math.max(1,Math.round(+newN.value)||1))};
+    P().items.push({id:uid(),title:t,notes:"",type:"forMe",timeEstimate:0,energy:"medium",tags:[],status:"open",createdAt:Date.now(),completedAt:0,recurringRule:rule,intention:"",isRest:false,personId:"",bucketId:"",stepId:"",projId:"",focusSessions:0});
+    save(); renderPRoutines(); toast("Routine added ↻ — "+routineLabel(rule)); const i2=$("rtNewTitle"); if(i2) i2.focus(); };
   $("rtAdd").onclick=add; $("rtNewTitle").addEventListener("keydown",e=>{ if(e.key==="Enter") add(); });
 }
 
@@ -4914,7 +4941,7 @@ function openPItemModal(id,defaults){
     <div class="field"><label>What is it?</label><input id="piTitle" value="${esc(it.title)}"></div>
     <div class="grid2">
       <div class="field"><label>Kind</label><select id="piType"><option value="responsibility"${it.type!=="forMe"?" selected":""}>Task</option><option value="forMe"${it.type==="forMe"?" selected":""}>For me</option></select></div>
-      <div class="field"><label>Repeats <span class="hint">(mixes of days: ↻ Routines on Today)</span></label><select id="piRec"><option value=""${!it.recurringRule?" selected":""}>Never</option><option value="daily"${rr.type==="daily"?" selected":""}>Every day</option><option value="wd"${rr.type==="weekly"&&(rr.days||[]).join()==="0,1,2,3,4"?" selected":""}>Weekdays</option><option value="we"${rr.type==="weekly"&&(rr.days||[]).join()==="5,6"?" selected":""}>Weekends</option>${WD_NAMES.map((w,i)=>`<option value="w${i}"${rr.type==="weekly"&&(rr.days||[]).length===1&&rr.days[0]===i?" selected":""}>Every ${w}</option>`).join("")}</select></div>
+      <div class="field"><label>Repeats <span class="hint">(mixes of days / other counts: the Routines tab)</span></label><select id="piRec"><option value=""${!it.recurringRule?" selected":""}>Never</option><option value="daily"${rr.type==="daily"?" selected":""}>Every day</option><option value="wd"${rr.type==="weekly"&&(rr.days||[]).join()==="0,1,2,3,4"?" selected":""}>Weekdays</option><option value="we"${rr.type==="weekly"&&(rr.days||[]).join()==="5,6"?" selected":""}>Weekends</option>${WD_NAMES.map((w,i)=>`<option value="w${i}"${rr.type==="weekly"&&(rr.days||[]).length===1&&rr.days[0]===i?" selected":""}>Every ${w}</option>`).join("")}<option value="f1w"${rr.type==="freq"&&rr.per==="week"&&rr.n===1?" selected":""}>Once a week (any day)</option><option value="f2w"${rr.type==="freq"&&rr.per==="week"&&rr.n===2?" selected":""}>Twice a week (any days)</option><option value="f3w"${rr.type==="freq"&&rr.per==="week"&&rr.n===3?" selected":""}>3× a week (any days)</option><option value="f1m"${rr.type==="freq"&&rr.per==="month"&&rr.n===1?" selected":""}>Once a month (any day)</option></select></div>
     </div>
     <div class="grid2">
       <div class="field"><label>Part of a project (optional)</label><select id="piProj"><option value="">—</option>${P().projects.filter(p=>p.status!=="done").map(p=>`<option value="${p.id}"${p.id===it.projId?" selected":""}>${esc(p.title)}</option>`).join("")}</select></div>
@@ -4934,7 +4961,7 @@ function openPItemModal(id,defaults){
     save(); closePM("pItemModal"); pR(); };
   $("piSave").onclick=()=>{
     const title=($("piTitle").value||"").trim(); if(!title){ $("piTitle").focus(); return; }
-    const rec=$("piRec").value; const rule=rec===""?null:(rec==="daily"?{type:"daily"}:rec==="wd"?{type:"weekly",days:[0,1,2,3,4]}:rec==="we"?{type:"weekly",days:[5,6]}:{type:"weekly",days:[+rec.slice(1)]});
+    const rec=$("piRec").value; const rule=rec===""?null:(rec==="daily"?{type:"daily"}:rec==="wd"?{type:"weekly",days:[0,1,2,3,4]}:rec==="we"?{type:"weekly",days:[5,6]}:/^f\d+[wm]$/.test(rec)?{type:"freq",per:rec.endsWith("m")?"month":"week",n:+rec.slice(1,-1)}:{type:"weekly",days:[+rec.slice(1)]});
     const vals={title,type:$("piType").value,personId:$("piPerson").value,projId:$("piProj").value,notes:$("piNotes").value,recurringRule:rule};
     if(id) Object.assign(pItem(id),vals);
     else P().items.push(Object.assign({id:uid(),timeEstimate:0,energy:"medium",tags:[],intention:"",isRest:false,status:"open",createdAt:Date.now(),completedAt:0,bucketId:"",stepId:"",focusSessions:0},vals));
