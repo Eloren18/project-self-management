@@ -700,6 +700,9 @@
   .dq.never{border-color:color-mix(in srgb,var(--p-asap) 45%,var(--border));} .dq.avoid{border-color:#c76a0088;} .dq.notideal{border-color:#858b9988;}
   .dq-chip{display:inline-flex;align-items:center;gap:2px;}
   .detox-lane .pi-row.slipped{background:color-mix(in srgb,var(--p-asap) 8%,var(--surface));}
+  .detox-ctr{font-size:11px;font-weight:800;padding:2px 8px;border:1px solid var(--border);background:var(--surface);margin-left:4px;white-space:nowrap;} .detox-ctr.never{color:var(--p-asap);border-color:color-mix(in srgb,var(--p-asap) 45%,var(--border));} .detox-ctr.avoid{color:#c76a00;border-color:#c76a0088;}
+  .detox-counters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:16px;} .detox-counters .detox-counter{margin-bottom:0;}
+  .detox-counter.avoid .dc-num{color:#c76a00;} .dc-tier{font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
   .detox-group{margin:4px 0 10px;} .detox-group .detox-tier-h{margin:6px 0 4px;} .check-sm.on.slip{background:var(--p-asap);border-color:var(--p-asap);}
   .recap-chip.slip{color:var(--p-asap);}
   .rt-freq{display:inline-flex;align-items:center;gap:6px;} .rt-freq input{padding:5px 6px;border:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--text);}
@@ -1451,15 +1454,16 @@ function normalizePersonal(p){
   p.detox.rules = (p.detox.rules && typeof p.detox.rules==="object") ? p.detox.rules : {};
   ["never","avoid","notideal"].forEach(k=>{ const a=p.detox.rules; a[k]=Array.isArray(a[k])?a[k]:[]; a[k].forEach(r=>{ r.id ||= uid(); r.text ??= ""; }); });
   p.detox.log = Array.isArray(p.detox.log) ? p.detox.log : [];
-  p.detox.log.forEach(x=>{ x.id ||= uid(); x.date ??= ""; x.ts ??= 0; x.tier=["never","avoid","notideal"].includes(x.tier)?x.tier:"never"; x.note ??= ""; });
+  /* two tiers only (Oct 2026): the old "not ideal" tier folds into "try to avoid" — in the journal and in the options */
+  p.detox.log.forEach(x=>{ x.id ||= uid(); x.date ??= ""; x.ts ??= 0; x.tier=(x.tier==="avoid"||x.tier==="notideal")?"avoid":"never"; x.note ??= ""; });
   p.detox.startedAt ??= "";
   /* quick slips: the typical ways of slipping, one tap to log (text + which tier it counts as) */
   p.detox.slipActs = Array.isArray(p.detox.slipActs) ? p.detox.slipActs : [];
-  p.detox.slipActs.forEach(a=>{ a.id ||= uid(); a.text ??= ""; a.tier=["never","avoid","notideal"].includes(a.tier)?a.tier:"never"; });
+  p.detox.slipActs.forEach(a=>{ a.id ||= uid(); a.text ??= ""; a.tier=(a.tier==="avoid"||a.tier==="notideal")?"avoid":"never"; });
   /* the old plain-text "rules" lists merged into the slip options (Oct 2026): a rule is a checkbox option of its
      tier. Same text (case-insensitive) in the same tier is not duplicated; the rule lists are emptied afterwards. */
   { const have=new Set(p.detox.slipActs.map(a=>a.tier+"|"+(a.text||"").trim().toLowerCase()));
-    ["never","avoid","notideal"].forEach(k=>{ (p.detox.rules[k]||[]).forEach(r=>{ const t=(r.text||"").trim(); if(!t) return; const key=k+"|"+t.toLowerCase(); if(have.has(key)) return; have.add(key); p.detox.slipActs.push({id:r.id||uid(),text:t,tier:k}); }); p.detox.rules[k]=[]; }); }
+    ["never","avoid","notideal"].forEach(k=>{ const tier=k==="never"?"never":"avoid"; (p.detox.rules[k]||[]).forEach(r=>{ const t=(r.text||"").trim(); if(!t) return; const key=tier+"|"+t.toLowerCase(); if(have.has(key)) return; have.add(key); p.detox.slipActs.push({id:r.id||uid(),text:t,tier}); }); p.detox.rules[k]=[]; }); }
   return p;
 }
 function load(){
@@ -4086,12 +4090,13 @@ function pStats(){
     (pl.entries||[]).forEach(e=>{ const it=pItem(e.itemId); if(it&&it.recurringRule){ routDue++; if(e.done) routDone++; } });
   });
   slips=log.filter(x=>x.tier==="never"&&x.date>=monthStart&&x.date<=tISO).length;
+  const slipsAvoid=log.filter(x=>x.tier==="avoid"&&x.date>=monthStart&&x.date<=tISO).length;
   return {
     meWeek:days(ws,tISO,dayHasForMe),
     weekLen:Math.round((d0(new Date())-d0(parseISO(ws)))/864e5)+1,
     meMonth:days(monthStart,tISO,dayHasForMe),
     monthLen:Math.round((d0(new Date())-d0(parseISO(monthStart)))/864e5)+1,
-    meets,refl,checkins,routDone,routDue,slips,finalizedWeek,finalizedMonth,streak:finalizeStreak()
+    meets,refl,checkins,routDone,routDue,slips,slipsAvoid,finalizedWeek,finalizedMonth,streak:finalizeStreak()
   };
 }
 
@@ -4124,56 +4129,75 @@ function renderPHub(){ renderPOverview(); renderPProjects(); }
 function pR(){ if(appMode!=="personal") return; if(["overview","resp","pprojects"].includes(pTab)) pTab="hub"; ({hub:renderPHub,today:renderPToday,todo:renderPToDo,tomorrow:renderPTomorrow,routines:renderPRoutines,pcal:renderPCal,focus:renderPFocus,bucket:renderPBucket,people:renderPPeople,log:renderPLog,detox:renderPDetox,pnotes:renderPNotes}[pTab]||renderPToday)(); }
 /* ============ ADDICTION / DOPAMINE-DETOX ============ */
 const DETOX_GOAL=30;
-function detoxCleanDays(){
-  const dx=P().detox; if(!dx) return 0;
-  const slips=(dx.log||[]).filter(x=>x.tier==="never"&&x.date).map(x=>x.date).sort();
+/* two tiers, two counters: days since the last "never do" slip and days since the last "try to avoid" slip
+   (each counts from detox.startedAt while that tier has no slip yet) */
+const DETOX_TIERS=[["never","🚫 Never do","never-do"],["avoid","⚠️ Try to avoid","try-to-avoid"]];
+const DETOX_TIER_LABEL={never:"never do",avoid:"try to avoid"};
+function detoxTierColor(k){ return k==="never"?"var(--p-asap)":"#c76a00"; }
+function detoxCleanDays(tier){
+  const dx=P().detox; if(!dx) return 0; tier=tier||"never";
+  const slips=(dx.log||[]).filter(x=>x.tier===tier&&x.date).map(x=>x.date).sort();
   const anchor = slips.length ? slips[slips.length-1] : (dx.startedAt||"");
   if(!anchor||!parseISO(anchor)) return 0;
   return Math.max(0, Math.round((d0(new Date())-d0(parseISO(anchor)))/864e5));
 }
 function detoxSlipOn(dt){ const dx=P().detox; return dx&&(dx.log||[]).find(x=>x.tier==="never"&&x.date===dt)||null; }
-function detoxLog(tier,dt,note){ const dx=P().detox; dx.log.push({id:uid(),ts:Date.now(),date:dt,tier,note:(note||"").trim()}); if(!dx.startedAt) dx.startedAt=todayISO(); save(); }
-const DETOX_TIERS=[["never","🚫 Never do","never-do"],["avoid","⚠️ Try to avoid","try-to-avoid"],["notideal","〜 Not ideal","not-ideal"]];
-function detoxTierColor(k){ return k==="never"?"var(--p-asap)":k==="avoid"?"#c76a00":"#858b99"; }
-/* the detox box on the day page (and the Detox tab's "today"): one checkbox per slip activity — tick = it happened that day */
 function detoxSlipsOn(dt){ return ((P().detox&&P().detox.log)||[]).filter(x=>x.date===dt); }
-const DETOX_TIER_LABEL={never:"never do",avoid:"try to avoid",notideal:"not ideal"};
-/* opts.manage (Detox tab): the same box, but every option is editable in place, removable, and each tier has an add line */
+function detoxLog(tier,dt,note){ const dx=P().detox; dx.log.push({id:uid(),ts:Date.now(),date:dt,tier,note:(note||"").trim()}); if(!dx.startedAt) dx.startedAt=todayISO(); save(); }
+function detoxCountersHTML(){ const n=detoxCleanDays("never"), a=detoxCleanDays("avoid"); return `<span class="detox-ctr never" title="days since the last never-do slip">🔥 ${n}d</span><span class="detox-ctr avoid" title="days since the last try-to-avoid slip">⚠️ ${a}d</span>`; }
+/* the detox box on the day page (and the Detox tab's "today"): one checkbox per slip activity — tick = it happened that day */
+/* day page (compact): the two counters, the slips logged that day, and ONE dropdown to log a slip — options grouped
+   by tier. opts.manage (Detox tab): every option as a checkbox for today, editable in place, removable, add line per tier. */
 function detoxBoxHTML(dt, opts){
   opts=opts||{}; const manage=!!opts.manage;
-  const dx=P().detox; const acts=dx.slipActs||[]; const days=detoxCleanDays(); const slips=detoxSlipsOn(dt);
+  const dx=P().detox; const acts=dx.slipActs||[]; const slips=detoxSlipsOn(dt);
   const isOn=a=>slips.some(x=>x.tier===a.tier && x.note===a.text);
-  const others=slips.filter(x=>!acts.some(a=>a.tier===x.tier&&a.text===x.note));   /* free-text slips logged with "other…" */
   const never=slips.some(x=>x.tier==="never");
-  const row=a=>`<div class="pi-row ${isOn(a)?"slipped":""}" data-slipact="${a.id}" style="align-items:center;border-left-color:${detoxTierColor(a.tier)}">
-      <div class="check-sm ${isOn(a)?"on slip":""}" data-slipchk title="${isOn(a)?"Slipped — tap to undo":"Tap if this happened"}">${isOn(a)?TICK:""}</div>
-      ${manage
-        ?`<input class="detox-rule-txt" data-acttxt value="${esc(a.text)}" placeholder="How you slip…" autocomplete="off" style="flex:1;min-width:0;font-weight:600"><button class="pi-act" data-actdel title="Remove this option">✕</button>`
-        :`<div style="flex:1;min-width:0"><div class="dp-title-disp">${esc(a.text)}</div><div class="pi-sub"><span class="pi-badge detox-b ${a.tier}">${a.tier==="never"?"never do · resets the counter":DETOX_TIER_LABEL[a.tier]}</span></div></div>`}
+  const slipRow=x=>`<div class="pi-row slipped" data-slipother="${x.id}" style="align-items:center;border-left-color:${detoxTierColor(x.tier)}"><div class="check-sm on slip" data-slipundo title="Undo — remove this slip">${TICK}</div><div style="flex:1;min-width:0"><div class="dp-title-disp">${esc(x.note)||"(no note)"}</div><div class="pi-sub"><span class="pi-badge detox-b ${x.tier}">${DETOX_TIER_LABEL[x.tier]||x.tier}</span></div></div></div>`;
+  if(!manage){
+    return `<div class="lane detox-lane ${never?"slipped":""}" data-lane="detox" style="border-top-color:var(--p-asap)">
+      <h3 style="color:var(--p-asap)">🛡 Detox <span class="grow"></span>${detoxCountersHTML()}</h3>
+      ${slips.map(slipRow).join("")||`<div class="wp-empty">No slip ${dt===todayISO()?"today":"on this day"} — keep going.</div>`}
+      <select data-slipsel style="width:100%;padding:7px 9px;border:1px solid var(--border);background:var(--surface);margin-top:4px;font-size:12px;color:var(--muted)">
+        <option value="">Did you slip? pick what happened…</option>
+        ${DETOX_TIERS.map(([k,lab])=>`<optgroup label="${lab}${k==="never"?" — resets the never-do counter":" — resets the avoid counter"}">${acts.filter(a=>a.tier===k).map(a=>`<option value="${a.id}"${isOn(a)?" disabled":""}>${esc(a.text)}${isOn(a)?" ✓":""}</option>`).join("")}<option value="__other_${k}">other ${DETOX_TIER_LABEL[k]} slip…</option></optgroup>`).join("")}
+      </select>
+      <div class="dp-add" style="display:flex;gap:6px;align-items:center;justify-content:flex-end"><button class="btn ghost sm" data-detoxmanage title="Detox tab — edit the options, see the journal">⚙ manage</button></div>
     </div>`;
-  const body = manage
-    ? DETOX_TIERS.map(([k,lab,phk])=>`<div class="detox-group ${k}">
-        <div class="detox-tier-h"><span>${lab}</span><span class="grow"></span><span class="hint">${k==="never"?"a tick resets the counter":"a tick only goes to the journal"}</span></div>
+  }
+  const row=a=>`<div class="pi-row ${isOn(a)?"slipped":""}" data-slipact="${a.id}" style="align-items:center;border-left-color:${detoxTierColor(a.tier)}">
+      <div class="check-sm ${isOn(a)?"on slip":""}" data-slipchk title="${isOn(a)?"Slipped — tap to undo":"Tap if this happened today"}">${isOn(a)?TICK:""}</div>
+      <input class="detox-rule-txt" data-acttxt value="${esc(a.text)}" placeholder="How you slip…" autocomplete="off" style="flex:1;min-width:0;font-weight:600"><button class="pi-act" data-actdel title="Remove this option">✕</button>
+    </div>`;
+  const others=slips.filter(x=>!acts.some(a=>a.tier===x.tier&&a.text===x.note));   /* free-text slips logged with "other…" */
+  return `<div class="lane detox-lane ${never?"slipped":""}" data-lane="detox" style="border-top-color:var(--p-asap)">
+    <h3 style="color:var(--p-asap)">🛡 Detox · today <span class="grow"></span>${detoxCountersHTML()}</h3>
+    ${DETOX_TIERS.map(([k,lab,phk])=>`<div class="detox-group ${k}">
+        <div class="detox-tier-h"><span>${lab}</span><span class="grow"></span><span class="hint">a tick resets the ${DETOX_TIER_LABEL[k]} counter</span></div>
         ${acts.filter(a=>a.tier===k).map(row).join("")||`<div class="wp-empty" style="padding:2px 0 6px">no ${phk} options yet</div>`}
         <input class="detox-add" data-qadd="${k}" placeholder="＋ add a ${phk} option… Enter" autocomplete="off">
-      </div>`).join("")
-    : (acts.map(row).join("")||`<div class="wp-empty">No slip options yet — add the ways you typically slip in the Detox tab.</div>`);
-  return `<div class="lane detox-lane ${never?"slipped":""}" data-lane="detox" style="border-top-color:var(--p-asap)">
-    <h3 style="color:var(--p-asap)">🛡 Detox${manage?" · today":""} <span class="grow"></span><span class="hint">🔥 ${days} day${days===1?"":"s"} clean${never?" · slipped":""}</span></h3>
-    ${body}
-    ${others.map(x=>`<div class="pi-row slipped" data-slipother="${x.id}" style="align-items:center;border-left-color:${detoxTierColor(x.tier)}"><div class="check-sm on slip" data-slipundo title="Remove this slip">${TICK}</div><div style="flex:1;min-width:0"><div class="dp-title-disp">${esc(x.note)||"(no note)"}</div><div class="pi-sub"><span class="pi-badge detox-b ${x.tier}">${DETOX_TIER_LABEL[x.tier]||x.tier}</span></div></div></div>`).join("")}
-    <div class="dp-add" style="display:flex;gap:6px;align-items:center"><button class="btn ghost sm" data-detoxother title="Log a one-off slip with your own line">＋ other…</button><span class="grow"></span>${manage?"":`<button class="btn ghost sm" data-detoxmanage title="Detox tab — edit the options, see the journal">⚙ manage</button>`}</div>
+      </div>`).join("")}
+    ${others.map(slipRow).join("")}
+    <div class="dp-add" style="display:flex;gap:6px;align-items:center"><button class="btn ghost sm" data-detoxother="never" title="Log a one-off never-do slip with your own line">＋ other never-do…</button><button class="btn ghost sm" data-detoxother="avoid" title="Log a one-off try-to-avoid slip with your own line">＋ other try-to-avoid…</button></div>
   </div>`;
 }
 function bindDetoxBox(host,dt,rerender){
+  const logOther=async tier=>{ const note=await uiPrompt("What happened?",{sub:tier==="never"?"Logged as a “Never do” slip — resets that counter.":"Logged as a “Try to avoid” slip — resets that counter.",placeholder:"a line on what happened…",yes:"Log it"}); if(note===null) return false; detoxLog(tier,dt,note); return true; };
+  /* day page: the dropdown */
+  const sel=host.querySelector("[data-slipsel]");
+  if(sel) sel.onchange=async()=>{ const v=sel.value; if(!v) return; sel.value="";
+    if(v.startsWith("__other_")){ if(await logOther(v.slice(8))) rerender(); return; }
+    const a=(P().detox.slipActs||[]).find(x=>x.id===v); if(!a) return;
+    if(detoxSlipsOn(dt).some(x=>x.tier===a.tier&&x.note===a.text)){ toast("Already logged for this day"); return; }
+    detoxLog(a.tier,dt,a.text); toast((a.tier==="never"?"Never-do":"Try-to-avoid")+" slip logged — that counter starts again tomorrow"); rerender(); };
+  host.querySelectorAll("[data-slipundo]").forEach(b=>b.onclick=()=>{ const id=b.closest("[data-slipother]").dataset.slipother; const dx=P().detox; dx.log=dx.log.filter(x=>x.id!==id); save(); rerender(); });
+  host.querySelectorAll("[data-detoxother]").forEach(b=>b.onclick=async()=>{ if(await logOther(b.dataset.detoxother)) rerender(); });
+  const dxm=host.querySelector("[data-detoxmanage]"); if(dxm) dxm.onclick=()=>switchPTab("detox");
+  /* manage mode (Detox tab): checkboxes, rename / remove / add options */
   host.querySelectorAll("[data-slipchk]").forEach(b=>b.onclick=()=>{ const id=b.closest("[data-slipact]").dataset.slipact; const dx=P().detox; const a=(dx.slipActs||[]).find(x=>x.id===id); if(!a) return;
     const ex=(dx.log||[]).find(x=>x.date===dt&&x.tier===a.tier&&x.note===a.text);
-    if(ex){ dx.log=dx.log.filter(x=>x.id!==ex.id); save(); } else { detoxLog(a.tier,dt,a.text); if(a.tier==="never") toast("Slip logged — the counter starts again tomorrow"); }
+    if(ex){ dx.log=dx.log.filter(x=>x.id!==ex.id); save(); } else { detoxLog(a.tier,dt,a.text); toast((a.tier==="never"?"Never-do":"Try-to-avoid")+" slip logged — that counter starts again tomorrow"); }
     rerender(); });
-  host.querySelectorAll("[data-slipundo]").forEach(b=>b.onclick=()=>{ const id=b.closest("[data-slipother]").dataset.slipother; const dx=P().detox; dx.log=dx.log.filter(x=>x.id!==id); save(); rerender(); });
-  const dxo=host.querySelector("[data-detoxother]"); if(dxo) dxo.onclick=async()=>{ const note=await uiPrompt("What happened?",{sub:"Logged as a “Never do” slip — resets your counter.",placeholder:"a line on what happened…",yes:"Log it"}); if(note===null) return; detoxLog("never",dt,note); rerender(); };
-  const dxm=host.querySelector("[data-detoxmanage]"); if(dxm) dxm.onclick=()=>switchPTab("detox");
-  /* manage mode: rename / remove / add options */
   host.querySelectorAll("[data-slipact]").forEach(row=>{ const a=(P().detox.slipActs||[]).find(x=>x.id===row.dataset.slipact); if(!a) return;
     const tx=row.querySelector("[data-acttxt]"); if(tx) tx.addEventListener("input",e=>{ a.text=e.target.value; save(); });
     const del=row.querySelector("[data-actdel]"); if(del) del.onclick=()=>{ P().detox.slipActs=(P().detox.slipActs||[]).filter(x=>x.id!==a.id); save(); rerender(); };
@@ -4186,24 +4210,35 @@ function renderPDetox(){
   const host=$("pDetoxBody"); if(!host) return;
   const dx=P().detox;
   if(!dx.startedAt){ dx.startedAt=todayISO(); save(); }
-  const days=detoxCleanDays();
-  const win=days>=DETOX_GOAL;
-  const milestone = win ? `🏆 30-day milestone cleared — ${days} days and counting` : `${DETOX_GOAL-days} day${DETOX_GOAL-days===1?"":"s"} to your 30-day milestone`;
+  const n=detoxCleanDays("never"), a=detoxCleanDays("avoid");
+  const win=n>=DETOX_GOAL;
+  const milestone = win ? `🏆 30-day milestone cleared — ${n} days and counting` : `${DETOX_GOAL-n} day${DETOX_GOAL-n===1?"":"s"} to your 30-day milestone`;
+  const monthStart=iso(new Date(new Date().getFullYear(),new Date().getMonth(),1));
+  const monthSlips=k=>(dx.log||[]).filter(x=>x.tier===k&&x.date>=monthStart).length;
   const journal=(dx.log||[]).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
   host.innerHTML=`
     <div class="toolbar"><h1 class="page-title">Detox</h1><div class="grow"></div></div>
-    <div class="detox-counter ${win?"win":""}">
-      <div class="dc-num">${days}</div>
-      <div class="dc-lab">day${days===1?"":"s"} clean${detoxSlipsOn(todayISO()).some(x=>x.tier==="never")?" · slip logged today":""}</div>
-      <div class="dc-milestone">${milestone}</div>
-      <div class="dc-bar"><i style="width:${Math.min(100,Math.round(days/DETOX_GOAL*100))}%"></i></div>
+    <div class="detox-counters">
+      <div class="detox-counter ${win?"win":""}">
+        <div class="dc-tier">🚫 Never do</div>
+        <div class="dc-num">${n}</div>
+        <div class="dc-lab">day${n===1?"":"s"} clean${detoxSlipsOn(todayISO()).some(x=>x.tier==="never")?" · slip logged today":""}</div>
+        <div class="dc-milestone">${milestone}</div>
+        <div class="dc-bar"><i style="width:${Math.min(100,Math.round(n/DETOX_GOAL*100))}%"></i></div>
+      </div>
+      <div class="detox-counter avoid">
+        <div class="dc-tier">⚠️ Try to avoid</div>
+        <div class="dc-num">${a}</div>
+        <div class="dc-lab">day${a===1?"":"s"} since the last slip${detoxSlipsOn(todayISO()).some(x=>x.tier==="avoid")?" · slip logged today":""}</div>
+        <div class="dc-milestone">${monthSlips("avoid")} slip${monthSlips("avoid")===1?"":"s"} this month</div>
+      </div>
     </div>
-    <div class="section-h">Your slip options <span class="line"></span><span class="hint">tick what happened today · edit, remove or add options — the same box sits on every day page</span></div>
+    <div class="section-h">Your slip options <span class="line"></span><span class="hint">tick what happened today · edit, remove or add options — the day page offers them in a dropdown</span></div>
     <div id="detoxTodayBox">${detoxBoxHTML(todayISO(),{manage:true})}</div>
     <div class="section-h">Addiction journal <span class="line"></span></div>
     ${journal.length?journal.map(x=>`<div class="pi-row" data-jrow="${x.id}" style="align-items:flex-start;border-left-color:${detoxTierColor(x.tier)}">
         <span class="pi-badge" style="margin-top:2px">${esc(fmtShort(x.date))}</span>
-        <span class="pi-badge detox-b ${x.tier}" style="margin-top:2px">${x.tier==="never"?"never":x.tier==="avoid"?"avoid":"not ideal"}</span>
+        <span class="pi-badge detox-b ${x.tier}" style="margin-top:2px">${DETOX_TIER_LABEL[x.tier]||x.tier}</span>
         <span style="flex:1;min-width:0;font-size:12.5px;line-height:1.5">${esc(x.note)||'<span style="color:var(--faint)">(no note)</span>'}</span>
         <button class="pi-act" data-jdel title="Remove this entry">✕</button>
       </div>`).join(""):`<div style="font-size:12.5px;color:var(--faint)">No infractions logged. One day at a time.</div>`}`;
@@ -4853,7 +4888,7 @@ function renderPOverview(){
       <div class="kpi"><div class="lab">For-me days · this week</div><div class="val">${st.meWeek}<em> / ${st.weekLen}</em></div></div>
       <div class="kpi"><div class="lab">For-me days · this month</div><div class="val">${st.meMonth}<em> / ${st.monthLen}</em></div></div>
       <div class="kpi"><div class="lab">↻ Routines done · this month</div><div class="val">${st.routDone}<em> / ${st.routDue}</em></div></div>
-      <div class="kpi"><div class="lab" style="color:var(--p-asap)">🛡 Slips · this month</div><div class="val" style="color:var(--p-asap)">${st.slips}</div></div>
+      <div class="kpi"><div class="lab" style="color:var(--p-asap)">🛡 Slips · this month</div><div class="val" style="color:var(--p-asap)">${st.slips}<em> never · ${st.slipsAvoid} avoid</em></div></div>
       <div class="kpi"><div class="lab">Meetups · this month</div><div class="val">${st.meets}</div></div>
       <div class="kpi"><div class="lab">Reflections · this month</div><div class="val">${st.refl}</div></div>
       <div class="kpi"><div class="lab">☀ Feeling check-ins · this month</div><div class="val">${st.checkins}</div></div>
