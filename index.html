@@ -27,6 +27,7 @@
     --shadow:0 1px 2px rgba(15,17,21,.07);
     --shadow-lg:0 12px 30px rgba(15,17,21,.16);
     --p-asap:#E4002B; --p-high:#c76a00; --p-medium:#1d4fb8; --p-low:#858b99;
+    --goal:#4f46e5; --goal-soft:#eef0ff; /* core goals (Week Prep) */
     --s-nostart:#858b99; --s-progress:#1d4fb8; --s-hold:#8a6116; --s-done:#0c6b3d;
   }
   html[data-theme="dark"]{
@@ -38,6 +39,7 @@
     --shadow:0 1px 2px rgba(0,0,0,.4);
     --shadow-lg:0 14px 34px rgba(0,0,0,.55);
     --p-asap:#ff4d6d; --p-high:#e8973c; --p-medium:#7aa2ff; --p-low:#7e8494;
+    --goal:#8b8cf7; --goal-soft:rgba(139,140,247,.16);
     --s-nostart:#7e8494; --s-progress:#7aa2ff; --s-hold:#d3a94e; --s-done:#3fbf87;
   }
   *{box-sizing:border-box;}
@@ -213,6 +215,14 @@
   .trow-kind{border:1px solid var(--text);background:transparent;color:var(--text);cursor:pointer;font-weight:800;text-transform:uppercase;letter-spacing:.4px;}
   .trow-kind.opt{border:1px dashed var(--border);color:var(--muted);}
   .trow.opt{border-left-style:dashed;}
+  /* core goals (Week Prep): a distinct accent everywhere they show up */
+  .trow.goal{border-left-color:var(--goal);background:color-mix(in srgb,var(--goal) 5%,var(--surface));}
+  .trow-proj.goal{color:var(--goal);background:var(--goal-soft);cursor:default;}
+  .todo-sec.core{color:var(--goal);}
+  .chip.goal-extra{background:var(--goal-soft);color:var(--goal);flex:none;}
+  .wp-hint{font-size:12px;color:var(--faint);margin:-4px 0 10px;line-height:1.5;} .wp-hint b{color:var(--goal);font-weight:800;}
+  .wp-empty{font-size:12.5px;color:var(--faint);padding:2px 0 8px;}
+  .wp-add{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;} .wp-add input{flex:1;min-width:180px;padding:8px 11px;border:1px solid var(--border);background:var(--surface);outline:none;font-weight:500;}
 
   /* ===== project page ===== */
   .pp-wrap{max-width:1150px;margin:0;}
@@ -1200,7 +1210,9 @@ function seed(){
     /* updatedAt: 0 is deliberate — a freshly-seeded device must NEVER outrank the cloud copy.
        (A fresh browser once seeded itself "newer" than the real data and overwrote it. Never again.) */
 }
-function normTask(t){ t.id ||= uid(); t.text ??= ""; t.done=!!t.done; if(t.deadline===undefined) t.deadline = t.due || ""; delete t.due; t.deadline ??= ""; t.deadlineWeek = !!t.deadlineWeek; t.notes ??= ""; t.completedAt ??= 0; t.optional = !!t.optional; return t; }
+function normTask(t){ t.id ||= uid(); t.text ??= ""; t.done=!!t.done; if(t.deadline===undefined) t.deadline = t.due || ""; delete t.due; t.deadline ??= ""; t.deadlineWeek = !!t.deadlineWeek; t.notes ??= ""; t.completedAt ??= 0; t.optional = !!t.optional;
+  /* core goals (Week Prep): goal:true + weekStart = Monday of the week they belong to; extra = an unplanned win logged as achieved */
+  t.goal = !!t.goal; t.weekStart = (t.goal && typeof t.weekStart==="string") ? t.weekStart : ""; t.extra = t.goal && !!t.extra; return t; }
 /* Structured meeting notes (project notes + meeting-log entries share this shape).
    The old free-text field migrates into "What was discussed?" and is NEVER dropped —
    if that section already had text, the legacy note is appended rather than lost.
@@ -1272,6 +1284,7 @@ function normalize(d){
   d.tasks = Array.isArray(d.tasks) ? d.tasks : []; d.tasks.forEach(normTask);
   d.weekPrep = Array.isArray(d.weekPrep) ? d.weekPrep : [];
   d.weekPrep.forEach(w=>{ w.id ||= uid(); w.weekStart ??= ""; w.notes ??= ""; if(!Array.isArray(w.items)) w.items=[]; w.items.forEach(it=>{ it.id ||= uid(); it.text ??= ""; it.done = !!it.done; }); w.rich = !!w.rich; w.updatedAt ??= 0; });
+  migrateWeekPrepItems(d);                                                        /* the old "key things" checklist → core-goal tasks (Oct 2026) */
   d.docs = Array.isArray(d.docs) ? d.docs : [];
   d.docs.forEach(doc=>{ doc.id ||= uid(); doc.title ??= ""; doc.body ??= ""; doc.rich = !!doc.rich; doc.createdAt ??= Date.now(); doc.updatedAt ??= doc.createdAt; if(typeof doc.order!=="number" || !isFinite(doc.order)) doc.order=null; });
   /* manual document order (Sep 2026): documents without one slot in ABOVE the ordered ones, newest edit first —
@@ -1385,6 +1398,34 @@ function load(){
 /* ============================================================
    STATE
    ============================================================ */
+/* ---- Week Prep core goals (pure; tested in S24) ----
+   A core goal is a standalone task (data.tasks) with goal:true and weekStart = the Monday of its week; its
+   deadline defaults to that week's Friday so it flows through To-Do / Calendar like any task. The old Week
+   Prep "key things" checklist (weekPrep[].items) migrates into such tasks once, keeping ids and done flags,
+   so an older device that still writes items cannot create duplicates. weekSummaryText is what the
+   "Copy weekly summary" button puts on the clipboard. */
+function weekFri(ws){ const d=parseISO(ws); return d ? iso(addDays(d,4)) : ""; }
+function newGoalTask(ws, text, opts){ opts=opts||{}; return normTask({ id:uid(), text:String(text||"").trim(), done:!!opts.done, completedAt: opts.done ? Date.now() : 0, deadline:weekFri(ws), goal:true, weekStart:ws, extra:!!opts.extra, createdAt:Date.now() }); }
+function migrateWeekPrepItems(d){
+  d.weekPrep.forEach(w=>{
+    if(!w.items.length || !w.weekStart) return;
+    w.items.forEach(it=>{
+      if(d.tasks.some(t=>t.id===it.id)) return;                                   /* migrated before (an old device re-sent the item) */
+      d.tasks.push(normTask({ id:it.id, text:it.text, done:it.done, completedAt: it.done ? (w.updatedAt||0) : 0, deadline:weekFri(w.weekStart), goal:true, weekStart:w.weekStart, extra:false }));
+    });
+    w.items=[];
+  });
+}
+function goalsOf(tasks, ws){ return (tasks||[]).filter(t=>t.goal && t.weekStart===ws); }
+function weekNo(ws){ const wi=weekInfo(ws); return wi ? wi.week : "?"; }
+function weekLabel(ws){ const s=parseISO(ws), wi=weekInfo(ws); return "W"+weekNo(ws)+" ("+fmtShort(ws)+" – "+(s?fmtShort(iso(addDays(s,6))):"")+(wi?" "+wi.year:"")+")"; }
+function weekSummaryText(ws, tasks){
+  const nx=iso(addDays(parseISO(ws),7));
+  const cur=goalsOf(tasks,ws), done=cur.filter(t=>t.done), open=cur.filter(t=>!t.done), next=goalsOf(tasks,nx);
+  const line=t=>"- "+(t.text||"").trim()+(t.extra?" (unplanned)":"")+((t.notes||"").trim()?"\n"+(t.notes||"").trim().split("\n").map(l=>"  "+l).join("\n"):"");
+  const block=(title,arr)=>title+"\n"+(arr.length?arr.map(line).join("\n"):"- (none)");
+  return "Weekly summary — "+weekLabel(ws)+"\n\n"+block("Achieved this week:",done)+"\n\n"+block("Still open / carried over:",open)+"\n\n"+block("Priorities for next week (W"+weekNo(nx)+"):",next)+"\n";
+}
 /* ---- Documents: manual order (pure; tested in S23) ---- */
 function docsInOrder(docs){ return [...docs].sort((a,b)=>((a.order??0)-(b.order??0)) || ((b.updatedAt||0)-(a.updatedAt||0))); }
 function moveDocBefore(docs, id, beforeId){ /* re-slot one document in front of another (beforeId null = last); rewrites every order as 0..n-1 */
@@ -2341,8 +2382,9 @@ const openNoteIds=new Set(); /* which tasks have their post-it open this session
 function taskRowHTML(t, project, opts){
   opts=opts||{}; const over=isOverdue(t.deadline,t.done,t.deadlineWeek);
   const hasNote=!!(t.notes&&t.notes.trim());
-  const projTag = opts.showProject ? (project?`<span class="trow-proj" data-goproj="${project.id}" style="color:${projColor(project)};background:color-mix(in srgb,${projColor(project)} 12%,transparent)">${esc(project.name)}</span>`:`<span class="trow-proj adhoc">Ad-hoc</span>`) : "";
-  return `<div class="trow ${t.done?'done':''} ${over?'overdue':''} ${t.optional?'opt':''}" data-tid="${t.id}">
+  const projTag = opts.showProject ? (project?`<span class="trow-proj" data-goproj="${project.id}" style="color:${projColor(project)};background:color-mix(in srgb,${projColor(project)} 12%,transparent)">${esc(project.name)}</span>`
+    : t.goal ? `<span class="trow-proj goal" title="Core goal from Week Prep · week ${esc(t.weekStart)}">★ Core · W${weekNo(t.weekStart)}</span>` : `<span class="trow-proj adhoc">Ad-hoc</span>`) : "";
+  return `<div class="trow ${t.done?'done':''} ${over?'overdue':''} ${t.optional?'opt':''} ${t.goal?'goal':''}" data-tid="${t.id}">
     ${opts.grip?`<div class="trow-grip" draggable="true" data-tgrip title="Drag to the other column">⋮⋮</div>`:""}
     <div class="check-sm ${t.done?'on':''}" data-tdone title="Mark done">${t.done?TICK:''}</div>
     <div class="trow-main">
@@ -2399,12 +2441,15 @@ function renderTodo(){
   }
   const byDL=(a,b)=>((a.t.deadline||"9999-99").localeCompare(b.t.deadline||"9999-99"));
   const active=items.filter(x=>!x.t.done), doneItems=items.filter(x=>x.t.done);
-  const t0=d0(new Date()), wkS=weekStart(new Date()), wkE=addDays(wkS,6);
+  const t0=d0(new Date()), wkS=weekStart(new Date()), wkE=addDays(wkS,6), curWs=iso(wkS);
+  /* this week's core goals (Week Prep) get their own group at the top of each column; other weeks' goals flow with the rest */
+  const isCoreNow=t=>t.goal && t.weekStart===curWs;
   /* time groups, computed per column (Mandatory | Optional) */
   const groupOf=list=>{
     const g={overdue:[],today:[],thisWk:[],later:[],noDate:[]};
     list.forEach(x=>{
       const t=x.t;
+      if(isCoreNow(t)) return;
       if(!t.deadline){ g.noDate.push(x); return; }
       if(isOverdue(t.deadline,false,t.deadlineWeek)){ g.overdue.push(x); return; }
       const d=d0(parseISO(t.deadline)); const end=t.deadlineWeek?addDays(d,6):d;
@@ -2435,11 +2480,12 @@ function renderTodo(){
   /* two columns: Mandatory (the default for every task) | Optional. Projects are commitments → Mandatory. */
   const colHTML=kind=>{
     const opt=kind==="optional";
-    const g=groupOf(active.filter(x=>!!x.t.optional===opt));
+    const mine=active.filter(x=>!!x.t.optional===opt), g=groupOf(mine), core=mine.filter(x=>isCoreNow(x.t));
     const projs=opt?[]:overdueProjects, dProjs=opt?[]:doneProjects;
     const done=doneItems.filter(x=>!!x.t.optional===opt).sort((a,b)=>(b.t.completedAt||0)-(a.t.completedAt||0));
-    const n=g.overdue.length+g.today.length+g.thisWk.length+g.later.length+g.noDate.length+projs.length;
+    const n=core.length+g.overdue.length+g.today.length+g.thisWk.length+g.later.length+g.noDate.length+projs.length;
     let h=`<div class="todo-col-h ${opt?'opt':''}">${opt?'Optional':'Mandatory'} <span class="cnt">${n}</span><span class="line"></span><span class="hint">${opt?'nice to do':'must do'}</span></div>`;
+    if(core.length) h+=`<div class="todo-sec core" title="Core goals set in Week Prep for this week">★ Core goals · W${weekNo(curWs)} <span class="line"></span><span style="font-weight:700">${core.length}</span></div>`+core.map(row).join("");
     if(g.overdue.length||projs.length){
       h+=`<div class="todo-sec over">⚠ Overdue <span class="line"></span><span style="font-weight:700">${g.overdue.length+projs.length}</span></div>`;
       h+=projs.map(projRowHTML).join("")+g.overdue.map(row).join("");
@@ -2545,7 +2591,7 @@ function qaAddTask(){
 function calItems(){
   const out=[];
   data.projects.forEach(p=>{ if(p.deadline) out.push({kind:"project",id:p.id,name:p.name||"(untitled)",color:projColor(p),done:p.progress==="Done",deadline:p.deadline,isWk:p.deadlineWeek}); });
-  allTasks().forEach(({t,project})=>{ if(t.deadline) out.push({kind:"task",id:t.id,name:t.text||"(untitled task)",color:project?projColor(project):"var(--primary)",done:t.done,deadline:t.deadline,isWk:t.deadlineWeek}); });
+  allTasks().forEach(({t,project})=>{ if(t.deadline) out.push({kind:"task",id:t.id,name:t.text||"(untitled task)",color:t.goal?"var(--goal)":(project?projColor(project):"var(--primary)"),done:t.done,deadline:t.deadline,isWk:t.deadlineWeek,goal:!!t.goal}); });
   return out;
 }
 function calBlock(it){
@@ -2652,12 +2698,23 @@ function renderWeekPrep(){
   const host=$("weekPrepBody"); if(!host) return;
   const s=parseISO(prepWeekStart), e=addDays(s,6); const wi=weekInfo(prepWeekStart);
   const nowWs=iso(weekStart(new Date())), nextWs=iso(addDays(weekStart(new Date()),7));
+  const nxWs=iso(addDays(s,7)), nxWi=weekInfo(nxWs);                              /* the week after the one on screen */
   const badge = prepWeekStart===nowWs ? '<span class="badge this">This week</span>'
     : prepWeekStart===nextWs ? '<span class="badge next">Next week</span>'
     : prepWeekStart<nowWs ? '<span class="badge past">Past</span>' : "";
   const w=getPrep(prepWeekStart);
-  const items=w?w.items:[], notes=w?w.notes:"";
-  const due=calItems().filter(it=>{ const d=parseISO(it.deadline); if(!d) return false; const end=it.isWk?addDays(d,6):d; return d<=e && end>=s; }).sort((a,b)=>a.deadline.localeCompare(b.deadline));
+  const notes=w?w.notes:"";
+  /* core goals = standalone tasks with goal:true + weekStart (see newGoalTask); this week's and the next week's lists */
+  const goals=goalsOf(data.tasks,prepWeekStart), nextGoals=goalsOf(data.tasks,nxWs);
+  const doneN=goals.filter(t=>t.done).length, openN=goals.length-doneN;
+  const due=calItems().filter(it=>{ if(it.goal) return false; const d=parseISO(it.deadline); if(!d) return false; const end=it.isWk?addDays(d,6):d; return d<=e && end>=s; }).sort((a,b)=>a.deadline.localeCompare(b.deadline));
+  const goalRow=t=>`<div class="trow goal ${t.done?'done':''}" data-gid="${t.id}" style="align-items:center">
+      <div class="check-sm ${t.done?'on':''}" data-gdone title="${t.done?'Achieved — click to reopen':'Mark as achieved'}">${t.done?TICK:''}</div>
+      <input class="trow-text" data-gtext value="${esc(t.text)}" placeholder="Core goal…">
+      ${t.extra?'<span class="chip goal-extra" title="Logged as an unplanned win">extra win</span>':''}
+      ${(t.notes||"").trim()?`<span class="chip trow-note-btn has" title="${esc(t.notes)}">🗒</span>`:''}
+      <button class="tk-del" data-gdel title="Remove"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>`;
   host.innerHTML=`
     <div class="cal-head">
       <button class="icon-btn" id="wpPrev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button>
@@ -2665,23 +2722,26 @@ function renderWeekPrep(){
       <button class="icon-btn" id="wpNext"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg></button>
       ${badge}
       <div class="grow"></div>
+      <button class="btn ghost sm" id="wpCopy" title="Copy this week's achieved and open core goals plus next week's priorities as plain text — paste it into a chat to draft the executive summary">⧉ Copy weekly summary</button>
       <button class="btn ghost sm" id="wpThisBtn">This week</button>
       <button class="btn sm" id="wpNextBtn">Prep next week →</button>
     </div>
-    <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 16px">Your Friday ritual — capture what's coming and what to prepare for the week ahead.</p>
+    <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 16px">Your Friday ritual — tick the core goals you delivered, set the priorities for next week, and copy the summary for your manager.</p>
     <div class="prep-grid">
       <div>
-        <div class="section-h" style="margin-top:0">Key things to look for / prepare${items.length?` · ${items.filter(i=>i.done).length}/${items.length}`:""} <span class="line"></span></div>
-        <div id="wpItems">${items.map(it=>`
-          <div class="trow" data-wid="${it.id}" style="align-items:center">
-            <div class="check-sm ${it.done?'on':''}" data-wdone title="Done">${it.done?TICK:''}</div>
-            <input class="trow-text" data-wtext value="${esc(it.text)}" placeholder="Focus point…" style="${it.done?'text-decoration:line-through;color:var(--faint)':''}">
-            <button class="tk-del" data-wdel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-          </div>`).join("")||`<div style="font-size:12.5px;color:var(--faint);padding:2px 0 8px">Nothing yet — add the key things to watch for below.</div>`}
+        <div class="section-h" style="margin-top:0">Core goals this week · W${wi?wi.week:"?"}${goals.length?` · ${doneN}/${goals.length} achieved`:""} <span class="line"></span>${openN?`<button class="btn ghost sm" id="wpCarry" title="Move the ${openN} open goal${openN>1?"s":""} to next week (W${nxWi?nxWi.week:"?"})">→ Carry ${openN} open to next week</button>`:""}</div>
+        <p class="wp-hint">Executive-level priorities, not day-to-day tasks — they also appear on To-Do in their own <b>★ Core</b> group. Tick what you achieved; log something you delivered that was never planned with <b>＋ Extra win</b>.</p>
+        <div id="wpGoals">${goals.map(goalRow).join("")||`<div class="wp-empty">No core goals for this week yet.</div>`}</div>
+        <div class="wp-add">
+          <input id="wpNewGoal" placeholder="Add a core goal for this week… press Enter" autocomplete="off">
+          <button class="btn sm" id="wpAddGoal">Add</button>
+          <button class="btn ghost sm" id="wpAddExtra" title="Log something you achieved that was not planned — it is added as already achieved">＋ Extra win</button>
         </div>
-        <div style="display:flex;gap:8px;margin-top:4px">
-          <input id="wpNewItem" placeholder="Add a key thing… press Enter" style="flex:1;padding:8px 11px;border:1px solid var(--border);background:var(--surface);outline:none;font-weight:500">
-          <button class="btn sm" id="wpAddItem">Add</button>
+        <div class="section-h">Next week's priorities · W${nxWi?nxWi.week:"?"}${nextGoals.length?` · ${nextGoals.length}`:""} <span class="line"></span></div>
+        <div id="wpNextGoals">${nextGoals.map(goalRow).join("")||`<div class="wp-empty">Nothing planned for W${nxWi?nxWi.week:"?"} yet — add the priorities you will report on.</div>`}</div>
+        <div class="wp-add">
+          <input id="wpNewNext" placeholder="Add a priority for next week… press Enter" autocomplete="off">
+          <button class="btn sm" id="wpAddNext">Add</button>
         </div>
         <div class="section-h">Notes for the week <span class="line"></span></div>
         <div class="field">${noteEditorHTML('id="wpNotes"', notes, !!(w&&w.rich), "What's happening that week? Meetings to prepare, people to chase, decisions coming up, risks to watch…")}</div>
@@ -2701,15 +2761,22 @@ function renderWeekPrep(){
   $("wpNext").onclick=()=>{ prepWeekStart=iso(addDays(parseISO(prepWeekStart),7)); renderWeekPrep(); };
   $("wpThisBtn").onclick=()=>{ prepWeekStart=nowWs; renderWeekPrep(); };
   $("wpNextBtn").onclick=()=>{ prepWeekStart=nextWs; renderWeekPrep(); };
+  $("wpCopy").onclick=()=>copyToClipboard(weekSummaryText(prepWeekStart,data.tasks));
   bindNoteEditor($("wpNotes"), h=>{ const p=ensurePrep(prepWeekStart); p.notes=h; p.rich=true; p.updatedAt=Date.now(); save(); });
-  const addItem=()=>{ const inp=$("wpNewItem"); const txt=(inp.value||"").trim(); if(!txt){ inp.focus(); return; } const p=ensurePrep(prepWeekStart); p.items.push({id:uid(),text:txt,done:false}); p.updatedAt=Date.now(); save(); renderWeekPrep(); $("wpNewItem").focus(); };
-  $("wpAddItem").onclick=addItem;
-  $("wpNewItem").addEventListener("keydown",e=>{ if(e.key==="Enter") addItem(); });
-  host.querySelectorAll("#wpItems .trow").forEach(row=>{
-    const p=getPrep(prepWeekStart); if(!p) return; const it=p.items.find(x=>x.id===row.dataset.wid); if(!it) return;
-    row.querySelector("[data-wdone]").addEventListener("click",()=>{ it.done=!it.done; p.updatedAt=Date.now(); save(); renderWeekPrep(); });
-    row.querySelector("[data-wtext]").addEventListener("input",e=>{ it.text=e.target.value; p.updatedAt=Date.now(); save(); });
-    row.querySelector("[data-wdel]").addEventListener("click",()=>{ p.items=p.items.filter(x=>x.id!==it.id); p.updatedAt=Date.now(); save(); renderWeekPrep(); });
+  /* adding a goal: a real task is created (it shows on To-Do at once); the lists repaint and the input keeps focus */
+  const addGoal=(ws,inputId,opts)=>{ const inp=$(inputId); const txt=(inp.value||"").trim(); if(!txt){ inp.focus(); toast("Type the goal first"); return; }
+    data.tasks.push(newGoalTask(ws,txt,opts)); save(); refreshTaskViews(); renderWeekPrep(); const i2=$(inputId); if(i2) i2.focus(); };
+  $("wpAddGoal").onclick=()=>addGoal(prepWeekStart,"wpNewGoal");
+  $("wpAddExtra").onclick=()=>addGoal(prepWeekStart,"wpNewGoal",{done:true,extra:true});
+  $("wpAddNext").onclick=()=>addGoal(nxWs,"wpNewNext");
+  $("wpNewGoal").addEventListener("keydown",e=>{ if(e.key==="Enter") addGoal(prepWeekStart,"wpNewGoal"); });
+  $("wpNewNext").addEventListener("keydown",e=>{ if(e.key==="Enter") addGoal(nxWs,"wpNewNext"); });
+  const carry=$("wpCarry"); if(carry) carry.onclick=()=>{ let n=0; goalsOf(data.tasks,prepWeekStart).forEach(t=>{ if(!t.done){ t.weekStart=nxWs; t.deadline=weekFri(nxWs); n++; } }); save(); refreshTaskViews(); renderWeekPrep(); toast(n+" goal"+(n>1?"s":"")+" moved to W"+(nxWi?nxWi.week:"?")); };
+  host.querySelectorAll("#wpGoals .trow, #wpNextGoals .trow").forEach(row=>{
+    const t=data.tasks.find(x=>x.id===row.dataset.gid); if(!t) return;
+    row.querySelector("[data-gdone]").addEventListener("click",()=>{ t.done=!t.done; t.completedAt=t.done?Date.now():0; save(); refreshTaskViews(); renderWeekPrep(); });
+    row.querySelector("[data-gtext]").addEventListener("input",e=>{ t.text=e.target.value; save(); });
+    row.querySelector("[data-gdel]").addEventListener("click",()=>{ data.tasks=data.tasks.filter(x=>x.id!==t.id); save(); refreshTaskViews(); renderWeekPrep(); });
   });
   host.querySelectorAll(".wk-ev").forEach(ev=>ev.addEventListener("click",()=>openEvItem(ev.dataset.kind,ev.dataset.id)));
 }

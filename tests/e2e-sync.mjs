@@ -52,6 +52,9 @@ const consts = [
   fullLine(/const GLOSSARY_SOURCES = /),
   fullLine(/const PPROJ_PALETTE=/),
   fullLine(/const uid = \(\) =>/),
+  // date / week helpers (one line each) — the Week Prep core-goal helpers (S24) build on them
+  fullLine(/^function fmtShort\(iso\)\{/m), fullLine(/^function parseISO\(iso\)\{/m), fullLine(/^function iso\(d\)\{/m), fullLine(/^function d0\(d\)\{/m),
+  fullLine(/^function weekStart\(d\)\{/m), fullLine(/^function weekStartOfYear\(y\)\{/m), fullLine(/^function weekInfo\(isoStr\)\{/m), fullLine(/^function addDays\(d,n\)\{/m),
   fullLine(/function errText\(e, fallback\)\{/),
   slice('const SEED_PROJECTS = [', '\n];', true),
 ].join('\n');
@@ -754,6 +757,30 @@ async function HARNESS() {
   }
 
   // ============================================================
+  //  S24 — Week Prep core goals: tasks with goal:true + weekStart; the old key-things checklist migrates; the copy-out text
+  // ============================================================
+  scen('S24 Core goals: key-things migrate to goal tasks (once), goals are real tasks, the weekly summary text is right');
+  {
+    const n1 = normalize({ projects: [], tasks: [{ id: 't1', text: 'ordinary task' }], weekPrep: [{ id: 'w', weekStart: '2026-10-26', notes: '', updatedAt: 5000, items: [{ id: 'k1', text: 'Chase NIQ numbers', done: true }, { id: 'k2', text: 'Prep the Jumbo deck', done: false }] }] });
+    const goals = n1.tasks.filter(t => t.goal);
+    check('the old key-things items become goal tasks of their week (ids and done flags kept, deadline = that Friday)', goals.length === 2 && goals[0].id === 'k1' && goals[0].done === true && goals[0].completedAt === 5000 && goals[1].id === 'k2' && goals[1].done === false && goals.every(t => t.weekStart === '2026-10-26' && t.deadline === '2026-10-30' && !t.optional && !t.extra), JSON.stringify(goals));
+    check('…the checklist is emptied, the ordinary task is untouched and carries the new flags as false', n1.weekPrep[0].items.length === 0 && n1.tasks[0].goal === false && n1.tasks[0].weekStart === '' && n1.tasks[0].extra === false);
+    const n2 = normalize({ projects: [], tasks: n1.tasks, weekPrep: [{ id: 'w', weekStart: '2026-10-26', items: [{ id: 'k1', text: 'Chase NIQ numbers', done: true }] }] });
+    check('an old device re-sending a migrated item does not duplicate it (same id → skipped, list emptied again)', n2.tasks.filter(t => t.goal).length === 2 && n2.weekPrep[0].items.length === 0);
+    check('weekFri gives the Friday of a Monday-based week; goalsOf filters by week', weekFri('2026-10-26') === '2026-10-30' && goalsOf(n2.tasks, '2026-10-26').length === 2 && goalsOf(n2.tasks, '2026-11-02').length === 0);
+    const g = newGoalTask('2026-11-02', '  Launch the NPI dashboard ', { });
+    const extra = newGoalTask('2026-10-26', 'Fixed the promo template', { done: true, extra: true });
+    check('newGoalTask builds a normalized, trimmed, mandatory goal task for its week', g.goal === true && g.weekStart === '2026-11-02' && g.deadline === '2026-11-06' && g.text === 'Launch the NPI dashboard' && g.done === false && g.optional === false && !!g.id);
+    check('…and an extra win is created already achieved', extra.done === true && extra.extra === true && extra.completedAt > 0);
+    const tasks = [...n2.tasks, g, extra]; tasks.find(t => t.id === 'k2').notes = 'blocked by data access\nask Lieke';
+    const txt = weekSummaryText('2026-10-26', tasks);
+    const NL = String.fromCharCode(10);
+    check('weekSummaryText lists achieved goals (extra wins marked), open goals with their notes indented, and next week\'s priorities',
+      txt.startsWith('Weekly summary — W44 (') && txt.includes('Achieved this week:' + NL + '- Chase NIQ numbers' + NL + '- Fixed the promo template (unplanned)') && txt.includes('Still open / carried over:' + NL + '- Prep the Jumbo deck' + NL + '  blocked by data access' + NL + '  ask Lieke') && txt.includes('Priorities for next week (W45):' + NL + '- Launch the NPI dashboard'), JSON.stringify(txt));
+    check('an empty section prints "(none)" instead of vanishing', weekSummaryText('2026-12-07', tasks).includes('Achieved this week:' + NL + '- (none)'));
+  }
+
+  // ============================================================
   //  S21 — fast typing. The cloud echoes every write back through the subscription BEFORE
   //  acknowledging it, so the echo of letter 1 arrives while the device already holds letter 2
   //  and nothing is marked "seen" yet. That echo is OUR OWN write, never an unseen foreign
@@ -921,6 +948,7 @@ sCheck('editors never inject CSS (CSP) and hand back sanitized HTML on every upd
 sCheck('every rich surface mounts through bindRichEditor (Docs, Self Notes, note boxes via bindNoteEditor)', (src.match(/bindRichEditor\(/g) || []).length >= 4 && /return bindRichEditor\(ed, ed\.parentElement/.test(src));
 sCheck('the CSP still allows only this origin + the Convex CDNs for scripts (the editor is local)', /script-src 'self' 'unsafe-inline' https:\/\/esm\.sh https:\/\/cdn\.jsdelivr\.net https:\/\/esm\.run;/.test(src));
 sCheck('indent/outdent work everywhere: lists nest directly (own list nodes), psmIndent + psmListSteps extensions, toolbar buttons call indent()/outdent(), the sanitizer keeps margin-left', /content:LIST_CONTENT/.test(src) && /name:"psmIndent", priority:50/.test(src) && /name:"psmListSteps", priority:1000/.test(src) && /indent:\(\)=>c\(\)\.indent\(\)\.run\(\), outdent:\(\)=>c\(\)\.outdent\(\)\.run\(\)/.test(src) && /bulletList:false, orderedList:false/.test(src) && /\.\.\.psmEditorExtensions\(T\)/.test(src) && /ch\.style\.marginLeft=ml/.test(src));
+sCheck('Week Prep core goals are wired: migration in normalize, goals excluded from "already due", own ★ Core group on To-Do, copy button', /migrateWeekPrepItems\(d\);/.test(src) && /if\(it\.goal\) return false;/.test(src) && /todo-sec core/.test(src) && /id="wpCopy"/.test(src) && /copyToClipboard\(weekSummaryText\(prepWeekStart,data\.tasks\)\)/.test(src) && /id="wpAddExtra"/.test(src) && /trow-proj goal/.test(src));
 sCheck('no grid uses a bare 1fr track (1fr = minmax(auto,1fr): one unwrappable child widened the whole page in half-screen windows)', !/grid-template-columns:[^;]*(?<![\d.])1fr(?!\))/.test(src.slice(0, src.indexOf('</style>'))) && /\.mnote-snip\{[^}]*width:0;/.test(src));
 sCheck('the Documents list can be collapsed (per-device preference) and reordered by drag or ▲/▼ through moveDocBefore', /psmUI_docList/.test(src) && /id="docListToggle"/.test(src) && /id="docJump"/.test(src) && /application\/x-psm-doc/.test(src) && /data-dmove="up"/.test(src) && /moveDocBefore\(data\.docs,id,beforeId\)/.test(src) && /const sorted=docsInOrder\(data\.docs\)/.test(src));
 sCheck('numbered lists separated by blank lines continue their numbering (psmListNumbering plugin, start kept by the sanitizer)', /name:"psmListNumbering"/.test(src) && /appendTransaction:/.test(src) && /a\.name==="start" && ch\.tagName==="OL"/.test(src) && /setMeta\("preventUpdate",true\)/.test(src));
