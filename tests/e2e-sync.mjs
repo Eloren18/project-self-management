@@ -649,23 +649,38 @@ async function HARNESS() {
   }
 
   // ============================================================
-  //  S18 — first-activity prep migrates from legacy string to a checklist (never lost)
+  //  S18 — personal model (Oct 2026): routines (recurringRule days), feeling check-ins, detox quick slips
   // ============================================================
-  scen('S18 First-activity prep: legacy string → checklist, firstDone/firstBarrier preserved');
+  scen('S18 Personal model: routine rules migrate to weekday lists, check-ins and quick slips normalize, the mood vocabulary is sane');
   {
     const blob = normalize(clone({
-      personal: { dayPlans: {
-        '2026-07-01': { firstThing: 'Write', firstPrep: 'open doc\nphone away', firstDone: true, firstBarrier: '' },
-        '2026-07-02': { firstThing: 'Run', firstPrep: [{ id: 'x', text: 'shoes out', done: true }], firstDone: false, firstBarrier: 'tired' },
-      } },
+      personal: {
+        items: [
+          { id: 'r1', title: 'Read', recurringRule: { type: 'weekly', weekday: 2 } },
+          { id: 'r2', title: 'Stretch', recurringRule: { type: 'daily' } },
+          { id: 'r3', title: 'Gym', recurringRule: { type: 'weekly', days: [0, 2, 4, 4, 9, 'x'] } },
+          { id: 'r4', title: 'All week', recurringRule: { type: 'weekly', days: [0, 1, 2, 3, 4, 5, 6] } },
+          { id: 'r5', title: 'Broken', recurringRule: { type: 'weekly' } },
+          { id: 'r6', title: 'Plain', recurringRule: 'nope' },
+        ],
+        dayPlans: { '2026-10-26': { checkins: [{ quad: 'red', emotion: 'Stressed', tags: ['Work'], note: 'deadline' }, { quad: 'purple', emotion: 'x' }], routineSkip: ['r2', 5] } },
+        detox: { slipActs: [{ text: 'Instagram scroll', tier: 'never' }, { text: 'Late snack', tier: 'bogus' }] },
+      },
     }));
-    const d1 = blob.personal.dayPlans['2026-07-01'];
-    const d2 = blob.personal.dayPlans['2026-07-02'];
-    check('legacy string firstPrep becomes a 2-item checklist', Array.isArray(d1.firstPrep) && d1.firstPrep.length === 2 && d1.firstPrep[0].text === 'open doc' && d1.firstPrep[1].text === 'phone away');
-    check('firstDone and firstBarrier are preserved', d1.firstDone === true && d2.firstDone === false && d2.firstBarrier === 'tired');
-    check('an already-array firstPrep is kept as-is (id/text/done)', d2.firstPrep.length === 1 && d2.firstPrep[0].text === 'shoes out' && d2.firstPrep[0].done === true);
-    const twice = normalize(clone(blob));
-    check('re-normalizing keeps the checklist stable (no re-split, no loss)', twice.personal.dayPlans['2026-07-01'].firstPrep.length === 2);
+    const it = id => blob.personal.items.find(x => x.id === id);
+    check('the old single-weekday rule becomes days:[weekday]', JSON.stringify(it('r1').recurringRule) === '{"type":"weekly","days":[2]}', JSON.stringify(it('r1').recurringRule));
+    check('daily stays daily; a day list is de-duplicated, sorted and bounded to Mon..Sun', it('r2').recurringRule.type === 'daily' && JSON.stringify(it('r3').recurringRule.days) === '[0,2,4]');
+    check('all seven days collapse to daily; empty or garbage rules become null', it('r4').recurringRule.type === 'daily' && it('r5').recurringRule === null && it('r6').recurringRule === null);
+    check('routineDueOn fires on the right weekdays (2026-10-26 is a Monday)', routineDueOn({ type: 'daily' }, '2026-10-26') && routineDueOn({ type: 'weekly', days: [0] }, '2026-10-26') && !routineDueOn({ type: 'weekly', days: [1] }, '2026-10-26') && routineDueOn({ type: 'weekly', days: [1] }, '2026-10-27') && !routineDueOn(null, '2026-10-26'));
+    check('routineLabel reads naturally', routineLabel({ type: 'daily' }) === 'every day' && routineLabel({ type: 'weekly', days: [0, 1, 2, 3, 4] }) === 'weekdays' && routineLabel({ type: 'weekly', days: [5, 6] }) === 'weekends' && routineLabel({ type: 'weekly', days: [0, 3] }) === 'Mon · Thu');
+    const d = blob.personal.dayPlans['2026-10-26'];
+    check('check-ins get ids, a valid quadrant (unknown → green), tags and a note; routineSkip keeps only ids', d.checkins.length === 2 && d.checkins[0].quad === 'red' && d.checkins[0].tags[0] === 'Work' && d.checkins[0].note === 'deadline' && !!d.checkins[0].id && d.checkins[1].quad === 'green' && JSON.stringify(d.routineSkip) === '["r2"]');
+    check('a fresh day plan carries checkins + routineSkip and no first-activity / habit fields', (() => { const p = normalize(clone({ personal: { dayPlans: { '2026-10-27': {} } } })).personal.dayPlans['2026-10-27']; return Array.isArray(p.checkins) && Array.isArray(p.routineSkip) && !('firstThing' in p) && !('dots' in p); })());
+    check('detox quick slips normalize (id, text, tier defaults to never)', blob.personal.detox.slipActs.length === 2 && !!blob.personal.detox.slipActs[0].id && blob.personal.detox.slipActs[1].tier === 'never');
+    const quads = Object.keys(MOOD_QUADS);
+    const allWords = quads.flatMap(q => MOOD_QUADS[q].words);
+    check('the mood meter has four quadrants with ≥ 20 words each, all distinct, each with a colour and label', quads.length === 4 && quads.every(q => MOOD_QUADS[q].words.length >= 20 && /^#/.test(MOOD_QUADS[q].color) && MOOD_QUADS[q].label.includes('energy')) && new Set(allWords).size === allWords.length, 'words=' + allWords.length);
+    check('the tag list is non-empty and distinct', MOOD_TAGS.length >= 10 && new Set(MOOD_TAGS).size === MOOD_TAGS.length);
   }
 
   // ============================================================
@@ -948,6 +963,8 @@ sCheck('editors never inject CSS (CSP) and hand back sanitized HTML on every upd
 sCheck('every rich surface mounts through bindRichEditor (Docs, Self Notes, note boxes via bindNoteEditor)', (src.match(/bindRichEditor\(/g) || []).length >= 4 && /return bindRichEditor\(ed, ed\.parentElement/.test(src));
 sCheck('the CSP still allows only this origin + the Convex CDNs for scripts (the editor is local)', /script-src 'self' 'unsafe-inline' https:\/\/esm\.sh https:\/\/cdn\.jsdelivr\.net https:\/\/esm\.run;/.test(src));
 sCheck('indent/outdent work everywhere: lists nest directly (own list nodes), psmIndent + psmListSteps extensions, toolbar buttons call indent()/outdent(), the sanitizer keeps margin-left', /content:LIST_CONTENT/.test(src) && /name:"psmIndent", priority:50/.test(src) && /name:"psmListSteps", priority:1000/.test(src) && /indent:\(\)=>c\(\)\.indent\(\)\.run\(\), outdent:\(\)=>c\(\)\.outdent\(\)\.run\(\)/.test(src) && /bulletList:false, orderedList:false/.test(src) && /\.\.\.psmEditorExtensions\(T\)/.test(src) && /ch\.style\.marginLeft=ml/.test(src));
+sCheck('the personal Today page has no first-activity, habits, set-up-tomorrow or done-lanes UI left, and the log is not collapsible', !/data-firstthing|data-firstdone|data-barrier|data-tmwfirst|data-hapadd|data-dot\b|dotsRowHTML|<details class="day-log"/.test(src) && /class="day-log static"/.test(src));
+sCheck('feeling check-ins, routines and quick slips are wired (quadrant picker, routines modal + Today button, detox quick buttons)', /data-quad=/.test(src) && /data-word=/.test(src) && /data-mlog/.test(src) && /function openRoutinesModal\(\)/.test(src) && /id="dayRoutines"/.test(src) && /function ensureRoutineEntries\(dt\)/.test(src) && /data-detoxquick=/.test(src) && /data-qadd=/.test(src) && /routineDueOn\(it\.recurringRule,dt\)/.test(src));
 sCheck('Week Prep core goals are wired: migration in normalize, goals excluded from "already due", own ★ Core group on To-Do, copy button', /migrateWeekPrepItems\(d\);/.test(src) && /if\(it\.goal\) return false;/.test(src) && /todo-sec core/.test(src) && /id="wpCopy"/.test(src) && /copyToClipboard\(weekSummaryText\(prepWeekStart,data\.tasks\)\)/.test(src) && /id="wpAddExtra"/.test(src) && /trow-proj goal/.test(src));
 sCheck('no grid uses a bare 1fr track (1fr = minmax(auto,1fr): one unwrappable child widened the whole page in half-screen windows)', !/grid-template-columns:[^;]*(?<![\d.])1fr(?!\))/.test(src.slice(0, src.indexOf('</style>'))) && /\.mnote-snip\{[^}]*width:0;/.test(src));
 sCheck('the Documents list can be collapsed (per-device preference) and reordered by drag or ▲/▼ through moveDocBefore', /psmUI_docList/.test(src) && /id="docListToggle"/.test(src) && /id="docJump"/.test(src) && /application\/x-psm-doc/.test(src) && /data-dmove="up"/.test(src) && /moveDocBefore\(data\.docs,id,beforeId\)/.test(src) && /const sorted=docsInOrder\(data\.docs\)/.test(src));
