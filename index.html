@@ -706,6 +706,8 @@
   .detox-group{margin:4px 0 10px;} .detox-group .detox-tier-h{margin:6px 0 4px;} .check-sm.on.slip{background:var(--p-asap);border-color:var(--p-asap);}
   .recap-chip.slip{color:var(--p-asap);}
   .rt-freq{display:inline-flex;align-items:center;gap:6px;} .rt-freq input{padding:5px 6px;border:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--text);}
+  .rt-streak{font-size:11px;font-weight:800;padding:2px 8px;border:1px solid color-mix(in srgb,var(--primary) 45%,var(--border));background:var(--surface);color:var(--primary);margin-right:8px;white-space:nowrap;}
+  .rt-streak-card{text-align:left;padding:14px 18px;} .rt-streak-card .dc-num{color:var(--primary);font-size:36px;}
   .rt-hist{display:flex;gap:2px;flex:none;} .rt-cell{width:18px;height:18px;display:grid;place-items:center;font-size:10px;font-weight:800;border:1px solid var(--border-soft);color:var(--faint);background:var(--surface);}
   .rt-cell.done{background:var(--s-done);border-color:var(--s-done);color:#fff;} .rt-cell.missed{color:var(--p-asap);border-color:color-mix(in srgb,var(--p-asap) 40%,var(--border));} .rt-cell.open{color:var(--muted);} .rt-cell.off{opacity:.35;}
   .day-log.static{margin-top:12px;} .day-log.static .day-log-h{padding:11px 14px;font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px;}
@@ -1393,6 +1395,29 @@ function routineDueOn(rule, dt){ if(!rule||!dt) return false; if(rule.type==="da
 function routineLabel(rule){ if(!rule) return "never"; if(rule.type==="daily") return "every day"; if(rule.type==="freq") return rule.n+"× / "+rule.per; const ds=(rule.days||[]).slice().sort((a,b)=>a-b); if(ds.join()==="0,1,2,3,4") return "weekdays"; if(ds.join()==="5,6") return "weekends"; return ds.map(d=>["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][d]).join(" · ")||"no days"; }
 /* frequency routines: the period a date falls in (Mon–Sun week or calendar month) and how often the routine was ticked in it */
 function freqPeriod(per, dt){ const d=parseISO(dt); if(!d) return null; if(per==="month") return {start:iso(new Date(d.getFullYear(),d.getMonth(),1)), end:iso(new Date(d.getFullYear(),d.getMonth()+1,0))}; const ws=weekStart(d); return {start:iso(ws), end:iso(addDays(ws,6))}; }
+/* routine streak: consecutive days on which EVERY fixed-day routine (daily / weekday rules — frequency routines
+   are excluded, they may be done any day of their period) was ticked. A day with no fixed routine due is neutral;
+   a day where one was due but never ticked (incl. a day never opened) breaks the streak; a routine skipped with ✕
+   on a day, or created after that day, is not counted as due. Today only counts once it is complete. */
+function routineDayStatus(dayPlans, items, dt){
+  const pl=(dayPlans||{})[dt]; const entries=pl?(pl.entries||[]):[]; const skip=pl?(pl.routineSkip||[]):[];
+  let due=0, done=0;
+  (items||[]).forEach(it=>{ const r=it.recurringRule; if(!r || r.type==="freq" || it.status==="done") return;
+    const born=it.createdAt?iso(new Date(it.createdAt)):""; if(born && born>dt) return;
+    const e=entries.find(x=>x.itemId===it.id);
+    if(e){ due++; if(e.done) done++; }
+    else if(routineDueOn(r,dt) && !skip.includes(it.id)) due++; });
+  return !due ? "none" : (done===due ? "full" : "missed");
+}
+function routineStreak(dayPlans, items, today){
+  const back=d=>iso(addDays(parseISO(d),-1));
+  const dates=Object.keys(dayPlans||{}).sort(); const floor=dates.length?dates[0]:today;
+  let n=0, d=today; const st=routineDayStatus(dayPlans,items,today);
+  if(st==="full") n++;                                                            /* an unfinished today is not a miss yet */
+  d=back(d);
+  for(let i=0;i<400 && d>=floor;i++){ const s=routineDayStatus(dayPlans,items,d); if(s==="missed") break; if(s==="full") n++; d=back(d); }
+  return n;
+}
 function freqDoneCount(dayPlans, itemId, per, dt){ const p=freqPeriod(per,dt); if(!p) return 0; let n=0; Object.keys(dayPlans||{}).forEach(k=>{ if(k<p.start||k>p.end) return; if(((dayPlans[k]||{}).entries||[]).some(e=>e.itemId===itemId&&e.done)) n++; }); return n; }
 function normalizePersonal(p){
   p = (p && typeof p==="object") ? p : {};
@@ -4096,7 +4121,7 @@ function pStats(){
     weekLen:Math.round((d0(new Date())-d0(parseISO(ws)))/864e5)+1,
     meMonth:days(monthStart,tISO,dayHasForMe),
     monthLen:Math.round((d0(new Date())-d0(parseISO(monthStart)))/864e5)+1,
-    meets,refl,checkins,routDone,routDue,slips,slipsAvoid,finalizedWeek,finalizedMonth,streak:finalizeStreak()
+    meets,refl,checkins,routDone,routDue,routStreak:routineStreak(plans,P().items,tISO),slips,slipsAvoid,finalizedWeek,finalizedMonth,streak:finalizeStreak()
   };
 }
 
@@ -4373,8 +4398,9 @@ function dayPageHTML(dt){
   const routineLane=(()=>{
     const mine=rows.filter(x=>!!x.it.recurringRule);
     const open=mine.filter(x=>!x.e.done), done=mine.filter(x=>x.e.done);
+    const streak=routineStreak(P().dayPlans,P().items,todayISO());
     return `<div class="lane routine-lane" data-lane="routine" style="border-top-color:var(--primary)">
-      <h3 style="color:var(--primary)">↻ Routines <span class="grow"></span><span title="done / due today">${done.length}/${mine.length}</span></h3>
+      <h3 style="color:var(--primary)">↻ Routines <span class="grow"></span>${streak?`<span class="rt-streak" title="${streak} day${streak===1?"":"s"} in a row with every fixed-day routine done">🔥 ${streak}d</span>`:""}<span title="done / due today">${done.length}/${mine.length}</span></h3>
       ${open.map(x=>dpRowHTML(plan,x.e)).join("")}
       ${done.length?`<div class="dp-done-div">done ${done.length}</div>`+done.map(x=>dpRowHTML(plan,x.e)).join(""):""}
       ${mine.length?"":`<div class="wp-empty">Nothing repeats ${isToday?"today":"on this day"}.</div>`}
@@ -4540,8 +4566,15 @@ function renderPRoutines(){
       const title=WD_NAMES[(parseISO(d).getDay()+6)%7]+" "+fmtShort(d)+" · "+(en?(en.done?"done":(d<tISO?"not done":"open")):(due?"skipped / not opened":"not due"));
       return `<span class="rt-cell ${cls}" title="${esc(title)}">${en?(en.done?"✓":(d<tISO?"✗":"·")):(due?"–":"")}</span>`; }).join("");
   const progress=it=>{ const r=it.recurringRule; if(r.type!=="freq") return ""; const n=freqDoneCount(P().dayPlans,it.id,r.per,tISO); return `<span class="pi-badge ${n>=r.n?"carry":""}" title="ticked this ${r.per}">${n}/${r.n} this ${r.per}</span>`; };
+  const streak=routineStreak(P().dayPlans,P().items,tISO), todaySt=routineDayStatus(P().dayPlans,P().items,tISO);
   host.innerHTML=`
     <div class="toolbar"><h1 class="page-title">Routines</h1><span style="color:var(--faint);font-size:12.5px;font-weight:600">things that repeat — on fixed days, or a number of times per week / month</span><div class="grow"></div></div>
+    <div class="detox-counter rt-streak-card">
+      <div class="dc-tier">🔥 Routine streak</div>
+      <div class="dc-num">${streak}</div>
+      <div class="dc-lab">day${streak===1?"":"s"} in a row with every fixed-day routine done${todaySt==="full"?" · today counts":todaySt==="missed"?" · today still open":""}</div>
+      <div class="dc-milestone">frequency routines don't count against the streak · a day without routines due is skipped · ✕ (skip) excuses a routine for that day</div>
+    </div>
     <p class="wp-hint">Routines land in the ↻ Routines box on each day by themselves. Fixed-day routines appear on their days; "times per week / month" routines appear every day until you've ticked them that often in the period, then rest until the next one. ✕ on a day skips just that day; stopping a routine keeps what you already ticked.</p>
     <div class="rt-list">${routines.map(it=>{ const r=it.recurringRule; const mode=r.type==="freq"?r.per:"days"; const days=r.type==="daily"?[0,1,2,3,4,5,6]:(r.days||[]);
       return `<div class="rt-row" data-rt="${it.id}">
@@ -4888,6 +4921,7 @@ function renderPOverview(){
       <div class="kpi"><div class="lab">For-me days · this week</div><div class="val">${st.meWeek}<em> / ${st.weekLen}</em></div></div>
       <div class="kpi"><div class="lab">For-me days · this month</div><div class="val">${st.meMonth}<em> / ${st.monthLen}</em></div></div>
       <div class="kpi"><div class="lab">↻ Routines done · this month</div><div class="val">${st.routDone}<em> / ${st.routDue}</em></div></div>
+      <div class="kpi"><div class="lab">🔥 Routine streak</div><div class="val">${st.routStreak}<em> ${st.routStreak===1?"day":"days"}</em></div></div>
       <div class="kpi"><div class="lab" style="color:var(--p-asap)">🛡 Slips · this month</div><div class="val" style="color:var(--p-asap)">${st.slips}<em> never · ${st.slipsAvoid} avoid</em></div></div>
       <div class="kpi"><div class="lab">Meetups · this month</div><div class="val">${st.meets}</div></div>
       <div class="kpi"><div class="lab">Reflections · this month</div><div class="val">${st.refl}</div></div>
