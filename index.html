@@ -4161,7 +4161,7 @@ const DETOX_TIER_LABEL={never:"never do",avoid:"try to avoid"};
 function detoxTierColor(k){ return k==="never"?"var(--p-asap)":"#c76a00"; }
 function detoxCleanDays(tier){
   const dx=P().detox; if(!dx) return 0; tier=tier||"never";
-  const slips=(dx.log||[]).filter(x=>x.tier===tier&&x.date).map(x=>x.date).sort();
+  const slips=(dx.log||[]).filter(x=>x.date && (x.tier===tier || x.tier==="never")).map(x=>x.date).sort(); /* a never-do slip resets BOTH counters; an avoid slip only its own */
   const anchor = slips.length ? slips[slips.length-1] : (dx.startedAt||"");
   if(!anchor||!parseISO(anchor)) return 0;
   return Math.max(0, Math.round((d0(new Date())-d0(parseISO(anchor)))/864e5));
@@ -4185,7 +4185,7 @@ function detoxBoxHTML(dt, opts){
       ${slips.map(slipRow).join("")||`<div class="wp-empty">No slip ${dt===todayISO()?"today":"on this day"} — keep going.</div>`}
       <select data-slipsel style="width:100%;padding:7px 9px;border:1px solid var(--border);background:var(--surface);margin-top:4px;font-size:12px;color:var(--muted)">
         <option value="">Did you slip? pick what happened…</option>
-        ${DETOX_TIERS.map(([k,lab])=>`<optgroup label="${lab}${k==="never"?" — resets the never-do counter":" — resets the avoid counter"}">${acts.filter(a=>a.tier===k).map(a=>`<option value="${a.id}"${isOn(a)?" disabled":""}>${esc(a.text)}${isOn(a)?" ✓":""}</option>`).join("")}<option value="__other_${k}">other ${DETOX_TIER_LABEL[k]} slip…</option></optgroup>`).join("")}
+        ${DETOX_TIERS.map(([k,lab])=>`<optgroup label="${lab}${k==="never"?" — resets both counters":" — resets the avoid counter"}">${acts.filter(a=>a.tier===k).map(a=>`<option value="${a.id}"${isOn(a)?" disabled":""}>${esc(a.text)}${isOn(a)?" ✓":""}</option>`).join("")}<option value="__other_${k}">other ${DETOX_TIER_LABEL[k]} slip…</option></optgroup>`).join("")}
       </select>
       <div class="dp-add" style="display:flex;gap:6px;align-items:center;justify-content:flex-end"><button class="btn ghost sm" data-detoxmanage title="Detox tab — edit the options, see the journal">⚙ manage</button></div>
     </div>`;
@@ -4198,7 +4198,7 @@ function detoxBoxHTML(dt, opts){
   return `<div class="lane detox-lane ${never?"slipped":""}" data-lane="detox" style="border-top-color:var(--p-asap)">
     <h3 style="color:var(--p-asap)">🛡 Detox · today <span class="grow"></span>${detoxCountersHTML()}</h3>
     ${DETOX_TIERS.map(([k,lab,phk])=>`<div class="detox-group ${k}">
-        <div class="detox-tier-h"><span>${lab}</span><span class="grow"></span><span class="hint">a tick resets the ${DETOX_TIER_LABEL[k]} counter</span></div>
+        <div class="detox-tier-h"><span>${lab}</span><span class="grow"></span><span class="hint">${k==="never"?"a tick resets both counters":"a tick resets the try-to-avoid counter"}</span></div>
         ${acts.filter(a=>a.tier===k).map(row).join("")||`<div class="wp-empty" style="padding:2px 0 6px">no ${phk} options yet</div>`}
         <input class="detox-add" data-qadd="${k}" placeholder="＋ add a ${phk} option… Enter" autocomplete="off">
       </div>`).join("")}
@@ -4207,21 +4207,21 @@ function detoxBoxHTML(dt, opts){
   </div>`;
 }
 function bindDetoxBox(host,dt,rerender){
-  const logOther=async tier=>{ const note=await uiPrompt("What happened?",{sub:tier==="never"?"Logged as a “Never do” slip — resets that counter.":"Logged as a “Try to avoid” slip — resets that counter.",placeholder:"a line on what happened…",yes:"Log it"}); if(note===null) return false; detoxLog(tier,dt,note); return true; };
+  const logOther=async tier=>{ const note=await uiPrompt("What happened?",{sub:tier==="never"?"Logged as a “Never do” slip — resets both counters.":"Logged as a “Try to avoid” slip — resets that counter.",placeholder:"a line on what happened…",yes:"Log it"}); if(note===null) return false; detoxLog(tier,dt,note); return true; };
   /* day page: the dropdown */
   const sel=host.querySelector("[data-slipsel]");
   if(sel) sel.onchange=async()=>{ const v=sel.value; if(!v) return; sel.value="";
     if(v.startsWith("__other_")){ if(await logOther(v.slice(8))) rerender(); return; }
     const a=(P().detox.slipActs||[]).find(x=>x.id===v); if(!a) return;
     if(detoxSlipsOn(dt).some(x=>x.tier===a.tier&&x.note===a.text)){ toast("Already logged for this day"); return; }
-    detoxLog(a.tier,dt,a.text); toast((a.tier==="never"?"Never-do":"Try-to-avoid")+" slip logged — that counter starts again tomorrow"); rerender(); };
+    detoxLog(a.tier,dt,a.text); toast(a.tier==="never"?"Never-do slip logged — both counters start again tomorrow":"Try-to-avoid slip logged — that counter starts again tomorrow"); rerender(); };
   host.querySelectorAll("[data-slipundo]").forEach(b=>b.onclick=()=>{ const id=b.closest("[data-slipother]").dataset.slipother; const dx=P().detox; dx.log=dx.log.filter(x=>x.id!==id); save(); rerender(); });
   host.querySelectorAll("[data-detoxother]").forEach(b=>b.onclick=async()=>{ if(await logOther(b.dataset.detoxother)) rerender(); });
   const dxm=host.querySelector("[data-detoxmanage]"); if(dxm) dxm.onclick=()=>switchPTab("detox");
   /* manage mode (Detox tab): checkboxes, rename / remove / add options */
   host.querySelectorAll("[data-slipchk]").forEach(b=>b.onclick=()=>{ const id=b.closest("[data-slipact]").dataset.slipact; const dx=P().detox; const a=(dx.slipActs||[]).find(x=>x.id===id); if(!a) return;
     const ex=(dx.log||[]).find(x=>x.date===dt&&x.tier===a.tier&&x.note===a.text);
-    if(ex){ dx.log=dx.log.filter(x=>x.id!==ex.id); save(); } else { detoxLog(a.tier,dt,a.text); toast((a.tier==="never"?"Never-do":"Try-to-avoid")+" slip logged — that counter starts again tomorrow"); }
+    if(ex){ dx.log=dx.log.filter(x=>x.id!==ex.id); save(); } else { detoxLog(a.tier,dt,a.text); toast(a.tier==="never"?"Never-do slip logged — both counters start again tomorrow":"Try-to-avoid slip logged — that counter starts again tomorrow"); }
     rerender(); });
   host.querySelectorAll("[data-slipact]").forEach(row=>{ const a=(P().detox.slipActs||[]).find(x=>x.id===row.dataset.slipact); if(!a) return;
     const tx=row.querySelector("[data-acttxt]"); if(tx) tx.addEventListener("input",e=>{ a.text=e.target.value; save(); });
