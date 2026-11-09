@@ -778,6 +778,38 @@ async function HARNESS() {
   }
 
   // ============================================================
+  //  S25 — Work export: the last two weeks + the current week as Markdown (core goals, projects, meetings, tasks, docs)
+  // ============================================================
+  scen('S25 Work export: everything inside the range, nothing outside it, grouped the way the summary needs it');
+  {
+    const NL = String.fromCharCode(10);
+    const ts = s => Date.parse(s + 'T10:00:00');
+    const raw = normalize(clone({
+      projects: [
+        { id: 'p1', name: 'NPI evaluation', progress: 'In Progress', priority: 'High', category: 'Long-term Business Case', deadline: '2026-11-20', description: 'Standardize how NPIs are evaluated', valueProp: 'faster go/no-go', involved: 'Lizan', informed: 'Marlo', notes: '<ul><li><p>as-is first</p></li></ul>', notesRich: true,
+          tasks: [{ id: 't1', text: 'Map the current process', done: true, completedAt: ts('2026-11-04') }, { id: 't2', text: 'Old task', done: true, completedAt: ts('2026-09-01') }, { id: 't3', text: 'Write the one-pager', done: false, deadline: '2026-11-12', notes: 'for buy-in' }],
+          meetingNotes: [{ id: 'n1', date: '2026-11-03', discussed: 'Talked to Lieke', steps: [{ id: 's1', text: 'send recap', done: false }] }, { id: 'n2', date: '2026-09-15', discussed: 'ancient' }] },
+        { id: 'p2', name: 'Finished long ago', progress: 'Done', completedAt: ts('2026-08-01') },
+      ],
+      tasks: [{ id: 'g1', text: 'Jumbo QBR deliverables', goal: true, weekStart: '2026-10-26', done: true, completedAt: ts('2026-10-30') }, { id: 'g2', text: 'Prep Martijn 1-1', goal: true, weekStart: '2026-11-09', done: false, notes: 'show everything' }, { id: 'a1', text: 'smartspotter email', done: false, deadline: '2026-11-02' }],
+      meetings: [{ id: 'm1', name: 'Iris 1-1', cadence: 'Weekly', entries: [{ id: 'e1', date: '2026-10-27', agenda: '<p>Exec summary</p>', rich: true, steps: [{ id: 'x', text: 'book the slot', done: true }] }, { id: 'e2', date: '2026-08-01', agenda: 'way back' }], tasks: [{ id: 'mt1', text: 'send deck to Iris', done: true, completedAt: ts('2026-10-28') }] },
+        { id: 'm2', name: 'Quiet meeting', entries: [{ id: 'e3', date: '2026-07-01', agenda: 'nothing recent' }], tasks: [] }],
+      weekPrep: [{ id: 'w', weekStart: '2026-11-02', notes: '<p>Busy week</p>', rich: true }],
+      quarterGoals: { '2026-Q4': [{ id: 'q', text: 'Ship the dashboard', done: false }] },
+      docs: [{ id: 'd1', title: 'World Cup deck notes', body: '<p>Total home channel</p>', rich: true, updatedAt: ts('2026-11-05'), createdAt: 1 }, { id: 'd2', title: 'Old doc', body: 'x', updatedAt: ts('2026-01-05'), createdAt: 1 }],
+    }));
+    const txt = workExportText(raw, '2026-10-26', '2026-11-15', Date.parse('2026-11-09T10:00:00Z'));
+    check('the header names the three weeks and marks the current one', txt.includes('W44, W45, W46 (W46 = current week)') && txt.includes('— current week'));
+    check('core goals appear under their week with done date / notes; an empty week says so', txt.includes('- [x] Jumbo QBR deliverables · done 2026-10-30') && txt.includes('- [ ] Prep Martijn 1-1' + NL + '  note: show everything') && txt.includes('- (no core goals set)'));
+    check('week prep notes are included as text', txt.includes('## Week prep notes') && txt.includes('Busy week'));
+    check('an active project carries its header, description, value, people, notes, in-range completed + open tasks and in-range meeting notes', txt.includes('### NPI evaluation — In Progress · High · Long-term Business Case · due 2026-11-20') && txt.includes('Value: faster go/no-go') && txt.includes('People: involved — Lizan · informed — Marlo') && txt.includes('Notes:' + NL + '• as-is first') && txt.includes('- [x] Map the current process · done 2026-11-04') && txt.includes('- [ ] Write the one-pager · due 2026-11-12' + NL + '  note: for buy-in') && txt.includes('#### Meeting note 2026-11-03') && txt.includes('Talked to Lieke') && txt.includes('- [ ] send recap'));
+    check('tasks completed before the range, old meeting notes and long-finished projects are left out', !txt.includes('Old task') && !txt.includes('ancient') && !txt.includes('Finished long ago'));
+    check('recurring meetings show in-range entries (agenda as text, next steps) and action items; meetings with nothing in range are skipped', txt.includes('### Iris 1-1 · Weekly') && txt.includes('#### 2026-10-27' + NL + 'Exec summary') && txt.includes('- [x] book the slot') && txt.includes('Action items:') && txt.includes('- [x] send deck to Iris · done 2026-10-28') && !txt.includes('Quiet meeting') && !txt.includes('way back'));
+    check('ad-hoc tasks, the quarter goals and the documents edited in the range close the file; older docs are skipped', txt.includes('## Ad-hoc tasks') && txt.includes('- [ ] smartspotter email · due 2026-11-02') && txt.includes('## Quarter goals 2026-Q4') && txt.includes('- [ ] Ship the dashboard') && txt.includes('### World Cup deck notes · edited 2026-11-05') && txt.includes('Total home channel') && !txt.includes('Old doc'));
+    check('nothing from the personal namespace leaks into the export', !/personal|checkins|routine|detox/i.test(txt));
+  }
+
+  // ============================================================
   //  S23 — Documents: manual order (drag / ▲▼) on top of the old "most recently edited first" list
   // ============================================================
   scen('S23 Documents keep a manual order; older data migrates to the previous most-recent-first order');
@@ -995,6 +1027,7 @@ sCheck('feeling check-ins, the Routines box + tab and the Detox checkbox box are
 sCheck('detox has exactly two tiers with their own counters and the day page logs slips from one grouped dropdown', /const DETOX_TIERS=\[\["never"[^\n]*\],\["avoid"[^\n]*\]\];/.test(src) && /function detoxCleanDays\(tier\)/.test(src) && /detoxCleanDays\("avoid"\)/.test(src) && /data-slipsel/.test(src) && /<optgroup label=/.test(src) && !/notideal/.test(src.slice(src.indexOf('<script type="module">')).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\["never","avoid","notideal"\]\.forEach|x\.tier==="notideal"|a\.tier==="notideal"/g, '')));
 sCheck('frequency routines are wired: routineWantedOn gates planFor + ensureRoutineEntries, the Routines tab has the mode selector, the item editor offers once/twice a week', /function routineWantedOn\(it, dt\)/.test(src) && /P\(\)\.items\.filter\(it=>routineWantedOn\(it,dt\)\)/.test(src) && /data-rtmode/.test(src) && /id="rtNewMode"/.test(src) && /value="f1w"/.test(src) && /freqDoneCount\(P\(\)\.dayPlans,it\.id,it\.recurringRule\.per,plan\.date\)/.test(src));
 sCheck('a never-do slip resets both detox counters (the avoid counter anchors on avoid OR never slips)', /x\.date && \(x\.tier===tier \|\| x\.tier==="never"\)/.test(src) && /resets both counters/.test(src));
+sCheck('the Week Prep toolbar has the 3-week Markdown export (button, download helper, 14 days back + the current week)', /id="wpExport"/.test(src) && /\$\("wpExport"\)\.onclick=exportWorkWeeks/.test(src) && /function downloadText\(filename, text\)/.test(src) && /iso\(addDays\(cur,-14\)\), to=iso\(addDays\(cur,6\)\)/.test(src) && /workExportText\(data,from,to,Date\.now\(\)\)/.test(src));
 sCheck('the routine streak is shown on the day-page Routines box, the Routines tab card and the Overview', /function routineStreak\(dayPlans, items, today\)/.test(src) && /class="rt-streak"/.test(src) && /rt-streak-card/.test(src) && /routStreak:routineStreak\(plans,P\(\)\.items,tISO\)/.test(src) && /🔥 Routine streak/.test(src));
 sCheck('a meetup can be logged with a brand-new person from the day page (＋ New person… in the picker, created on the spot)', /<option value="__new">＋ New person…<\/option>/.test(src) && /if\(pid==="__new"\)/.test(src) && /P\(\)\.people\.push\(\{id:pid,name,lastSeen:"",freqWeeks:0,notes:""\}\)/.test(src));
 sCheck('gym is gone from the Personal platform (no toggles, counters, KPIs, calendar or journal markers)', !/data-gym|gymCount|gymPlanned|gymRow|gymPlanStrip|st\.gymWeek|🏋/.test(src.slice(src.indexOf('<script type="module">'))) && !/openRoutinesModal|detoxTrackHTML/.test(src));

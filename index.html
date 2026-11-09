@@ -1535,6 +1535,64 @@ function weekSummaryText(ws, tasks){
   const block=(title,arr)=>title+"\n"+(arr.length?arr.map(line).join("\n"):"- (none)");
   return "Weekly summary — "+weekLabel(ws)+"\n\n"+block("Achieved this week:",done)+"\n\n"+block("Still open / carried over:",open)+"\n\n"+block("Priorities for next week (W"+weekNo(nx)+"):",next)+"\n";
 }
+/* ---- Work export (pure; tested in S25) ----
+   Everything that happened in a date range, as Markdown: core goals per week, week-prep notes, every project with
+   its notes / tasks / meeting notes, every recurring meeting's entries and action items, ad-hoc tasks, the quarter's
+   goals and the documents edited in the range. The Week Prep button downloads the last two weeks + the current one;
+   the file is the raw material for the weekly executive summary. Work workspace only — never data.personal. */
+function workExportText(d, fromISO, toISO, nowTs){
+  const L=[]; const out=s=>L.push(s);
+  const dayOf=ts=>ts?iso(new Date(ts)):"";
+  const inRange=s=>!!s && s>=fromISO && s<=toISO;
+  const tsIn=ts=>inRange(dayOf(ts));
+  const weeks=[]; for(let w=parseISO(fromISO); w && iso(w)<=toISO; w=addDays(w,7)) weeks.push(iso(w));
+  const cur=weeks[weeks.length-1];
+  const due=t=>t.deadline?(" · due "+(t.deadlineWeek?"week of ":"")+t.deadline):"";
+  const indentNote=t=>(t.notes||"").trim()?"\n  note: "+t.notes.trim().replace(/\n/g,"\n  "):"";
+  const taskLine=t=>"- "+(t.done?"[x]":"[ ]")+" "+(t.text||"").trim()+(t.optional?" (optional)":"")+due(t)+(t.done&&t.completedAt?" · done "+dayOf(t.completedAt):"")+indentNote(t);
+  const taskBlock=tasks=>{ const done=(tasks||[]).filter(t=>t.done&&tsIn(t.completedAt)), open=(tasks||[]).filter(t=>!t.done); const o=[];
+    if(done.length){ o.push("Completed in this period:"); done.forEach(t=>o.push(taskLine(t))); }
+    if(open.length){ o.push("Open:"); open.forEach(t=>o.push(taskLine(t))); } return o; };
+  const steps=arr=>(arr||[]).filter(s=>(s.text||"").trim()).map(s=>"- "+(s.done?"[x] ":"[ ] ")+s.text.trim());
+  out("# Work export — "+fmtShort(fromISO)+" – "+fmtShort(toISO)+" · "+weeks.map(w=>"W"+weekNo(w)).join(", ")+" (W"+weekNo(cur)+" = current week)");
+  out("_Generated "+new Date(nowTs).toISOString().slice(0,16).replace("T"," ")+" UTC · Work workspace only · dates are YYYY-MM-DD_");
+  out("\n## Core goals per week");
+  weeks.forEach(ws=>{ const gs=goalsOf(d.tasks,ws); out("\n### "+weekLabel(ws)+(ws===cur?" — current week":""));
+    if(!gs.length){ out("- (no core goals set)"); return; }
+    gs.forEach(t=>out("- "+(t.done?"[x]":"[ ]")+" "+t.text+(t.extra?" (unplanned win)":"")+(t.done&&t.completedAt?" · done "+dayOf(t.completedAt):"")+indentNote(t))); });
+  const preps=(d.weekPrep||[]).filter(w=>weeks.includes(w.weekStart)&&noteText(w.notes,w.rich).trim());
+  if(preps.length){ out("\n## Week prep notes"); preps.forEach(w=>{ out("\n### "+weekLabel(w.weekStart)); out(noteText(w.notes,w.rich).trim()); }); }
+  out("\n## Projects");
+  const projs=(d.projects||[]).filter(p=>p.progress!=="Done"||tsIn(p.completedAt));
+  if(!projs.length) out("- (none)");
+  projs.forEach(p=>{
+    out("\n### "+(p.name||"Untitled")+" — "+p.progress+" · "+p.priority+(p.category?" · "+p.category:"")+(p.deadline?" · due "+(p.deadlineWeek?"week of ":"")+p.deadline:"")+(p.progress==="Done"&&p.completedAt?" · completed "+dayOf(p.completedAt):""));
+    if((p.description||"").trim()) out(p.description.trim());
+    if((p.valueProp||"").trim()) out("Value: "+p.valueProp.trim());
+    const ppl=[(p.involved||"").trim()?"involved — "+p.involved.trim():"",(p.informed||"").trim()?"informed — "+p.informed.trim():""].filter(Boolean); if(ppl.length) out("People: "+ppl.join(" · "));
+    const notes=noteText(p.notes,p.notesRich).trim(); if(notes) out("Notes:\n"+notes);
+    taskBlock(p.tasks).forEach(out);
+    (p.meetingNotes||[]).filter(n=>inRange(n.date)).sort((a,b)=>a.date.localeCompare(b.date)).forEach(n=>{ out("\n#### Meeting note "+n.date);
+      const disc=noteText(n.discussed,n.rich).trim(); if(disc) out(disc);
+      const jumps=noteText(n.jumps,n.rich).trim(); if(jumps) out("Next jumps:\n"+jumps);
+      const st=steps(n.steps); if(st.length){ out("Next steps:"); st.forEach(out); } });
+  });
+  out("\n## Recurring meetings");
+  const mtgs=(d.meetings||[]).map(m=>({m,entries:(m.entries||[]).filter(e=>inRange(e.date)).sort((a,b)=>a.date.localeCompare(b.date)),tasks:taskBlock(m.tasks)})).filter(x=>x.entries.length||x.tasks.length);
+  if(!mtgs.length) out("- (no meeting entries or action items in this period)");
+  mtgs.forEach(({m,entries,tasks})=>{
+    out("\n### "+(m.name||"Untitled meeting")+(m.cadence?" · "+m.cadence:"")+(m.attendees?" · "+m.attendees:""));
+    entries.forEach(e=>{ out("\n#### "+e.date); out(noteText(e.agenda,e.rich).trim()||"(no agenda)"); const st=steps(e.steps); if(st.length){ out("Next steps:"); st.forEach(out); } });
+    if(tasks.length){ out("\nAction items:"); tasks.forEach(out); }
+  });
+  const ab=taskBlock((d.tasks||[]).filter(t=>!t.goal));
+  if(ab.length){ out("\n## Ad-hoc tasks (not tied to a project or meeting)"); ab.forEach(out); }
+  const end=parseISO(toISO); const qk=end?end.getFullYear()+"-Q"+(Math.floor(end.getMonth()/3)+1):""; const qg=(d.quarterGoals||{})[qk]||[];
+  if(qg.length){ out("\n## Quarter goals "+qk); qg.forEach(g=>out("- "+(g.done?"[x]":"[ ]")+" "+g.text)); }
+  const docs=(d.docs||[]).filter(dd=>tsIn(dd.updatedAt)).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+  if(docs.length){ out("\n## Documents edited in this period"); docs.forEach(dd=>{ out("\n### "+(dd.title||"Untitled")+" · edited "+dayOf(dd.updatedAt)); out(noteText(dd.body,dd.rich).trim()||"(empty)"); }); }
+  return L.join("\n")+"\n";
+}
 /* ---- Documents: manual order (pure; tested in S23) ---- */
 function docsInOrder(docs){ return [...docs].sort((a,b)=>((a.order??0)-(b.order??0)) || ((b.updatedAt||0)-(a.updatedAt||0))); }
 function moveDocBefore(docs, id, beforeId){ /* re-slot one document in front of another (beforeId null = last); rewrites every order as 0..n-1 */
@@ -2803,6 +2861,17 @@ function prepDefaultWeek(){ const t=new Date(); const dow=(t.getDay()+6)%7; cons
 let prepWeekStart = prepDefaultWeek();
 function getPrep(ws){ return data.weekPrep.find(w=>w.weekStart===ws); }
 function ensurePrep(ws){ let w=getPrep(ws); if(!w){ w={id:uid(),weekStart:ws,notes:"",items:[],updatedAt:Date.now()}; data.weekPrep.push(w); } return w; }
+/* ---- Work export button: the last two weeks + the current week as a Markdown download ---- */
+function downloadText(filename, text){
+  const blob=new Blob([text],{type:"text/markdown;charset=utf-8"}); const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1500);
+}
+function exportWorkWeeks(){
+  const cur=weekStart(new Date()); const from=iso(addDays(cur,-14)), to=iso(addDays(cur,6));
+  downloadText("work-export_W"+weekNo(from)+"-W"+weekNo(to)+"_"+todayISO()+".md", workExportText(data,from,to,Date.now()));
+  toast("Exported W"+weekNo(from)+"–W"+weekNo(to)+" as Markdown — the raw material for the weekly summary");
+}
 function renderWeekPrep(){
   const host=$("weekPrepBody"); if(!host) return;
   const s=parseISO(prepWeekStart), e=addDays(s,6); const wi=weekInfo(prepWeekStart);
@@ -2832,6 +2901,7 @@ function renderWeekPrep(){
       ${badge}
       <div class="grow"></div>
       <button class="btn ghost sm" id="wpCopy" title="Copy this week's achieved and open core goals plus next week's priorities as plain text — paste it into a chat to draft the executive summary">⧉ Copy weekly summary</button>
+      <button class="btn ghost sm" id="wpExport" title="Download a Markdown file with everything from the last two weeks and this week — core goals, week notes, every project with its tasks and meeting notes, every recurring meeting, ad-hoc tasks, quarter goals, documents edited — the raw material for the executive summary">⬇ Export 3 weeks</button>
       <button class="btn ghost sm" id="wpThisBtn">This week</button>
       <button class="btn sm" id="wpNextBtn">Prep next week →</button>
     </div>
@@ -2871,6 +2941,7 @@ function renderWeekPrep(){
   $("wpThisBtn").onclick=()=>{ prepWeekStart=nowWs; renderWeekPrep(); };
   $("wpNextBtn").onclick=()=>{ prepWeekStart=nextWs; renderWeekPrep(); };
   $("wpCopy").onclick=()=>copyToClipboard(weekSummaryText(prepWeekStart,data.tasks));
+  $("wpExport").onclick=exportWorkWeeks;
   bindNoteEditor($("wpNotes"), h=>{ const p=ensurePrep(prepWeekStart); p.notes=h; p.rich=true; p.updatedAt=Date.now(); save(); });
   /* adding a goal: a real task is created (it shows on To-Do at once); the lists repaint and the input keeps focus */
   const addGoal=(ws,inputId,opts)=>{ const inp=$(inputId); const txt=(inp.value||"").trim(); if(!txt){ inp.focus(); toast("Type the goal first"); return; }
