@@ -135,8 +135,33 @@ async function HARNESS() {
   let navigator = { onLine: true };                 // drives the sync indicator's offline state
 
   // ---- Convex "cloud" mock (shared across devices; mirrors the server's rules:
-  //      whole-blob LWW on updatedAt, snapshots pruned to 30, one workspace row) ----
-  const cloud = { workspace: null, snapshots: [], devices: [], securityLog: [] };
+  //      whole-workspace LWW on updatedAt, snapshots pruned to 30, one workspace per account).
+  //      workspace:pull answers like the real backend — the stored workspace is exactly
+  //      wsEncode(workspace) there (admin:chunkSelfTest proves that against the real database),
+  //      so the mock encodes cloud.workspace.data with the SAME shared codec and plans the answer
+  //      with the same wsNeedIdxPull / wsPlanPull. cloud.pullMode lets S26 make the answer wrong. ----
+  const cloud = { workspace: null, snapshots: [], devices: [], securityLog: [], gets: 0, pulls: 0, lastPull: null, pullMode: 'ok' };
+  function mockPull(args) {
+    cloud.pulls++; cloud.lastPull = null;
+    if (cloud.pullMode === 'fail') return Promise.reject(new Error('pull unavailable'));
+    if (!cloud.workspace || cloud.pullMode === 'legacy') return Promise.resolve({ mode: 'legacy', updatedAt: cloud.workspace ? cloud.workspace.updatedAt : 0 });
+    if (cloud.pullMode === 'garbage') return Promise.resolve({ mode: 'delta', updatedAt: cloud.workspace.updatedAt, rootHash: 'x', root: 'not json', chunks: [] });
+    const enc = wsEncode(JSON.parse(cloud.workspace.data));
+    let have = null; try { have = JSON.parse(args.have); } catch (e) { have = null; }
+    if (!have || typeof have !== 'object' || Array.isArray(have)) have = null;
+    const updatedAt = cloud.workspace.updatedAt;
+    if (cloud.pullMode === 'ok' && have && have.rootHash === enc.rootHash) { cloud.lastPull = { n: 0, chars: 0, total: enc.chunks.size, same: true }; return Promise.resolve({ mode: 'delta', updatedAt, rootHash: enc.rootHash, chunks: [] }); }
+    const haveRoot = have && have.root && typeof have.root === 'object' ? have.root : null;
+    const idx = {}; for (const p of wsNeedIdxPull(enc.root, haveRoot)) idx[p] = enc.idx[p];
+    const keys = wsPlanPull(enc.root, idx, { root: haveRoot, idx: (have && have.idx) || {} });
+    let chunks = keys.map(k => ({ k, d: enc.chunks.get(k).d }));
+    let rootHash = enc.rootHash;
+    if (cloud.pullMode === 'badhash') rootHash = wsHash('something else');
+    if (cloud.pullMode === 'badchunk' && chunks.length) { const i = chunks.findIndex(c => c.k.indexOf('#') < 0); chunks[i < 0 ? 0 : i] = { k: chunks[i < 0 ? 0 : i].k, d: JSON.stringify({ id: 'forged', text: 'not what the cloud holds' }) }; }
+    if (cloud.pullMode === 'missing' && chunks.length) { const i = chunks.findIndex(c => c.k.indexOf('/') > 0 && c.k.indexOf('#') < 0); chunks.splice(i < 0 ? 0 : i, 1); }   // drop a changed ELEMENT (a dropped index whose ids did not change is harmless: the rebuilt copy still verifies)
+    cloud.lastPull = { n: chunks.length, chars: chunks.reduce((a, c) => a + c.d.length, 0), total: enc.chunks.size, same: false };
+    return Promise.resolve({ mode: 'delta', updatedAt, rootHash, root: enc.rootJSON, chunks });
+  }
   let __idc = 0; const newId = p => p + '_' + (++__idc);
   const wsRow = () => cloud.workspace ? { data: cloud.workspace.data, updatedAt: cloud.workspace.updatedAt } : { data: null, updatedAt: 0 };
   const verRow = () => cloud.workspace ? { updatedAt: cloud.workspace.updatedAt, writerDeviceId: cloud.workspace.writerDeviceId || '' } : { updatedAt: 0, writerDeviceId: '' };
@@ -156,7 +181,8 @@ async function HARNESS() {
       } catch (e) { return Promise.reject(e); }
     },
     query(name, args) {
-      if (name === 'workspace:get') return Promise.resolve(wsRow());          // one-shot blob fetch (only after a foreign version tick)
+      if (name === 'workspace:pull') return mockPull(args);                   // delta fetch (on connect + after a foreign version tick)
+      if (name === 'workspace:get') { cloud.gets++; return Promise.resolve(wsRow()); }   // the full fetch — only the fallback of pull
       if (name === 'workspace:version') return Promise.resolve(verRow());
       if (name === 'snapshots:list') return Promise.resolve(cloud.snapshots.map(s => ({ id: s.id, ts: s.ts, updatedAt: s.updatedAt, label: s.label, bytes: s.data.length })));
       if (name === 'snapshots:get') { const s = cloud.snapshots.find(x => x.id === (args && args.id)); return Promise.resolve(s ? { data: s.data, ts: s.ts, updatedAt: s.updatedAt, label: s.label } : null); }
@@ -187,7 +213,7 @@ async function HARNESS() {
   const stashCount = (d, tag) => Object.keys(d.ls).filter(k => k.startsWith(STORAGE_KEY + '_' + tag + '_')).length;
   const wScore = d => scoreWork(blobCounts(d));
   const pScore = d => scorePersonal(blobCounts(d));
-  const flush = async (n = 14) => { for (let i = 0; i < n; i++) await Promise.resolve(); };
+  const flush = async (n = 40) => { for (let i = 0; i < n; i++) await Promise.resolve(); };
 
   // ===== datasets =====
   function makeReal() {
@@ -953,6 +979,152 @@ async function HARNESS() {
     convex.mutation = origMut; schedulePush = () => push();
   }
 
+  // ============================================================
+  //  S26 — chunked storage + delta fetch (Nov 2026). The cloud stores the workspace as content-hashed
+  //  chunks; a save writes only the chunks that changed and a device is sent only the chunks it does
+  //  not hold. (Before: every save rewrote, and every fetch re-read, the whole 200 KB workspace.)
+  //  Part 1 drives the shared codec the way the backend does; part 2 runs real devices through
+  //  pullRemote, including every way the answer can be wrong → the full fetch takes over.
+  // ============================================================
+  scen('S26 Chunk codec + delta fetch: saves and fetches touch only what changed; a doubtful answer falls back to the full fetch');
+  {
+    // a workspace big enough to be split the way the real one is (tasks, docs, day plans as collections)
+    const bigRaw = clone(REAL);
+    for (let i = 0; i < 60; i++) bigRaw.tasks.push({ id: 'bt' + i, text: 'Big task ' + i + ' ' + 'lorem ipsum '.repeat(12), done: false });
+    for (let i = 0; i < 6; i++) bigRaw.docs.push({ id: 'bd' + i, title: 'Doc ' + i, body: '<p>' + 'paragraph text '.repeat(150) + '</p>' });
+    for (let i = 10; i < 40; i++) bigRaw.personal.dayPlans['2026-08-' + i] = { entries: [{ id: 'be' + i, text: 'entry ' + 'note '.repeat(60) }], feeling: 'ok' };
+    const BIG = clone(normalize(clone(bigRaw)));
+    const J = x => JSON.stringify(x);
+
+    // ---- part 1: the codec, driven like the backend drives it
+    const enc0 = wsEncode(clone(BIG));
+    const kinds = Object.values(enc0.root.e || {});
+    check('a real-shaped workspace is stored as chunks: several collections split per element, small values kept whole', !enc0.root.whole && kinds.filter(k => k[0] === 'c').length >= 3 && kinds.filter(k => k[0] === 'l').length >= 3, J(kinds.map(k => k[0])));
+    check('decoding the chunks gives back the exact same JSON', J(wsDecode(enc0.root, k => enc0.chunks.get(k).d)) === J(BIG));
+    check('encoding is deterministic (same workspace → same root hash) and any change moves the root hash', wsEncode(clone(BIG)).rootHash === enc0.rootHash && wsEncode(Object.assign(clone(BIG), { updatedAt: 77 })).rootHash !== enc0.rootHash);
+    const mkStore = e => { const m = new Map(); for (const [k, c] of e.chunks) m.set(k, c.d); m.set('$root', e.rootJSON); return m; };
+    const applySave = (store, inc) => {   // what workspace:save does: read the root + the changed indexes, write the plan
+      const prevRoot = JSON.parse(store.get('$root')), prevIdx = {};
+      for (const p of wsNeedIdx(prevRoot, inc.root)) prevIdx[p] = JSON.parse(store.get(p + '#'));
+      const plan = wsPlanSave(prevRoot, prevIdx, inc);
+      let written = 0, missing = 0;
+      for (const [k, d] of plan.put) { store.set(k, d); written += d.length; }
+      for (const k of plan.del) { if (!store.has(k)) missing++; store.delete(k); }
+      store.set('$root', inc.rootJSON); written += inc.rootJSON.length;
+      return { written, puts: plan.put.length, dels: plan.del.length, missing };
+    };
+    const sameStore = (store, inc) => { if (store.size !== inc.chunks.size + 1 || store.get('$root') !== inc.rootJSON) return false; for (const [k, c] of inc.chunks) if (store.get(k) !== c.d) return false; return true; };
+    const pullFrom = (store, local) => {   // what workspace:pull does for a device holding `local`
+      const root = JSON.parse(store.get('$root')), idx = {};
+      for (const p of wsNeedIdxPull(root, local.root)) idx[p] = JSON.parse(store.get(p + '#'));
+      const keys = wsPlanPull(root, idx, clone({ root: local.root, idx: local.idx }));
+      const sent = {}; let chars = 0; for (const k of keys) { sent[k] = store.get(k); chars += sent[k].length; }
+      const got = wsOverlay(local, root, sent);
+      return { got, n: keys.length, chars, verified: wsEncode(got).rootHash === wsHash(store.get('$root')) };
+    };
+    const total = J(BIG).length;
+    const one = (mutate) => { const store = mkStore(enc0); const next = clone(BIG); mutate(next); next.updatedAt = (next.updatedAt || 0) + 1; const inc = wsEncode(next); const w = applySave(store, inc); const p = pullFrom(store, enc0); return { w, p, exact: sameStore(store, inc), pulled: J(p.got) === J(next) && p.verified }; };
+    let r = one(d => { d.tasks[5].text += ' — edited'; });
+    check('editing one task writes that task + the task index + the root, a small fraction of the workspace', r.exact && r.w.puts <= 4 && r.w.written < total / 8, J(r.w) + ' of ' + total);
+    check('…and a device one step behind is sent just those chunks and rebuilds the exact workspace', r.pulled && r.p.n <= 4 && r.p.chars < total / 8, J({ n: r.p.n, chars: r.p.chars }));
+    r = one(() => {});
+    check('a save that changes nothing but the stamp writes almost nothing', r.exact && r.pulled && r.w.written < 3000, J(r.w));
+    r = one(d => { d.personal.dayPlans['2026-08-15'].feeling = 'great'; d.personal.dayPlans['2026-09-01'] = { entries: [] }; });
+    check('editing one day and adding another touches only those days (personal is chunked key by key)', r.exact && r.pulled && r.w.written < total / 8, J(r.w));
+    r = one(d => { d.tasks.splice(3, 1); d.docs.unshift(d.docs.pop()); });
+    check('deleting an element removes its chunk; reordering rewrites only the index', r.exact && r.pulled && r.w.dels === 1 && r.w.missing === 0, J(r.w));
+    r = one(d => { d.tasks = d.tasks.slice(0, 2); delete d.docs; });
+    check('a collection that shrinks below the split size (or disappears) leaves no chunk behind', r.exact && r.pulled && r.w.dels > 50 && r.w.missing === 0, J(r.w));
+    {   // a value that changes SHAPE can reuse a chunk key of the old layout: the key must end up holding the new chunk
+      const a = clone(BIG), b = clone(BIG), c = clone(BIG);
+      b.personal = Object.keys(a.personal).slice(0, 6).map(k => ({ id: k, text: 'x'.repeat(2500) })); b.updatedAt = (a.updatedAt || 0) + 1;
+      c.updatedAt = b.updatedAt + 1;
+      const ea = wsEncode(a), eb = wsEncode(b), ec = wsEncode(c), store = mkStore(ea);
+      const shared = [...eb.chunks.keys()].filter(k => ea.chunks.has(k) && k.indexOf('~personal/') === 0).length;
+      const w1 = applySave(store, eb), ok1 = sameStore(store, eb), p1 = pullFrom(store, ea);
+      const w2 = applySave(store, ec), ok2 = sameStore(store, ec), p2 = pullFrom(store, eb);
+      check('a value that changes shape (personal: keys → a list whose ids are those key names, and back) keeps every chunk of the new layout', shared >= 3 && ok1 && ok2 && w1.missing === 0 && w2.missing === 0 && J(p1.got) === J(b) && p1.verified && J(p2.got) === J(c) && p2.verified, J({ shared, ok1, ok2 }));
+    }
+    { const store = mkStore(enc0); const p = pullFrom(store, wsEncode(clone(seedN))); check('a brand-new device is sent (nearly) everything — only values identical to its own untouched defaults are skipped — and rebuilds the exact workspace', J(p.got) === J(BIG) && p.verified && p.n > enc0.chunks.size * 0.8 && p.n <= enc0.chunks.size, p.n + ' of ' + enc0.chunks.size); }
+    { const store = mkStore(enc0); const p = pullFrom(store, enc0); check('a device that is already current is sent nothing', p.n === 0 && J(p.got) === J(BIG)); }
+    for (const [name, v] of [['a __proto__ key', JSON.parse('{"__proto__":{"a":1},"updatedAt":5}')], ['an id that cannot be a path segment', { tasks: [{ id: '\ud800', t: 'x'.repeat(4000) }, { id: 'b', t: 'x'.repeat(4000) }] }], ['duplicate ids', { tasks: [{ id: 'a', t: 'x'.repeat(4000) }, { id: 'a', t: 'y'.repeat(4000) }] }], ['numeric-looking map keys', { m: { '10': { t: 'x'.repeat(4000) }, '2': { t: 'x'.repeat(4000) }, b: { t: 1 } } }]]) {
+      const e = wsEncode(v);
+      check('awkward data still round-trips exactly — ' + name + (e.root.whole ? ' (stored whole)' : ''), J(wsDecode(e.root, k => e.chunks.get(k).d)) === J(v));
+    }
+    // random walk: after every save the store must be EXACTLY the fresh encoding (nothing missing, nothing left over),
+    // and a device holding any earlier version must be able to pull the current one
+    {
+      let seedv = 4242; const rnd = n => { seedv = (Math.imul(seedv, 1103515245) + 12345) >>> 0; return (seedv >>> 8) % n; };
+      let cur = clone(BIG), store = mkStore(enc0), bad = '', steps = 0; const held = [enc0];
+      for (let i = 0; i < 400 && !bad; i++) {
+        const next = clone(cur);
+        const target = rnd(3) === 0 && next.personal && typeof next.personal === 'object' && !Array.isArray(next.personal) ? next.personal : next;
+        const tk = Object.keys(target), key = tk[rnd(tk.length)], v = target[key], op = rnd(12);
+        if (Array.isArray(v) && v.length) {
+          if (op < 4) { const e = v[rnd(v.length)]; if (e && typeof e === 'object') e['f' + rnd(4)] = 'v' + rnd(1e6); }
+          else if (op < 6) v.splice(rnd(v.length), 1);
+          else if (op < 8) v.push({ id: 'id' + rnd(1e9), text: 'x'.repeat(rnd(400)) });
+          else if (op < 9) v.unshift(v.pop());
+          else if (op < 10) target[key] = v.slice(0, 1 + rnd(3));
+          else if (op < 11) v.push({ id: v[0] && v[0].id, dup: true });
+          else v.push('a bare string');
+        } else if (v && typeof v === 'object' && !Array.isArray(v)) {
+          const vk = Object.keys(v);
+          if (op < 5 && vk.length) { const e = v[vk[rnd(vk.length)]]; if (e && typeof e === 'object') e['f' + rnd(4)] = rnd(1e6); }
+          else if (op < 7 && vk.length) delete v[vk[rnd(vk.length)]];
+          else if (op < 10) v['k' + rnd(1e6)] = { a: 'y'.repeat(rnd(300)) };
+          else if (op < 11) v['n' + rnd(100)] = 5;
+          else v[String(rnd(50))] = { numericKey: true };
+        } else if (op < 4) target['extra' + rnd(5)] = [{ id: 'a' + rnd(99), big: 'z'.repeat(4000) }, { id: 'b' + rnd(99) + 'x', big: 'z'.repeat(4000) }];
+        else if (op < 5) delete target[key];
+        else if (op < 7) target['map' + rnd(3)] = { 'a/b#c': { t: 'q'.repeat(3500) }, 'é ü~$': { t: 'q'.repeat(3500) } };
+        else target[key] = rnd(1e6);
+        next.updatedAt = (cur.updatedAt || 0) + 1;
+        const inc = wsEncode(next);
+        const w = applySave(store, inc);
+        if (w.missing || !sameStore(store, inc)) { bad = 'store differs at step ' + i; break; }
+        const p = pullFrom(store, held[rnd(held.length)]);
+        if (J(p.got) !== J(next) || !p.verified) { bad = 'pull differs at step ' + i; break; }
+        if (held.length < 25) held.push(inc); else held[rnd(25)] = inc;
+        cur = next; steps++;
+      }
+      check('400 random saves (edits, adds, deletes, reorders, splits ⇄ whole values, odd keys): the store stays exact and every device can catch up', !bad && steps === 400, bad);
+    }
+
+    // ---- part 2: real devices
+    const { laptop, phone } = await setupSynced();
+    await flush(); useDevice(laptop); await flush();
+    __clock.t += 1000; data = normalize(clone(BIG)); data.updatedAt = 0; save(); await flush(); saveDevice(laptop);
+    check('the laptop pushed the large workspace', cloudWs().data.tasks.length === BIG.tasks.length && cloudWs().updatedAt === data.updatedAt);
+    const connect = async d => { await flush(); useDevice(d); cloud.gets = 0; cloud.pulls = 0; cloud.lastPull = null; startWorkspaceSync(); await flush(); await flush(); saveDevice(d); };
+    await connect(phone);
+    check('the phone catches up through ONE delta fetch — the full fetch is not used', cloud.pulls === 1 && cloud.gets === 0 && data.tasks.length === BIG.tasks.length && data.updatedAt === cloudWs().updatedAt && J(data.docs) === J(cloudWs().data.docs), J({ pulls: cloud.pulls, gets: cloud.gets, tasks: data.tasks.length }));
+    await connect(phone);
+    check('reconnecting when already current transfers nothing at all', cloud.pulls === 1 && cloud.gets === 0 && cloud.lastPull && cloud.lastPull.same === true && cloud.lastPull.n === 0, J(cloud.lastPull));
+    await flush(); useDevice(laptop); await flush();
+    __clock.t += 1000; data.tasks[4].text = 'edited on the laptop'; save(); await flush(); saveDevice(laptop);
+    await connect(phone);
+    check('after one task changed elsewhere the phone is sent only a handful of chunks, and has the edit', cloud.gets === 0 && cloud.lastPull && cloud.lastPull.n >= 1 && cloud.lastPull.n <= 4 && cloud.lastPull.n < cloud.lastPull.total / 10 && data.tasks[4].text === 'edited on the laptop', J(cloud.lastPull));
+    // the phone edits offline, then connects: the cloud copy it is handed is rebuilt from its own chunks + the differing ones
+    __clock.t += 1000; data.tasks[6].text = 'edited on the phone'; save(); await flush(); saveDevice(phone);
+    check('an edit made on the phone reaches the cloud as before', cloudWs().data.tasks[6].text === 'edited on the phone');
+    await connect(laptop);
+    check('…and the laptop picks it up with a delta fetch', cloud.gets === 0 && data.tasks[6].text === 'edited on the phone' && data.tasks[4].text === 'edited on the laptop', J(cloud.lastPull));
+    // every way the delta answer can be wrong → the full fetch, and the device still ends up with the cloud's copy
+    let n = 0;
+    for (const mode of ['badhash', 'badchunk', 'missing', 'garbage', 'legacy', 'fail']) {
+      await flush(); useDevice(laptop); await flush();
+      __clock.t += 1000; n++; data.tasks[8].text = 'round ' + n; save(); await flush(); saveDevice(laptop);
+      cloud.pullMode = mode;
+      await connect(phone);
+      cloud.pullMode = 'ok';
+      check('a delta answer that is ' + ({ badhash: 'not what its root hash says', badchunk: 'carrying a forged chunk', missing: 'missing a chunk', garbage: 'unreadable', legacy: 'unavailable (workspace not chunked yet)', fail: 'an error (older backend)' })[mode] + ' → full fetch, correct data', cloud.gets === 1 && data.tasks[8].text === 'round ' + n && data.updatedAt === cloudWs().updatedAt && !data.tasks.some(t => t.id === 'forged'), J({ gets: cloud.gets, text: data.tasks[8].text }));
+    }
+    await connect(phone);
+    check('with a healthy answer again the delta fetch is back in use', cloud.gets === 0 && cloud.pulls === 1);
+    cloud.pullMode = 'ok';
+  }
+
   // ===== report =====
   __log.push('\n' + '─'.repeat(60));
   __log.push('  ' + __pass + ' passed, ' + __fail + ' failed');
@@ -993,7 +1165,7 @@ for (const fn of calls) {
   sCheck(`"${fn}" is exported by convex/${mod}.ts`, new RegExp('export const ' + name + '\\s*=\\s*(query|mutation|action)\\(').test(modSrc(mod)));
 }
 const schemaTs = readFileSync(join(__dirname, '..', 'convex', 'schema.ts'), 'utf8');
-for (const t of ['workspaces', 'snapshots', 'securityLog', 'devices', 'otps', 'sessions']) sCheck(`table "${t}" is defined in convex/schema.ts`, new RegExp(t + ':\\s*defineTable\\(').test(schemaTs));
+for (const t of ['workspaces', 'workspaceChunks', 'snapshots', 'securityLog', 'devices', 'otps', 'sessions']) sCheck(`table "${t}" is defined in convex/schema.ts`, new RegExp(t + ':\\s*defineTable\\(').test(schemaTs));
 const libTs = readFileSync(join(__dirname, '..', 'convex', 'lib.ts'), 'utf8');
 sCheck('ADMIN_EMAIL matches between index.html and convex/lib.ts', (src.match(/const ADMIN_EMAIL = "([^"]+)"/) || [])[1] === (libTs.match(/ADMIN_EMAIL = "([^"]+)"/) || [])[1]);
 sCheck('data functions require a TRUSTED device server-side (requireTrusted/trustedOrNull in workspace.ts & snapshots.ts)', /requireTrusted|trustedOrNull/.test(modSrc('workspace')) && /requireTrusted|trustedOrNull/.test(modSrc('snapshots')));
@@ -1009,8 +1181,19 @@ sCheck('used/dead sign-in codes are marked consumed, never deleted by consumeCod
 sCheck('session tokens are stored hashed (tokenHash) with a legacy raw-token fallback', /by_tokenHash/.test(libTs) && /tokenHash/.test(modSrc('auth')) && /by_tokenHash/.test(schemaTs));
 sCheck('a daily maintenance cron exists', /crons\.daily\(/.test(modSrc('crons')) && /export const cleanup = internalMutation\(/.test(modSrc('maintenance')));
 sCheck('securityLog:add bounds its inputs and gates untrusted devices', /LOG_DETAIL_MAX/.test(modSrc('securityLog')) && /UNTRUSTED_EVENTS/.test(modSrc('securityLog')));
-sCheck('workspace:save decides on the meta row and patches the blob by id; unchanged re-pushes write nothing', /ctx\.db\.patch\(meta\.blobId/.test(modSrc('workspace')) && /updatedAt === meta\.updatedAt\) return \{ accepted: true/.test(modSrc('workspace')));
+sCheck('workspace:save decides on the meta row; unchanged re-pushes write nothing; an accepted save writes a chunk delta (reconcile only as migration / self-heal) and never the old blob row', /updatedAt === meta\.updatedAt\) return \{ accepted: true/.test(modSrc('chunkStore')) && /updatedAt < meta\.updatedAt\) return \{ accepted: false/.test(modSrc('chunkStore')) && /const delta = !fullCheckDue && \(await writeDelta\(ctx, email, inc\)\);/.test(modSrc('chunkStore')) && /if \(!delta\) \{[^}]*?const r = await reconcileChunks\(ctx, email, inc\);/.test(modSrc('chunkStore')) && /FULL_CHECK_EVERY_MS = 12 \* 60 \* 60 \* 1000/.test(libTs) && /if \(putKeys\.has\(key\) \|\| inc\.chunks\.has\(key\)\) continue;/.test(modSrc('chunkStore')) && /return await saveWorkspace\(ctx, session\.email, deviceId, data, updatedAt\)/.test(modSrc('workspace')) && !/db\.(patch|replace|insert)\([^)]*(blobId|"workspaces")/.test(modSrc('workspace') + modSrc('chunkStore').replace(/ctx\.db\.insert\("workspaceMeta"/g, '')));
+{
+  const codecJs = readFileSync(join(__dirname, '..', 'convex', 'chunks.js'), 'utf8').replace(/\r\n/g, '\n').replace(/^export /gm, '').trim();
+  const a = src.indexOf('/* ---- ws-codec:start'), b = src.indexOf('/* ---- ws-codec:end ---- */');
+  const inPage = a >= 0 && b > a ? src.slice(src.indexOf('\n', a) + 1, b).replace(/\r\n/g, '\n').trim() : '';
+  sCheck('the chunk codec in index.html is the exact copy of convex/chunks.js (devices and backend must split + hash identically) — run npm run sync:codec', inPage.length > 5000 && inPage === codecJs);
+  sCheck('the backend uses the shared codec for save, pull and reassembly', /from "\.\/chunks"/.test(modSrc('chunkStore')) && /C\.wsEncode\(/.test(modSrc('chunkStore')) && /C\.wsPlanSave\(/.test(modSrc('chunkStore')) && /C\.wsPlanPull\(/.test(modSrc('chunkStore')) && /C\.wsDecode\(/.test(modSrc('chunkStore')));
+}
+sCheck('devices fetch through the delta query, verify the rebuilt copy against the cloud root hash, and fall back to the full fetch', /cloudQuery\("workspace:pull", \{ have:JSON\.stringify\(\{ rootHash:local\.rootHash, root:local\.root, idx:local\.idx \}\) \}\)/.test(src) && /if\(wsEncode\(remote\)\.rootHash===r\.rootHash\) return \{ data:JSON\.stringify\(remote\), updatedAt:r\.updatedAt \};/.test(src) && /return cloudQuery\("workspace:get"\);\n\}/.test(src) && /pullRemote\(\)\.then\(row=>\{/.test(src));
+sCheck('the 250 KB whole-workspace cap is gone: limits are per chunk and per workspace, snapshots have their own', !/MAX_BLOB_BYTES/.test(libTs + modSrc('workspace') + modSrc('snapshots') + modSrc('chunkStore')) && /MAX_WORKSPACE_BYTES = 2_000_000/.test(libTs) && /MAX_CHUNKS = 3500/.test(libTs) && /MAX_CHUNK_BYTES = 900_000/.test(libTs) && /MAX_SNAPSHOT_BYTES/.test(modSrc('snapshots')));
+sCheck('workspace:get still serves the whole workspace (pages cached before Nov 2026 + the fallback), reassembled from chunks', /export const get = query\(/.test(modSrc('workspace')) && /readWorkspaceJSON\(ctx, email\)/.test(modSrc('workspace')));
 sCheck('snapshots:add gates automatic snapshots server-side and prunes via metadata only', /SNAPSHOT_MIN_GAP_MS/.test(modSrc('snapshots')) && /snapshotBlobs/.test(modSrc('snapshots')));
+sCheck('a snapshot larger than one document is stored in parts (never cut inside a surrogate pair), read back whole or not at all, and pruned with all its parts', /export function splitForDocs\(/.test(modSrc('snapshots')) && /c >= 0xdc00 && c <= 0xdfff/.test(modSrc('snapshots')) && /moreBlobIds/.test(schemaTs) && /if \(!part \|\| part\.email !== ok\.session\.email\) \{ data = null; break; \}/.test(modSrc('snapshots')) && (modSrc('snapshots').match(/await deleteBlobs\(ctx, /g) || []).length === 2 && /MAX_SNAPSHOT_BYTES = MAX_WORKSPACE_BYTES/.test(libTs));
 sCheck('the Excel export is gone (no SheetJS, no exportBtn) and the CSP no longer allows its CDNs', !/exportExcel|xlsx|SheetJS|exportBtn/i.test(src) && !/script-src[^;]*unpkg\.com/.test(src));   // jsdelivr/esm.run stay: they are the Convex client's own fallbacks
 sCheck('pushes are batched and flushed on hide/close (schedulePush/flushPush wired to visibilitychange + pagehide)', /function schedulePush\(\)/.test(src) && /visibilitychange/.test(src) && /pagehide",\s*\(\)=>flushPush\(\)/.test(src) && /mirrorWrite\(json\);\n  schedulePush\(\);/.test(src));
 sCheck('package.json pins convex to the deployed major/minor line (^1.45)', /"convex":\s*"\^1\.45/.test(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')));

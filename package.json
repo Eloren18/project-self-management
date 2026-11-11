@@ -4,7 +4,8 @@
   "description": "Project Self-Management — static frontend (index.html + vendor/tiptap.js) + Convex backend (convex/)",
   "scripts": {
     "build:editor": "node tools/build-editor.mjs",
-    "test": "node tests/e2e-sync.mjs"
+    "test": "node tools/sync-codec.mjs --check && node tests/e2e-sync.mjs",
+    "sync:codec": "node tools/sync-codec.mjs"
   },
   "devDependencies": {
     "@tiptap/core": "^3.31.3",

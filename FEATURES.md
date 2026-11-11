@@ -11,7 +11,7 @@ A feature is "passing" only when its listed behaviors all work.
 
 ## 0. Full-check protocol (in this order)
 
-1. **Automated suite** — `node tests/e2e-sync.mjs` → must end `✅ all N checks passed`.
+1. **Automated suite** — `npm test` (the codec-copy check + `node tests/e2e-sync.mjs`) → must end `✅ all N checks passed`.
    Covers the whole sync/data-safety system (scenarios S0–S15) plus the
    schema/perms consistency sweep (S16). See `tests/README.md`.
 2. **Preview walkthrough** — start the preview server (launch.json
@@ -28,10 +28,12 @@ A feature is "passing" only when its listed behaviors all work.
 
 ## 1. Sync & data safety — THE MOST IMPORTANT SYSTEM
 
-One JSON blob holds **work + personal**. Sync is whole-blob **last-write-wins**
-on `data.updatedAt` via **Convex** (`workspaces` row keyed by email; the blob is a JSON
-string; `workspace:get` is a live subscription, `workspace:save` an LWW mutation that
-returns `{accepted, updatedAt}` so the sync pill's "Synced" is a real acknowledgement).
+One JSON workspace holds **work + personal**. Sync is whole-workspace **last-write-wins**
+on `data.updatedAt` via **Convex**: devices subscribe to the tiny `workspace:version` record,
+fetch with `workspace:pull` (only the pieces they lack — 1.23) and push with `workspace:save`,
+an LWW mutation that returns `{accepted, updatedAt}` so the sync pill's "Synced" is a real
+acknowledgement. The backend stores the workspace as content-hashed **chunks** (`workspaceChunks`,
+since Nov 2026 — 1.23); to every device it is still one JSON object.
 Backend code lives in `convex/` (see `SETUP-Convex.txt`); prod `cheerful-rat-350`, dev `hearty-jay-608`.
 
 | # | Behavior | Verified by |
@@ -57,7 +59,8 @@ Backend code lives in `convex/` (see `SETUP-Convex.txt`); prod `cheerful-rat-350
 | 1.19 | `navigator.storage.persist()` requested at boot (anti-eviction) | code |
 | 1.20 | **Backup-download reminder** if no file download in ≥14 days (once per session) | code |
 | 1.21 | **Push batching (bandwidth)**: every keystroke still saves locally at once, but the cloud gets **one push per pause in typing** (`schedulePush`: idle 1.5 s, max wait 8 s), **single-flight** (a save during an in-flight push is sent by the ack), and **flushed immediately** when the tab is hidden, the page closes, the connection returns, or a restore runs (`flushPush`). The sync pill says "Saving…" from the first keystroke and "Synced" only after the ack, as before | S22, S14 |
-| 1.22 | **Version subscription (bandwidth)**: devices subscribe to the tiny `workspace:version` record (`{updatedAt, writerDeviceId}` in `workspaceMeta`), not the 80 KB blob. The blob is fetched once on connect (`workspace:get`) and then only when ANOTHER device changed it; a device's own write comes back as a version tick that just confirms the ack. `workspace:save` decides on the meta row and patches the blob by id (no 80 KB read), and an unchanged re-push writes nothing. Out-of-order fetches are ignored (`verSeen`). Before this, one keystroke cost ~(2 + devices) × 83 KB of database bandwidth (~500 MB/day) | S21, S22, S16 |
+| 1.22 | **Version subscription (bandwidth)**: devices subscribe to the tiny `workspace:version` record (`{updatedAt, writerDeviceId}` in `workspaceMeta`), not the 80 KB blob. The blob is fetched once on connect (`workspace:get`) and then only when ANOTHER device changed it; a device's own write comes back as a version tick that just confirms the ack. `workspace:save` decides on the meta row, and an unchanged re-push writes nothing (how the workspace itself is stored, written and fetched: 1.23). Out-of-order fetches are ignored (`verSeen`). Before this, one keystroke cost ~(2 + devices) × 83 KB of database bandwidth (~500 MB/day) | S21, S22, S16 |
+| 1.23 | **Chunked storage + delta fetch (database I/O, Nov 2026)**: the backend no longer keeps the workspace as one document. The shared codec (`convex/chunks.js`, copied verbatim into `index.html` by `npm run sync:codec`) splits it into small chunks with a content hash: small values whole (`~settings`), big collections one chunk per element plus an index (`~tasks#`, `~tasks/<id>`; `personal` is chunked key by key, so each day plan is its own chunk), and a root listing every hash. **A save writes only the chunks that changed** (one task ≈ 8 KB of I/O, typing in a 15 KB document ≈ 18 KB, instead of the whole 200 KB twice); **a fetch (`workspace:pull`) sends only the chunks the device does not hold** — nothing when it is current, three chunks when one task changed elsewhere. What did NOT change: the app still pushes the whole JSON with one `workspace:save`, last-write-wins on the stamp, stale saves rejected, equal stamps a no-op, one transaction; `onRemoteRow` / the barrier / the shrink guards see the same `{data, updatedAt}` as before. **Safety nets:** the codec checks itself on every encode (anything it cannot reproduce exactly is stored as one chunk); the device re-hashes the rebuilt copy and compares it with the cloud's root hash — any doubt (mismatch, missing chunk, error, older backend) → the plain full fetch `workspace:get`, which reassembles every chunk; a save that finds damaged storage rewrites it (`reconcileChunks`); pages cached from before the change keep working (`get` / `save` are unchanged for them); the pre-change blob row is left frozen as a copy. **Second line of defence:** at most every 12 h one save takes the full path instead of the delta path — it reads every stored chunk, compares it with the copy being saved and rewrites whatever differs, so damaged storage repairs itself (a repair is written to the security log as `storage_repaired`). The old 250 KB whole-workspace cap is gone (limits now: 2 MB per workspace — snapshots included, stored in parts above one document's size — and 900 KB per chunk) | S26, S16, `admin:chunkSelfTest`, `admin:verifyChunks` |
 
 ---
 
@@ -217,7 +220,8 @@ A bug in one namespace must never take the other down (enforced by
 | 6.0 | **Backend = Convex** (`convex/` folder, TypeScript): `npx convex dev --once` pushes to dev, `npx convex deploy -y` (or `Deploy-Backend.bat`) to prod; `npx convex run admin:stats --prod` = safe summary, never contents. Secrets (`RESEND_API_KEY`) live in Convex env, never in the repo. CSP allows only `*.convex.cloud` (+ localhost for testing) as connect targets. |
 | 6.2 | Deploy: push to `main` → GitHub Actions Pages workflow (`deploy.yml`, publishes repo root, auto-retry after 90s on Pages flakes) → https://eloren18.github.io/project-self-management/ |
 | 6.3 | Preview: `.claude/launch.json` → `self-management` server on port 8742 (`http-server`, no cache); `window.__psmPreview()` bypasses the gate for UI checks |
-| 6.4 | Tests: `tests/e2e-sync.mjs` extracts the REAL sync functions from `index.html` (never a reimplementation) — see `tests/README.md` |
+| 6.4 | Tests: `tests/e2e-sync.mjs` extracts the REAL sync functions from `index.html` (never a reimplementation) — see `tests/README.md`. `npm test` first checks that the codec copy in `index.html` matches `convex/chunks.js` |
+| 6.5 | **Chunk codec = one source, two copies**: edit `convex/chunks.js` only, then `npm run sync:codec` (rewrites the block between the `ws-codec` markers in `index.html`). Device and backend must split + hash identically, or every delta fetch falls back to the full fetch (correct, but as expensive as before). Changing `WS_SPLIT_MIN` / `WS_NS` / the hash changes the layout: deploy the backend, then the page; the first save afterwards rewrites the stored chunks once. Backend checks (counts and yes/no only, never contents): `npx convex run admin:verifyChunks --prod` (integrity), `admin:chunkSelfTest` (drives the real save / pull / heal code on a scratch account and removes everything again), `admin:migrateToChunks` (one-off move, keeps the stamp), `admin:chunkLoadTest '{"bytes":1900000}'` (the same code at the size limit), `admin:refreshLegacyRow` (rollback aid: copies the live workspace back into the old blob row and clears the chunk fields — only right before deploying pre-Nov-2026 backend code) |
 
 ---
 
@@ -234,6 +238,7 @@ A bug in one namespace must never take the other down (enforced by
 9. **Sign-in attempt counter never persisted (found by the Convex reviewer, Sep 2026)**: `consumeCode` incremented `attempts` and then threw; a throw rolls back a Convex mutation's writes, so the "5 tries" cap did not exist. Guard: the mutation returns `{ok:false,error}` (throw happens in the action afterwards); S16 statically asserts `consumeCode` contains no `throw`. **[ALWAYS CHECK] after touching auth.ts.**
 10. **500 MB/day of database bandwidth (Sep 2026)**: whole-blob push per keystroke × (mutation read + write + one subscription re-read per device). Guard: push batching (1.21) + version subscription (1.22); the snapshot split (1.12) removed the other big reader. **Check protocol:** after a day of use the Convex dashboard's database bandwidth should be single-digit MB.
 11. **Half-screen windows showed notes twice as wide as the window (Oct 2026)**: below 900px the layout switched the two-column grids to a bare `1fr` track, and `1fr` means `minmax(auto,1fr)` — the `auto` minimum let a single unwrappable child (the one-line snippet of a collapsed meeting note, `white-space:nowrap`) stretch the column to the text's width (1,680px in a 700px window), so every note's text wrapped far beyond the right edge and the page scrolled sideways. Every grid track is now `minmax(0,1fr)` (S16 checks the stylesheet) and the snippet is `width:0; flex:1` so it never contributes its text width. **[ALWAYS CHECK — shrink the window to half the screen on Meetings with a collapsed note that has a long first line: no sideways scroll, text wraps inside the window.]**
+12. **Database I/O grew with everything ever written, and saves were weeks from being refused (Nov 2026)**: the workspace was one document — 83 KB in September, 202 KB in November — so every push rewrote all of it (and `patch` reads the old document first), every fetch re-read all of it, and the backend's 250 KB cap would soon have rejected every save. Guard: chunked storage + delta fetch (1.23). **Check protocol:** `npx convex run admin:verifyChunks --prod` → `readable`, `everyHashMatchesItsData`, `rootHashMatchesMeta`, `layoutIsCanonical` all true, `leftoverChunks` 0; `npm test` (S26 + the codec-copy check). **Never** edit the codec in `index.html` by hand, and never write to `workspaceChunks` outside `chunkStore.ts`.
 
 ---
 
@@ -247,3 +252,4 @@ After any deploy that touches sync, auth, schema, or the Security modal:
 4. Sync pill: make an edit → `Saving…` → `Synced`; go offline (airplane mode) + edit → red `Not synced · offline`; back online → `Synced`.
 5. Phone + laptop: edit on one → appears on the other within seconds.
 6. Download full backup → file contains both work and personal data.
+7. After a deploy that touches `convex/chunks.js`, `chunkStore.ts` or `workspace.ts`: make an edit on one device, see it on another, then `npx convex run admin:verifyChunks --prod` → `readable`, `everyHashMatchesItsData`, `rootHashMatchesMeta`, `layoutIsCanonical` all true and `leftoverChunks` 0 (yes/no answers only, no contents).

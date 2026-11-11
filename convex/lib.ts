@@ -12,7 +12,15 @@ export const OTP_DAILY_CAP = 15; // max code emails per address per 24h
 export const OTP_MAX_ATTEMPTS = 5; // wrong guesses before the code is dead
 export const SNAPSHOT_KEEP = 30; // cloud snapshot history depth
 export const SNAPSHOT_MIN_GAP_MS = 4 * 60 * 60 * 1000; // automatic snapshots at most every 4h (server-enforced across devices)
-export const MAX_BLOB_BYTES = 250_000; // UTF-8 bytes. Keeps 30 snapshots inside one function's read budget (~8 MiB) with room to spare
+// Size limits (UTF-8 bytes). The workspace is stored as chunks (chunkStore.ts), so the old
+// 250 KB whole-blob cap is gone; what remains are Convex's own budgets:
+// (chosen to fit the STRICTER of the per-function budgets Convex has published: 8 MiB read / written, 8,192 documents written)
+export const MAX_WORKSPACE_BYTES = 2_000_000; // whole workspace JSON — 10× today's size. A full rewrite reads + writes it once; admin:chunkLoadTest exercises this size
+export const MAX_CHUNK_BYTES = 900_000; // one chunk = one document (Convex caps a document at 1 MiB)
+export const MAX_CHUNKS = 3500; // documents per workspace: a worst-case full rewrite (every key replaced = inserts + deletes) stays under 8,192 writes
+export const MAX_SNAPSHOT_BYTES = MAX_WORKSPACE_BYTES; // any workspace that can be saved can be snapshotted (stored in parts — snapshots.ts)
+export const SNAPSHOT_PART_CHARS = 250_000; // UTF-16 units per snapshot part (≤ 750 KB as UTF-8, inside the 1 MiB document cap)
+export const FULL_CHECK_EVERY_MS = 12 * 60 * 60 * 1000; // at most this long between two saves that re-read EVERY chunk and repair any difference (chunkStore.ts)
 export const MAX_DEVICES = 20; // a session holder can't spam pending devices
 export const LOG_RETENTION_MS = 1000 * 60 * 60 * 24 * 90; // security-log rows older than this are pruned by the daily cron
 export const LOG_EVENT_MAX = 64;

@@ -1,8 +1,35 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { MAX_BLOB_BYTES, SNAPSHOT_KEEP, SNAPSHOT_MIN_GAP_MS, byteLen, requireTrusted, trustedOrNull } from "./lib";
+import type { MutationCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
+import { MAX_SNAPSHOT_BYTES, SNAPSHOT_KEEP, SNAPSHOT_MIN_GAP_MS, SNAPSHOT_PART_CHARS, byteLen, requireTrusted, trustedOrNull } from "./lib";
 
 const item = v.object({ id: v.id("snapshots"), ts: v.number(), updatedAt: v.number(), label: v.string(), bytes: v.number() });
+
+// A snapshot is one whole copy of the workspace (a JSON string). One Convex document
+// holds at most 1 MiB, so a copy larger than SNAPSHOT_PART_CHARS is stored as several
+// snapshotBlobs rows: the first in `blobId` (exactly as before), the rest in
+// `moreBlobIds`, in order. A part never starts in the middle of a surrogate pair, so
+// every part is a valid string on its own.
+export function splitForDocs(s: string, max: number = SNAPSHOT_PART_CHARS): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < s.length) {
+    let j = Math.min(s.length, i + max);
+    if (j < s.length) {
+      const c = s.charCodeAt(j);
+      if (c >= 0xdc00 && c <= 0xdfff && j - 1 > i) j--; // keep the pair together in the next part
+    }
+    out.push(s.slice(i, j));
+    i = j;
+  }
+  return out.length ? out : [""];
+}
+
+async function deleteBlobs(ctx: MutationCtx, row: Doc<"snapshots">) {
+  if (row.blobId) await ctx.db.delete(row.blobId);
+  for (const id of row.moreBlobIds ?? []) await ctx.db.delete(id);
+}
 
 // Restore-points list: metadata rows only — the blobs live in snapshotBlobs and are
 // never read here. Trusted devices only.
@@ -21,7 +48,8 @@ export const list = query({
   },
 });
 
-// One snapshot's full blob (fetched on demand when restoring).
+// One snapshot's full copy (fetched on demand when restoring). null when any part is
+// missing — a partial copy is never returned.
 export const get = query({
   args: { token: v.string(), deviceId: v.string(), id: v.id("snapshots") },
   returns: v.union(v.null(), v.object({ data: v.string(), ts: v.number(), updatedAt: v.number(), label: v.string() })),
@@ -34,6 +62,13 @@ export const get = query({
     if (row.blobId) {
       const blob = await ctx.db.get(row.blobId);
       data = blob && blob.email === ok.session.email ? blob.data : null;
+      if (data !== null) {
+        for (const partId of row.moreBlobIds ?? []) {
+          const part = await ctx.db.get(partId);
+          if (!part || part.email !== ok.session.email) { data = null; break; }
+          data += part.data;
+        }
+      }
     }
     if (data === null) return null;
     return { data, ts: row.ts, updatedAt: row.updatedAt, label: row.label };
@@ -53,7 +88,7 @@ export const add = mutation({
   handler: async (ctx, { token, deviceId, ts, updatedAt, label, data, force }) => {
     const { session } = await requireTrusted(ctx, token, deviceId);
     const bytes = byteLen(data);
-    if (bytes > MAX_BLOB_BYTES) throw new ConvexError("Snapshot too large.");
+    if (bytes > MAX_SNAPSHOT_BYTES) throw new ConvexError("Snapshot too large.");
     const metas = await ctx.db
       .query("snapshots")
       .withIndex("by_email_ts", (q) => q.eq("email", session.email))
@@ -62,11 +97,17 @@ export const add = mutation({
     const newest = metas[0];
     if (!force && newest && (ts - newest.ts < SNAPSHOT_MIN_GAP_MS || updatedAt <= newest.updatedAt))
       return { kept: Math.min(metas.length, SNAPSHOT_KEEP), skipped: true };
-    const blobId = await ctx.db.insert("snapshotBlobs", { email: session.email, data });
-    await ctx.db.insert("snapshots", { email: session.email, ts, updatedAt, label: label.slice(0, 200), bytes, blobId });
+    const parts = splitForDocs(data);
+    const blobId = await ctx.db.insert("snapshotBlobs", { email: session.email, data: parts[0] });
+    const moreBlobIds = [];
+    for (let i = 1; i < parts.length; i++) moreBlobIds.push(await ctx.db.insert("snapshotBlobs", { email: session.email, data: parts[i] }));
+    await ctx.db.insert("snapshots", {
+      email: session.email, ts, updatedAt, label: label.slice(0, 200), bytes, blobId,
+      ...(moreBlobIds.length ? { moreBlobIds } : {}),
+    });
     const excess = metas.slice(SNAPSHOT_KEEP - 1); // room for the one just added
     for (const old of excess) {
-      if (old.blobId) await ctx.db.delete(old.blobId);
+      await deleteBlobs(ctx, old);
       await ctx.db.delete(old._id);
     }
     return { kept: Math.min(metas.length + 1, SNAPSHOT_KEEP), skipped: false };
@@ -80,7 +121,7 @@ export const remove = mutation({
     const { session } = await requireTrusted(ctx, token, deviceId);
     const row = await ctx.db.get(id);
     if (row && row.email === session.email) {
-      if (row.blobId) await ctx.db.delete(row.blobId);
+      await deleteBlobs(ctx, row);
       await ctx.db.delete(id);
     }
     return null;

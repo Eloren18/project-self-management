@@ -89,13 +89,36 @@ SECURITY NOTES
 BANDWIDTH & HOUSEKEEPING (Sep 2026)
 ----------------------------------------------------------
 - Devices subscribe to a tiny version record (workspaceMeta) and fetch the
-  workspace blob only when another device changed it; keystrokes are batched
+  workspace only when another device changed it (and then only the changed
+  pieces — see Storage below); keystrokes are batched
   into one push per pause (flushed at once when the tab is hidden or closed).
   Expect single-digit MB of database bandwidth per day; if the dashboard shows
   hundreds of MB again, something is pushing per keystroke.
 - Snapshots: metadata rows (snapshots) + blobs (snapshotBlobs). Automatic
   snapshots are gated server-side to one per 4h across all devices.
-- Workspace size limit: 250 KB (UTF-8). Today ~85 KB.
+- Storage (Nov 2026): the workspace is no longer one 200 KB document that every
+  save rewrote and every fetch re-read. It is stored as ~250 small "chunks"
+  (table workspaceChunks) with content hashes. A save writes only the chunks
+  that changed; a device fetches only the chunks it does not hold (nothing when
+  it is already up to date). To the app it is still one workspace, saved whole,
+  newest stamp wins. Typical cost of one save: 5-20 KB instead of ~400 KB.
+- Size limits: 2 MB per workspace (ten times today's ~200 KB) and 900 KB per
+  chunk; the old 250 KB whole-workspace limit is gone. Snapshots follow the
+  workspace limit (a large one is stored in several parts).
+- Twice a day at most, one save re-reads every chunk and repairs any
+  difference with the copy being saved. If it ever had to repair something,
+  the security log shows a "storage_repaired" entry.
+- The chunk rules live in convex/chunks.js and are copied into index.html.
+  After changing that file run:   npm run sync:codec   (npm test checks it).
+- Health check of the stored chunks (yes/no answers and counts, no contents):
+     npx convex run admin:verifyChunks --prod
+  Everything should be true and leftoverChunks 0.
+- Self-test of the storage code on a scratch account (cleans up after itself):
+     npx convex run admin:chunkSelfTest --prod
+- The old single-document row (table workspaces) is kept frozen as a copy of
+  the state just before the change. If the backend ever has to be rolled back
+  to the older code, run this and deploy the older code RIGHT AFTER it:
+     npx convex run admin:refreshLegacyRow --prod
 - Daily cron (convex/crons.ts → maintenance:cleanup, 03:15 UTC) removes stale
   sign-in codes, expired sessions and security-log rows older than 90 days.
   Run by hand:   npx convex run maintenance:cleanup --prod

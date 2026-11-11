@@ -1,11 +1,12 @@
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { MAX_BLOB_BYTES, byteLen, requireTrusted, trustedOrNull } from "./lib";
+import { requireTrusted, trustedOrNull } from "./lib";
+import { legacyRowOf, metaOf, pullWorkspace, readWorkspaceJSON, saveWorkspace } from "./chunkStore";
 
 // What devices SUBSCRIBE to: a few dozen bytes instead of the whole workspace.
 // A change made on this device shows up here with our own writerDeviceId (the push
 // ack already confirmed it); a change made elsewhere is what triggers a one-shot
-// `get`. Before the first save on the new backend there is no meta row yet, so the
+// `pull`. Before the first save on the new backend there is no meta row yet, so the
 // stamp is read from the blob row once.
 export const version = query({
   args: { token: v.string(), deviceId: v.string() },
@@ -13,21 +14,16 @@ export const version = query({
   handler: async (ctx, { token, deviceId }) => {
     const ok = await trustedOrNull(ctx, token, deviceId);
     if (!ok) return null;
-    const meta = await ctx.db
-      .query("workspaceMeta")
-      .withIndex("by_email", (q) => q.eq("email", ok.session.email))
-      .first();
+    const meta = await metaOf(ctx, ok.session.email);
     if (meta) return { updatedAt: meta.updatedAt, writerDeviceId: meta.writerDeviceId };
-    const row = await ctx.db
-      .query("workspaces")
-      .withIndex("by_email", (q) => q.eq("email", ok.session.email))
-      .first();
+    const row = await legacyRowOf(ctx, ok.session.email);
     return { updatedAt: row ? row.updatedAt : 0, writerDeviceId: "" };
   },
 });
 
-// The signed-in user's workspace, readable only from a TRUSTED device. Fetched on
-// demand (not subscribed). null = not signed in / device not approved;
+// The signed-in user's WHOLE workspace as one JSON string, readable only from a TRUSTED
+// device. Reads every chunk, so the app uses it only as the fallback of `pull` (and pages
+// cached from before Nov 2026 still call it). null = not signed in / device not approved;
 // {data:null} = approved, nothing stored yet.
 export const get = query({
   args: { token: v.string(), deviceId: v.string() },
@@ -35,51 +31,44 @@ export const get = query({
   handler: async (ctx, { token, deviceId }) => {
     const ok = await trustedOrNull(ctx, token, deviceId);
     if (!ok) return null;
-    const row = await ctx.db
-      .query("workspaces")
-      .withIndex("by_email", (q) => q.eq("email", ok.session.email))
-      .first();
+    const email = ok.session.email;
+    const meta = await metaOf(ctx, email);
+    if (meta && meta.chunked) return { data: await readWorkspaceJSON(ctx, email), updatedAt: meta.updatedAt };
+    const row = await legacyRowOf(ctx, email);
     return row ? { data: row.data, updatedAt: row.updatedAt } : { data: null, updatedAt: 0 };
   },
 });
 
-// Whole-blob upsert, last-write-wins by the client's updatedAt stamp. Decides on
-// the tiny meta row and patches the blob by id, so the 80 KB row is never read
-// here; an unchanged re-push (same stamp) writes nothing at all.
+// Delta fetch: the device says what it holds (`have` = JSON {rootHash, root, idx} of its own
+// chunk encoding) and gets back only the chunks that differ — nothing at all when it is
+// already current. mode "legacy" → use `get`. See chunkStore.ts.
+export const pull = query({
+  args: { token: v.string(), deviceId: v.string(), have: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      mode: v.union(v.literal("legacy"), v.literal("delta")),
+      updatedAt: v.number(),
+      rootHash: v.optional(v.string()),
+      root: v.optional(v.string()),
+      chunks: v.optional(v.array(v.object({ k: v.string(), d: v.string() }))),
+    }),
+  ),
+  handler: async (ctx, { token, deviceId, have }) => {
+    const ok = await trustedOrNull(ctx, token, deviceId);
+    if (!ok) return null;
+    return await pullWorkspace(ctx, ok.session.email, have);
+  },
+});
+
+// Whole-workspace upsert, last-write-wins by the client's updatedAt stamp. Decides on the
+// tiny meta row; an unchanged re-push (same stamp) writes nothing at all; an accepted save
+// writes only the chunks whose content changed.
 export const save = mutation({
   args: { token: v.string(), deviceId: v.string(), data: v.string(), updatedAt: v.number() },
   returns: v.object({ accepted: v.boolean(), updatedAt: v.number() }),
   handler: async (ctx, { token, deviceId, data, updatedAt }) => {
     const { session } = await requireTrusted(ctx, token, deviceId);
-    const bytes = byteLen(data);
-    if (bytes > MAX_BLOB_BYTES) throw new ConvexError("Workspace too large to sync.");
-    let meta = await ctx.db
-      .query("workspaceMeta")
-      .withIndex("by_email", (q) => q.eq("email", session.email))
-      .first();
-    if (!meta) {
-      // One-time adoption of the pre-existing blob row (or creation of a fresh one).
-      const row = await ctx.db
-        .query("workspaces")
-        .withIndex("by_email", (q) => q.eq("email", session.email))
-        .first();
-      if (!row) {
-        const blobId = await ctx.db.insert("workspaces", { email: session.email, data, updatedAt });
-        await ctx.db.insert("workspaceMeta", { email: session.email, blobId, updatedAt, writerDeviceId: deviceId, bytes });
-        return { accepted: true, updatedAt };
-      }
-      const metaId = await ctx.db.insert("workspaceMeta", {
-        email: session.email, blobId: row._id, updatedAt: row.updatedAt, writerDeviceId: "", bytes: byteLen(row.data),
-      });
-      meta = (await ctx.db.get(metaId))!;
-    }
-    if (updatedAt < meta.updatedAt) {
-      // Stale write from an out-of-date device — ignored; the version tick hands that device the newer copy.
-      return { accepted: false, updatedAt: meta.updatedAt };
-    }
-    if (updatedAt === meta.updatedAt) return { accepted: true, updatedAt }; // idempotent re-push: nothing to write
-    await ctx.db.patch(meta.blobId, { data, updatedAt });
-    await ctx.db.patch(meta._id, { updatedAt, writerDeviceId: deviceId, bytes });
-    return { accepted: true, updatedAt };
+    return await saveWorkspace(ctx, session.email, deviceId, data, updatedAt);
   },
 });

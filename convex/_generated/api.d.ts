@@ -10,6 +10,8 @@
 
 import type * as admin from "../admin.js";
 import type * as auth from "../auth.js";
+import type * as chunkStore from "../chunkStore.js";
+import type * as chunks from "../chunks.js";
 import type * as crons from "../crons.js";
 import type * as devices from "../devices.js";
 import type * as lib from "../lib.js";
@@ -27,6 +29,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   auth: typeof auth;
+  chunkStore: typeof chunkStore;
+  chunks: typeof chunks;
   crons: typeof crons;
   devices: typeof devices;
   lib: typeof lib;
