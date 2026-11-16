@@ -857,6 +857,29 @@ async function HARNESS() {
   }
 
   // ============================================================
+  //  S27 — Meetings: manual order (drag a row / ▲▼) on top of the old "most recently logged first" list
+  // ============================================================
+  scen('S27 Meetings keep a manual order; older data migrates to the previous latest-entry-first order');
+  {
+    const mk = (id, date) => ({ id, name: id, entries: date ? [{ id: id + '-e', date }] : [], tasks: [] });
+    const n1 = normalize({ projects: [], meetings: [mk('old', '2026-01-05'), mk('new', '2026-03-01'), mk('never', ''), mk('mid', '2026-02-01')] });
+    const ids = arr => meetingsInOrder(arr).map(m => m.id).join(',');
+    check('meetings without an order get one that reproduces the old list (latest entry first, never-logged last)', ids(n1.meetings) === 'new,mid,old,never', ids(n1.meetings));
+    check('…as numbers below zero, so nothing collides with hand-placed meetings later', n1.meetings.every(m => typeof m.order === 'number' && m.order < 0));
+    check('normalizing again leaves every position as it is', JSON.stringify(normalize(clone(n1)).meetings.map(m => [m.id, m.order])) === JSON.stringify(n1.meetings.map(m => [m.id, m.order])));
+    const n2 = normalize({ projects: [], meetings: [...n1.meetings, mk('straggler', '2025-01-01')] });
+    check('a meeting arriving without an order (created on an older page) surfaces at the top, existing positions untouched', ids(n2.meetings) === 'straggler,new,mid,old,never', ids(n2.meetings));
+    const ms = n2.meetings;
+    check('moveMeetingBefore places a meeting above another one', moveMeetingBefore(ms, 'old', 'new') && ids(ms) === 'straggler,old,new,mid,never', ids(ms));
+    check('…and rewrites every order as a clean 0..n-1 sequence', meetingsInOrder(ms).map(m => m.order).join(',') === '0,1,2,3,4');
+    check('moveMeetingBefore with null puts it last', moveMeetingBefore(ms, 'straggler', null) && ids(ms) === 'old,new,mid,never,straggler', ids(ms));
+    check('moving a meeting onto itself or onto an unknown target changes nothing', moveMeetingBefore(ms, 'old', 'old') === false && moveMeetingBefore(ms, 'old', 'nope') === false && moveMeetingBefore(ms, 'ghost', 'old') === false && ids(ms) === 'old,new,mid,never,straggler');
+    check('logging a newer entry no longer moves a meeting (order wins over the last entry date)', (ms.find(m => m.id === 'never').entries.push({ id: 'late', date: '2027-01-01' }), ids(ms) === 'old,new,mid,never,straggler'));
+    check('a bad order value is repaired instead of breaking the sort', normalize({ projects: [], meetings: [{ id: 'x', order: 'abc' }, { id: 'y', order: NaN }] }).meetings.every(m => typeof m.order === 'number' && isFinite(m.order)));
+    check('the order survives a sync round trip (it is plain data on the meeting)', ids(normalize(JSON.parse(JSON.stringify({ projects: [], meetings: ms }))).meetings) === 'old,new,mid,never,straggler');
+  }
+
+  // ============================================================
   //  S24 — Week Prep core goals: tasks with goal:true + weekStart; the old key-things checklist migrates; the copy-out text
   // ============================================================
   scen('S24 Core goals: key-things migrate to goal tasks (once), goals are real tasks, the weekly summary text is right');
@@ -1216,6 +1239,7 @@ sCheck('a meetup can be logged with a brand-new person from the day page (＋ Ne
 sCheck('gym is gone from the Personal platform (no toggles, counters, KPIs, calendar or journal markers)', !/data-gym|gymCount|gymPlanned|gymRow|gymPlanStrip|st\.gymWeek|🏋/.test(src.slice(src.indexOf('<script type="module">'))) && !/openRoutinesModal|detoxTrackHTML/.test(src));
 sCheck('Week Prep core goals are wired: migration in normalize, goals excluded from "already due", own ★ Core group on To-Do, copy button', /migrateWeekPrepItems\(d\);/.test(src) && /if\(it\.goal\) return false;/.test(src) && /todo-sec core/.test(src) && /id="wpCopy"/.test(src) && /copyToClipboard\(weekSummaryText\(prepWeekStart,data\.tasks\)\)/.test(src) && /id="wpAddExtra"/.test(src) && /trow-proj goal/.test(src));
 sCheck('no grid uses a bare 1fr track (1fr = minmax(auto,1fr): one unwrappable child widened the whole page in half-screen windows)', !/grid-template-columns:[^;]*(?<![\d.])1fr(?!\))/.test(src.slice(0, src.indexOf('</style>'))) && /\.mnote-snip\{[^}]*width:0;/.test(src));
+sCheck('the Meetings list is reordered by dragging a row or ▲/▼ through moveMeetingBefore, is shown in meetingsInOrder (list + jump menu), and new meetings go on top', /const meetings=meetingsInOrder\(data\.meetings\);/.test(src) && /id="mtgList"/.test(src) && /data-mtg="\$\{m\.id\}" draggable="true"/.test(src) && /application\/x-psm-mtg/.test(src) && /data-mmove="up"/.test(src) && /moveMeetingBefore\(data\.meetings,id,beforeId\)/.test(src) && /order:\(data\.meetings\.length\?Math\.min\(\.\.\.data\.meetings\.map\(x=>x\.order\?\?0\)\):0\)-1\}/.test(src) && !/\[\.\.\.data\.meetings\]\.sort\(/.test(src));
 sCheck('the Documents list can be collapsed (per-device preference) and reordered by drag or ▲/▼ through moveDocBefore', /psmUI_docList/.test(src) && /id="docListToggle"/.test(src) && /id="docJump"/.test(src) && /application\/x-psm-doc/.test(src) && /data-dmove="up"/.test(src) && /moveDocBefore\(data\.docs,id,beforeId\)/.test(src) && /const sorted=docsInOrder\(data\.docs\)/.test(src));
 sCheck('numbered lists separated by blank lines continue their numbering (psmListNumbering plugin, start kept by the sanitizer)', /name:"psmListNumbering"/.test(src) && /appendTransaction:/.test(src) && /a\.name==="start" && ch\.tagName==="OL"/.test(src) && /setMeta\("preventUpdate",true\)/.test(src));
 sCheck('smart paste is wired: plain-text lists (zeroBase) and Outlook/Word MsoListParagraph lists become real lists', /clipboardTextParser:/.test(src) && /plainToHTML\(text,\{zeroBase:true\}\)/.test(src) && /transformPastedHTML: html=>msoListsToHTML\(html\)/.test(src) && /function msoListsToHTML\(html\)\{/.test(src));
