@@ -880,6 +880,37 @@ async function HARNESS() {
   }
 
   // ============================================================
+  //  S28 — Personal: a day counts as LOGGED as soon as anything was recorded on it (no "close day" step)
+  // ============================================================
+  scen('S28 A day is logged by any change on it: a ticked or skipped routine, a slip, a meetup, a check-in, a reflection');
+  {
+    const none = new Set();
+    const base = () => ({ date: '2026-11-10', entries: [{ id: 'e1', itemId: 'r1', done: false }], meetups: [], checkins: [], routineSkip: [], feeling: '', mood: 0, finalized: false });
+    check('a day that only holds routines waiting to be ticked is NOT logged', planLogged(base()) === false && planLogged(null) === false && planLogged({}) === false);
+    const cases = {
+      'ticking a routine': p => { p.entries[0].done = true; },
+      'skipping a routine for the day': p => { p.routineSkip.push('r1'); },
+      'logging a meetup (even a planned one)': p => { p.meetups.push({ id: 'm', personId: 'x', status: 'planned' }); },
+      'a feeling check-in': p => { p.checkins.push({ id: 'c', quad: 'green', emotion: 'calm' }); },
+      'a line of reflection': p => { p.feeling = 'ok day'; },
+      'a legacy mood': p => { p.mood = 4; },
+      'a day closed under the old rule': p => { p.finalized = true; },
+    };
+    for (const [name, change] of Object.entries(cases)) { const p = base(); change(p); check('logged by ' + name, planLogged(p) === true); }
+    check('whitespace in the reflection is not a change', (() => { const p = base(); p.feeling = '   '; return planLogged(p) === false; })());
+    check('undoing the only change un-logs the day again', (() => { const p = base(); p.entries[0].done = true; const was = planLogged(p); p.entries[0].done = false; return was && !planLogged(p); })());
+    check('a detox slip logs its day even when the day has no plan at all', dayLoggedOn({}, '2026-11-10', new Set(['2026-11-10'])) === true && dayLoggedOn({}, '2026-11-11', new Set(['2026-11-10'])) === false && dayLoggedOn(null, '2026-11-10', none) === false);
+    const tick = dt => ({ date: dt, entries: [{ id: dt, itemId: 'r1', done: true }] });
+    const plans = { '2026-11-07': tick('2026-11-07'), '2026-11-09': tick('2026-11-09'), '2026-11-10': tick('2026-11-10'), '2026-11-12': base() };
+    check('the streak counts consecutive logged days ending today', logStreak(plans, none, '2026-11-10') === 2);
+    check('…an empty today does not break it (it counts up to yesterday)', logStreak(plans, none, '2026-11-11') === 2 && logStreak(plans, none, '2026-11-12') === 0);
+    check('…a day logged only by a slip bridges the gap', logStreak(plans, new Set(['2026-11-08']), '2026-11-10') === 4);
+    check('…and no data gives 0', logStreak({}, none, '2026-11-10') === 0);
+    const n = normalize({ projects: [], personal: { items: [], dayPlans: { '2026-11-10': { date: '2026-11-10', entries: [], finalized: true, finalizedAt: 5 } } } });
+    check('days closed before the change keep their flag through normalize, so they stay logged', planLogged(n.personal.dayPlans['2026-11-10']) === true);
+  }
+
+  // ============================================================
   //  S24 — Week Prep core goals: tasks with goal:true + weekStart; the old key-things checklist migrates; the copy-out text
   // ============================================================
   scen('S24 Core goals: key-things migrate to goal tasks (once), goals are real tasks, the weekly summary text is right');
@@ -1248,7 +1279,7 @@ sCheck('the Personal sidebar groups its 10 tabs under four folding titles (Day /
     && /function renderPNav\(\)/.test(src) && /function togglePNavGroup\(id\)/.test(src) && /pNavClosed\.delete\(actGrp\.dataset\.pgrp\)/.test(src) && /else if\(!holdsActive\) pNavClosed\.add\(id\);/.test(src)
     && /\.nav \.nav-grp,\.nav \.nav-grp \.grp-body,\.nav \.nav-grp\.closed \.grp-body\{display:contents;\}/.test(src) && /const h=e\.target\.closest\("\.grp-h"\); if\(h\)\{ togglePNavGroup\(h\.dataset\.pgrph\); return; \}/.test(src);
 })());
-sCheck('Personal is a routine + detox tracker with people / day notes: no To-Do or Tomorrow tab, no task or for-me boxes on the day page, no for-me nudges, no weekly task lists or Projects block on the Overview, finalize carries only planned meetups', (() => {
+sCheck('Personal is a routine + detox tracker with people / day notes: no To-Do or Tomorrow tab, no task or for-me boxes on the day page, no for-me nudges, no weekly task lists or Projects block on the Overview, only planned meetups move on to the next day', (() => {
   const js = src.slice(src.indexOf('<script type="module">'));
   return !/data-ptab="(todo|tomorrow)"|id="ppage-(todo|tomorrow)"|id="pProjectsBody"/.test(src)
     && !/function (renderPToDo|renderPTomorrow|renderPResp|forMeMissThisWeek|maybeShowFlag|periodItemsForDay|assignFromMenu|weeklyFor)\(/.test(js)
@@ -1256,9 +1287,18 @@ sCheck('Personal is a routine + detox tracker with people / day notes: no To-Do 
     && /<div class="day4 day3">\$\{routineLane\}\$\{isFuture\?"":detoxBoxHTML\(dt\)\}\$\{peopleBox\}<\/div>/.test(js)
     && /if\(\["todo","tomorrow"\]\.includes\(pTab\)\) pTab="today";/.test(js)
     && /function renderPHub\(\)\{ renderPOverview\(\); \}/.test(js)
-    && /const planned=\(plan\.meetups\|\|\[\]\)\.filter\(mu=>mu\.status==="planned"\); if\(!planned\.length\) return 0;/.test(js)
+    && /function carryPlannedMeetups\(\)/.test(js) && !/function rollOverDay\(/.test(js)
     && /class="ov-card" data-ovgo="today"/.test(js) && /class="ov-card" data-ovgo="detox"/.test(js) && !/For-me days/.test(js)
     && /\.filter\(x=>x\.it&&\(x\.it\.recurringRule\|\|x\.e\.done\)\)/.test(js);
+})());
+sCheck('there is no close-day step on the Personal side: no finalize / reopen controls or locked recap, days are logged by any change (planLogged), stats + calendar + streak use that', (() => {
+  const js = src.slice(src.indexOf('<script type="module">'));
+  return !/data-finalize|data-reopen|function dayRecapHTML\(|function finalizeStreak\(|function openDaysRecent\(|Finalize day|still open — close|◷ open<\/span>/.test(js)
+    && /function planLogged\(pl\)\{/.test(js) && /function logStreak\(dayPlans, slipDates, today\)/.test(js)
+    && /loggedWeek:days\(ws,tISO,isDayLogged\),loggedMonth:days\(monthStart,tISO,isDayLogged\),streak:logStreak\(plans,pSlipDates\(\),tISO\)/.test(js)
+    && /data-logbar>\$\{logBarInner\(dt\)\}<\/div>/.test(js) && /save\(\); paintLogBar\(host,dt\);/.test(js)
+    && /const fin=!c\.other&&loggedOn\(ci\);/.test(js) && /Days logged · this week/.test(js) && /🔥 Logging streak/.test(js)
+    && /if\(isToday\) carryPlannedMeetups\(\);/.test(js);
 })());
 sCheck('the Meetings list is reordered by dragging a row or ▲/▼ through moveMeetingBefore, is shown in meetingsInOrder (list + jump menu), and new meetings go on top', /const meetings=meetingsInOrder\(data\.meetings\);/.test(src) && /id="mtgList"/.test(src) && /data-mtg="\$\{m\.id\}" draggable="true"/.test(src) && /application\/x-psm-mtg/.test(src) && /data-mmove="up"/.test(src) && /moveMeetingBefore\(data\.meetings,id,beforeId\)/.test(src) && /order:\(data\.meetings\.length\?Math\.min\(\.\.\.data\.meetings\.map\(x=>x\.order\?\?0\)\):0\)-1\}/.test(src) && !/\[\.\.\.data\.meetings\]\.sort\(/.test(src));
 sCheck('the Documents list can be collapsed (per-device preference) and reordered by drag or ▲/▼ through moveDocBefore', /psmUI_docList/.test(src) && /id="docListToggle"/.test(src) && /id="docJump"/.test(src) && /application\/x-psm-doc/.test(src) && /data-dmove="up"/.test(src) && /moveDocBefore\(data\.docs,id,beforeId\)/.test(src) && /const sorted=docsInOrder\(data\.docs\)/.test(src));

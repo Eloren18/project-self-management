@@ -1639,6 +1639,28 @@ function moveDocBefore(docs, id, beforeId){ /* re-slot one document in front of 
   const idx= beforeId==null ? ordered.length : ordered.findIndex(x=>x.id===beforeId); if(idx<0) return false;
   ordered.splice(idx,0,moving); ordered.forEach((x,i)=>{ x.order=i; }); return true;
 }
+/* ---- Personal: a day is LOGGED as soon as anything was recorded on it (pure; tested in S28). There is no
+   "close the day" step any more (Nov 2026): ticking or skipping a routine, a detox slip, a meetup, a feeling
+   check-in or a line of reflection each make the day count. Routines that merely SIT on a day (they land there by
+   themselves) do not. Days closed under the old rule (finalized) stay logged. ---- */
+function planLogged(pl){
+  if(!pl) return false;
+  if(pl.finalized) return true;
+  if((pl.entries||[]).some(e=>e&&e.done)) return true;
+  if(Array.isArray(pl.routineSkip) && pl.routineSkip.length) return true;
+  if((pl.meetups||[]).length) return true;
+  return !!(String(pl.feeling||"").trim() || pl.mood>0 || (pl.checkins||[]).length);
+}
+function dayLoggedOn(dayPlans, dt, slipDates){ /* slipDates: a Set of ISO days that carry a detox slip */
+  return !!(slipDates && slipDates.has(dt)) || planLogged(dayPlans && dayPlans[dt]);
+}
+function logStreak(dayPlans, slipDates, today){ /* consecutive logged days ending today — or yesterday while today is still empty */
+  const prev=d=>iso(addDays(parseISO(d),-1));
+  let d=today, n=0;
+  if(!dayLoggedOn(dayPlans,d,slipDates)) d=prev(d);
+  while(n<5000 && dayLoggedOn(dayPlans,d,slipDates)){ n++; d=prev(d); }
+  return n;
+}
 /* ---- Meetings: manual order (pure; tested in S27) — the same model as Documents ---- */
 function meetingLastDate(m){ return (m.entries||[]).reduce((mx,e)=>(e.date&&e.date>mx?e.date:mx),""); }
 function meetingsInOrder(meetings){ return [...meetings].sort((a,b)=>((a.order??0)-(b.order??0)) || meetingLastDate(b).localeCompare(meetingLastDate(a))); }
@@ -4245,19 +4267,29 @@ function agoLabel(sinceISO, refISO){
   if(d<21) return "2 weeks ago"; if(d<28) return "3 weeks ago";
   const m=Math.round(d/30.4); return (m<=1?"1 month":m+" months")+" ago";
 }
-/* on finalize, a meetup that was only PLANNED moves on to the next day (the closed day remembers how many moved,
-   rolledCount). Routines never roll. The task / for-me carry-over went with the To-Do sections (Nov 2026):
+/* a meetup that was only PLANNED on an earlier day moves on to today when today is opened (there is no "close
+   day" step to do it any more); the earlier day remembers how many moved (rolledCount). Routines never roll; the
    entries of old tasks stay on the day they were on, as history. */
-function rollOverDay(dt){
-  const plan=P().dayPlans[dt]; if(!plan) return 0;
-  const planned=(plan.meetups||[]).filter(mu=>mu.status==="planned"); if(!planned.length) return 0;
-  const np=planFor(iso(addDays(parseISO(dt),1)),true);
-  np.meetups=Array.isArray(np.meetups)?np.meetups:[];
-  planned.forEach(mu=>np.meetups.push({id:uid(),personId:mu.personId,note:mu.note||"",status:"planned",createdAt:Date.now(),since:mu.since||dt}));
-  plan.meetups=(plan.meetups||[]).filter(mu=>mu.status!=="planned");
-  plan.rolledCount=(plan.rolledCount||0)+planned.length;
-  return planned.length;
+function carryPlannedMeetups(){
+  const t=todayISO(); let moved=0, np=null;
+  Object.keys(P().dayPlans).forEach(dt=>{ if(dt>=t) return; const plan=P().dayPlans[dt];
+    const planned=(plan.meetups||[]).filter(mu=>mu.status==="planned"); if(!planned.length) return;
+    np=np||planFor(t,true); np.meetups=Array.isArray(np.meetups)?np.meetups:[];
+    planned.forEach(mu=>np.meetups.push({id:uid(),personId:mu.personId,note:mu.note||"",status:"planned",createdAt:Date.now(),since:mu.since||dt}));
+    plan.meetups=plan.meetups.filter(mu=>mu.status!=="planned");
+    plan.rolledCount=(plan.rolledCount||0)+planned.length; moved+=planned.length; });
+  if(moved) save();
+  return moved;
 }
+/* which days count as logged — see planLogged / dayLoggedOn (any change on a day records it) */
+function pSlipDates(){ return new Set(((P().detox&&P().detox.log)||[]).map(x=>x.date).filter(Boolean)); }
+function isDayLogged(dt){ return dayLoggedOn(P().dayPlans, dt, pSlipDates()); }
+function logBarInner(dt){
+  return isDayLogged(dt)
+    ? `<span>✓ This day is logged</span><span class="grow"></span><span class="fb-sub" style="margin:0">any change you make on a day records it</span>`
+    : `<div><b>◷ Nothing logged on this day yet</b><div class="fb-sub">Tick a routine, log a slip, a meetup or how you feel — any change records the day. There is nothing to close.</div></div>`;
+}
+function paintLogBar(host,dt){ const b=host&&host.querySelector("[data-logbar]"); if(!b) return; b.classList.toggle("done",isDayLogged(dt)); b.innerHTML=logBarInner(dt); }
 function itemEntries(itemId){ const out=[]; Object.keys(P().dayPlans).forEach(dt=>{ (P().dayPlans[dt].entries||[]).forEach(e=>{ if(e.itemId===itemId) out.push({dt,e}); }); }); return out; }
 function overduePeople(){
   const t0=d0(new Date());
@@ -4306,35 +4338,17 @@ function closePM(id){ const m=$(id); m.classList.remove("show"); setTimeout(()=>
 
 /* ---- for-me week flag (3 days total in the current week without something for me) ---- */
 /* ---- stats (Overview) ---- */
-/* consecutive finalized days, ending today (if closed) or yesterday — the routine's heartbeat */
-function finalizeStreak(){
-  const plans=P().dayPlans; let n=0;
-  let d=todayISO();
-  if(!(plans[d]&&plans[d].finalized)) d=iso(addDays(parseISO(d),-1)); /* today may still be in progress */
-  while(plans[d]&&plans[d].finalized){ n++; d=iso(addDays(parseISO(d),-1)); }
-  return n;
-}
-function dayHadActivity(pl){ return !!(pl && ((pl.entries||[]).length||(pl.meetups||[]).length||(pl.feeling||"").trim()||pl.mood>0||(pl.checkins||[]).length)); }
-/* recent days (before today) that had real activity but were never closed */
-function openDaysRecent(back){
-  const out=[];
-  for(let i=1;i<=(back||7);i++){ const d=iso(addDays(new Date(),-i)); const pl=P().dayPlans[d];
-    if(pl && !pl.finalized && dayHadActivity(pl)) out.push(d);
-  }
-  return out;
-}
 function pStats(){
   const t=new Date(); const monthStart=iso(new Date(t.getFullYear(),t.getMonth(),1));
   const days=(from,to,fn)=>{ let n=0; for(let dt=from; dt<=to; dt=iso(addDays(parseISO(dt),1))) if(fn(dt)) n++; return n; };
   const tISO=todayISO(); const ws=curWeekIso();
   const plans=P().dayPlans;
-  let meets=0, refl=0, checkins=0, finalizedWeek=0, finalizedMonth=0, routDone=0, routDue=0, slips=0;
+  let meets=0, refl=0, checkins=0, routDone=0, routDue=0, slips=0;
   const log=(P().detox&&P().detox.log)||[];
   Object.keys(plans).forEach(k=>{ if(k<monthStart||k>tISO) return; const pl=plans[k];
     meets+=(pl.meetups||[]).filter(m=>m.status==="met").length;
     const cks=(pl.checkins||[]).length; checkins+=cks;
     if((pl.feeling||"").trim()||pl.mood>0||cks) refl++;
-    if(pl.finalized){ finalizedMonth++; if(k>=ws) finalizedWeek++; }
     (pl.entries||[]).forEach(e=>{ const it=pItem(e.itemId); if(it&&it.recurringRule){ routDue++; if(e.done) routDone++; } });
   });
   slips=log.filter(x=>x.tier==="never"&&x.date>=monthStart&&x.date<=tISO).length;
@@ -4342,7 +4356,7 @@ function pStats(){
   return {
     weekLen:Math.round((d0(new Date())-d0(parseISO(ws)))/864e5)+1,
     monthLen:Math.round((d0(new Date())-d0(parseISO(monthStart)))/864e5)+1,
-    meets,refl,checkins,routDone,routDue,routStreak:routineStreak(plans,P().items,tISO),slips,slipsAvoid,finalizedWeek,finalizedMonth,streak:finalizeStreak()
+    meets,refl,checkins,routDone,routDue,routStreak:routineStreak(plans,P().items,tISO),slips,slipsAvoid,loggedWeek:days(ws,tISO,isDayLogged),loggedMonth:days(monthStart,tISO,isDayLogged),streak:logStreak(plans,pSlipDates(),tISO)
   };
 }
 
@@ -4567,31 +4581,6 @@ function feelLaneHTML(dt,plan){
     <textarea class="dp-ta" data-feel placeholder="How was this day, really? Not what you did — how you felt. Press Enter for new lines." style="min-height:52px;padding:9px 11px;border:1px solid var(--border);background:var(--surface)">${esc(plan.feeling||"")}</textarea>
   </div>`;
 }
-/* a finalized day is locked to a clean read-only recap; Reopen returns to the editable planner */
-function dayRecapHTML(dt,plan){
-  const all=plan.entries.map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it);
-  const cnt=type=>all.filter(x=>!x.it.recurringRule&&x.it.type===type);
-  const rt=cnt("responsibility"), rm=cnt("forMe"), rr=all.filter(x=>!!x.it.recurringRule);
-  const tDone=rt.filter(x=>x.e.done).length, mDone=rm.filter(x=>x.e.done).length, rDone=rr.filter(x=>x.e.done).length;
-  const met=(plan.meetups||[]).map(mu=>{ const p=P().people.find(x=>x.id===mu.personId); return {name:p?p.name:"someone",mu}; });
-  const slips=detoxSlipsOn(dt);
-  const chip=(txt,cls)=>`<span class="recap-chip ${cls||""}">${txt}</span>`;
-  return `<div class="day-recap">
-    <div class="recap-head"><span>✓ Day closed${plan.finalizedAt?" · "+new Date(plan.finalizedAt).toLocaleString(undefined,{weekday:"short",hour:"numeric",minute:"2-digit"}):""}</span><span class="grow"></span><button class="btn ghost sm" data-reopen>Reopen to edit</button></div>
-    <div class="recap-chips">
-      ${tDone?chip("✔ "+tDone+" task"+(tDone===1?"":"s")+" done"):""}
-      ${mDone?chip("🧡 "+mDone+" for me","forme"):""}
-      ${rr.length?chip("↻ "+rDone+"/"+rr.length+" routines"):""}
-      ${plan.rolledCount?chip("↪ "+plan.rolledCount+" rolled over"):""}
-      ${slips.length?chip("🛡 slipped: "+esc(slips.map(x=>x.note||x.tier).join(", ")),"slip"):chip("🛡 clean")}
-      ${plan.mood?chip(MOODS[plan.mood-1]+" mood"):""}
-      ${met.length?chip("👥 "+met.map(m=>esc(m.name)+(m.mu.status!=="met"?" ("+m.mu.status+")":"")).join(", "),"meet"):""}
-    </div>
-    ${checkinsOf(plan).length?`<div class="recap-cks">${checkinDots(plan,12)}</div>`:""}
-    ${(plan.feeling||"").trim()?`<div class="recap-feel">${esc(plan.feeling)}</div>`:""}
-    ${met.some(m=>(m.mu.note||"").trim())?`<div class="recap-meets">${met.filter(m=>(m.mu.note||"").trim()).map(m=>`<div class="recap-meet"><b>${esc(m.name)}</b> — ${esc(m.mu.note)}</div>`).join("")}</div>`:""}
-  </div>`;
-}
 /* routines land on today / future days by themselves (planFor seeds new days; this catches routines
    created after the day already existed). A routine ✕-ed on a day goes into that day's routineSkip. */
 /* is this routine wanted on that day? weekday / daily rules: due that day; frequency rules ("2× / week"): any day
@@ -4601,7 +4590,7 @@ function routineWantedOn(it, dt){
   return r.type!=="freq" || freqDoneCount(P().dayPlans, it.id, r.per, dt) < r.n;
 }
 function ensureRoutineEntries(dt){
-  const plan=P().dayPlans[dt]; if(!plan || plan.finalized) return;
+  const plan=P().dayPlans[dt]; if(!plan) return;
   plan.routineSkip=Array.isArray(plan.routineSkip)?plan.routineSkip:[];
   let changed=0;
   /* a frequency routine already satisfied on other days of the period leaves this day's box again (unticked entries only) */
@@ -4617,7 +4606,6 @@ function dayPageHTML(dt){
   const plan=planFor(dt,true);
   const isToday=dt===todayISO(), isFuture=dt>todayISO();
   if(dt>=todayISO()) ensureRoutineEntries(dt);
-  if(plan.finalized) return dayRecapHTML(dt,plan);
   const rows=plan.entries.map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it);
   /* routines: their own box — everything that repeats lands here, tick it like a task, ✕ skips it for the day */
   const routineLane=(()=>{
@@ -4643,10 +4631,8 @@ function dayPageHTML(dt){
       </div>`;}).join("")}
       <select data-meetsel style="width:100%;padding:7px 9px;border:1px solid var(--border);background:var(--surface);margin-top:2px"><option value="">+ log a meetup…</option>${P().people.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}<option value="__new">＋ New person…</option></select>
   </div>`;
-  /* finalize: deliberately close the day. Unfinalized days show as "open" in the Overview. */
-  const finalizeBar = plan.finalized
-    ? `<div class="finalize-bar done"><span>✓ Day finalized${plan.finalizedAt?" · "+new Date(plan.finalizedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}):""}</span><span class="grow"></span><button class="btn ghost sm" data-reopen>Reopen</button></div>`
-    : `<div class="finalize-bar"><div><b>◷ This day isn't closed yet</b><div class="fb-sub">Finalize it to record it in your stats &amp; streak</div></div><span class="grow"></span><button class="btn primary" data-finalize>✓ Finalize day</button></div>`;
+  /* logged or not: any change on a day records it — there is no close step (see planLogged) */
+  const logBar=`<div class="finalize-bar ${isDayLogged(dt)?"done":""}" data-logbar>${logBarInner(dt)}</div>`;
   /* "How I felt" is always visible (plans, routines and slips are ticked in the boxes above) */
   const howFelt=isFuture?"":`<div class="day-log static">
       <div class="day-log-h">📓 What happened & how I felt<span class="grow"></span><span class="hint">tick routines and slips above · log how you feel here</span></div>
@@ -4655,7 +4641,7 @@ function dayPageHTML(dt){
   return `
     <div class="day4 day3">${routineLane}${isFuture?"":detoxBoxHTML(dt)}${peopleBox}</div>
     ${howFelt}
-    ${dt<=todayISO()?finalizeBar:""}`;
+    ${dt<=todayISO()?logBar:""}`;
 }
 function bindDayPage(host,dt,rerender){
   const plan=planFor(dt,true);
@@ -4735,10 +4721,8 @@ function bindDayPage(host,dt,rerender){
   const ml=host.querySelector("[data-mlog]"); if(ml) ml.onclick=logCheckin;
   const mc=host.querySelector("[data-mcancel]"); if(mc) mc.onclick=()=>{ moodPick=null; rerender(); };
   host.querySelectorAll("[data-ckdel]").forEach(b=>b.onclick=()=>{ const id=b.closest("[data-ck]").dataset.ck; plan.checkins=checkinsOf(plan).filter(c=>c.id!==id); save(); rerender(); });
-  const fe=host.querySelector("[data-feel]"); if(fe) fe.addEventListener("input",ev=>{ plan.feeling=ev.target.value; save(); });
+  const fe=host.querySelector("[data-feel]"); if(fe) fe.addEventListener("input",ev=>{ plan.feeling=ev.target.value; save(); paintLogBar(host,dt); });
   bindDetoxBox(host,dt,rerender);
-  const fin=host.querySelector("[data-finalize]"); if(fin) fin.onclick=()=>{ plan.finalized=true; plan.finalizedAt=Date.now(); const rolled=rollOverDay(dt); save(); rerender(); const s=finalizeStreak(); toast((rolled?rolled+" carried to tomorrow · ":"")+(s>1?("Finalized ✓ — "+s+"-day streak 🔥"):"Day finalized ✓")); };
-  const rop=host.querySelector("[data-reopen]"); if(rop) rop.onclick=()=>{ plan.finalized=false; plan.finalizedAt=0; save(); rerender(); };
   bindAutoGrow(host);
 }
 function syncLastSeen(personId){
@@ -4839,6 +4823,7 @@ function renderPToday(){
   if(pDayIso>todayISO()) pDayIso=todayISO();
   const dt=pDayIso; const plan=planFor(dt,true);
   const isToday=dt===todayISO();
+  if(isToday) carryPlannedMeetups();
   const yplan=P().dayPlans[iso(addDays(parseISO(dt),-1))];
   const pinned=P().bucket.find(b=>b.pinned&&b.status!=="done");
   host.innerHTML=`
@@ -4872,14 +4857,15 @@ function renderPCal(){
   for(let d2=1;d2<=dim;d2++) cells.push({d:d2,other:false,date:new Date(y,m,d2)});
   while(cells.length%7!==0){ const nd=cells.length-(start+dim)+1; cells.push({d:nd,other:true,date:new Date(y,m+1,nd)}); }
   const tISO=todayISO();
-  let finMonth=0; Object.keys(P().dayPlans).forEach(k=>{ const d=parseISO(k); if(d&&d.getFullYear()===y&&d.getMonth()===m&&P().dayPlans[k].finalized) finMonth++; });
+  const slipSet=pSlipDates(); const loggedOn=ci=>ci<=tISO&&dayLoggedOn(P().dayPlans,ci,slipSet);
+  let finMonth=0; for(let d2=1;d2<=dim;d2++){ if(loggedOn(iso(new Date(y,m,d2)))) finMonth++; }
   host.innerHTML=`
     <div class="cal-head">
       <button class="icon-btn" id="pcPrev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button>
       <h2>${pCalDate.toLocaleDateString(undefined,{month:"long",year:"numeric"})}</h2>
       <button class="icon-btn" id="pcNext"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg></button>
       <button class="btn ghost sm" id="pcToday">Today</button>
-      <span style="font-size:11.5px;color:var(--s-done);font-weight:700" title="Days you finalized this month">✓ ${finMonth} closed</span>
+      <span style="font-size:11.5px;color:var(--s-done);font-weight:700" title="Days with something logged this month">✓ ${finMonth} logged</span>
       <div class="grow"></div>
     </div>
     <div class="cal-grid">${WD_NAMES.map(d2=>`<div class="cal-dow">${d2}</div>`).join("")}${cells.map(c=>{
@@ -4896,9 +4882,9 @@ function renderPCal(){
       const refl=(pl&&((pl.feeling||"").trim()||pl.mood>0||cks.length))?`<div class="pw-ev" style="border-left-color:${cks.length&&MOOD_QUADS[cks[cks.length-1].quad]?MOOD_QUADS[cks[cks.length-1].quad].color:"#e9c400"};color:${CAL_COLORS.refl};font-weight:700">☀ ${cks.length?esc(cks.slice(-2).map(c=>c.emotion).join(", ")):"reflection"}${pl.mood?" "+MOODS[pl.mood-1]:""}</div>`:"";
       const slipN=(P().detox.log||[]).filter(x=>x.tier==="never"&&x.date===ci).length;
       const slipMark=slipN?`<div class="pw-ev" style="border-left-color:var(--p-asap);color:var(--p-asap);font-weight:700">🛡 slip${slipN>1?" ×"+slipN:""}</div>`:"";
-      const fin=!c.other&&pl&&pl.finalized;
-      const openPast=!c.other&&pl&&!pl.finalized&&ci<tISO&&dayHadActivity(pl);
-      const finMark=fin?`<span class="cal-fin" title="Finalized">✓</span>`:(openPast?`<span class="cal-open" title="Not finalized — still open">◷</span>`:"");
+      const fin=!c.other&&loggedOn(ci);
+      const openPast=false;
+      const finMark=fin?`<span class="cal-fin" title="Logged">✓</span>`:"";
       return `<div class="cal-cell ${c.other?"other":""} ${ci===tISO?"today":""} ${fin?"finalized":""} ${openPast?"dayopen":""}" data-pday="${ci}"><span class="addhint">+</span><div class="cal-num">${c.d}</div>${finMark}${evHtml}${meets}${slipMark}${refl}</div>`;
     }).join("")}</div>
     <div class="legend">
@@ -5011,7 +4997,6 @@ function renderPOverview(){
   const host=$("pOverviewBody"); if(!host) return;
   const ws=curWeekIso(); const wi=weekInfo(ws);
   const od=overduePeople(); const st=pStats();
-  const openRecent=openDaysRecent(7);
   /* today at a glance — read-only: nothing is created or saved by looking at the Overview */
   const tISO=todayISO(); const pl=P().dayPlans[tISO];
   const ents=pl?(pl.entries||[]).map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it&&x.it.recurringRule):[];
@@ -5022,10 +5007,9 @@ function renderPOverview(){
   const slipsToday=detoxSlipsOn(tISO);
   const nClean=detoxCleanDays("never"), aClean=detoxCleanDays("avoid");
   const cks=checkinsOf(pl).length, metToday=pl?(pl.meetups||[]).length:0, wrote=!!(pl&&(pl.feeling||"").trim());
-  const closed=!!(pl&&pl.finalized);
+  const loggedToday=isDayLogged(tISO);
   host.innerHTML=`
     <div class="toolbar"><h1 class="page-title">Overview</h1><span style="color:var(--faint);font-size:12.5px;font-weight:600">Week ${wi?wi.week:"?"}</span><div class="grow"></div><button class="btn sm ghost" id="pExport" title="Download all personal data as JSON">⤓ Export</button></div>
-    ${openRecent.length?`<div class="pinned-hint" id="closeNudge" style="border-color:#e0a100;background:color-mix(in srgb,#e0a100 12%,var(--surface));color:var(--text)">◷ ${openRecent.length} recent day${openRecent.length>1?"s":""} still open — close ${openRecent.length>1?"them":"it"} to keep the habit<span class="grow"></span><span style="color:var(--muted);font-weight:700">Close ${fmtShort(openRecent[0])} →</span></div>`:""}
     <div class="section-h" style="margin-top:2px">Today <span class="line"></span></div>
     <div class="ov-today">
       <div class="ov-card" data-ovgo="today" title="Open today">
@@ -5041,7 +5025,7 @@ function renderPOverview(){
       <div class="ov-card" data-ovgo="today" title="Open today" style="border-top-color:#e9c400">
         <div class="ov-lab">📓 Day notes</div>
         <div class="ov-val">${cks}<em> feeling check-in${cks===1?"":"s"}</em></div>
-        <div class="ov-sub">${metToday?"👥 "+metToday+" "+(metToday===1?"person":"people")+" logged":"nobody logged yet"} · ${wrote?"reflection written":"no reflection yet"} · ${closed?"✓ day closed":"◷ day still open"}</div>
+        <div class="ov-sub">${metToday?"👥 "+metToday+" "+(metToday===1?"person":"people")+" logged":"nobody logged yet"} · ${wrote?"reflection written":"no reflection yet"} · ${loggedToday?"✓ today is logged":"◷ nothing logged today yet"}</div>
       </div>
     </div>
     <div class="section-h">People to catch up with <span class="line"></span></div>
@@ -5052,15 +5036,14 @@ function renderPOverview(){
       <div class="kpi"><div class="lab">↻ Routines done · this month</div><div class="val">${st.routDone}<em> / ${st.routDue}</em></div></div>
       <div class="kpi"><div class="lab">🔥 Routine streak</div><div class="val">${st.routStreak}<em> ${st.routStreak===1?"day":"days"}</em></div></div>
       <div class="kpi"><div class="lab" style="color:var(--p-asap)">🛡 Slips · this month</div><div class="val" style="color:var(--p-asap)">${st.slips}<em> never · ${st.slipsAvoid} avoid</em></div></div>
-      <div class="kpi"><div class="lab">Days closed · this week</div><div class="val">${st.finalizedWeek}<em> / ${st.weekLen}</em></div></div>
-      <div class="kpi"><div class="lab">Days recorded · this month</div><div class="val">${Math.round(st.finalizedMonth/Math.max(1,st.monthLen)*100)}<em>%</em></div></div>
-      <div class="kpi"><div class="lab">🔥 Finalize streak</div><div class="val">${st.streak}<em> ${st.streak===1?"day":"days"}</em></div></div>
+      <div class="kpi"><div class="lab">Days logged · this week</div><div class="val">${st.loggedWeek}<em> / ${st.weekLen}</em></div></div>
+      <div class="kpi"><div class="lab">Days logged · this month</div><div class="val">${st.loggedMonth}<em> / ${st.monthLen}</em></div></div>
+      <div class="kpi"><div class="lab">🔥 Logging streak</div><div class="val">${st.streak}<em> ${st.streak===1?"day":"days"}</em></div></div>
       <div class="kpi"><div class="lab">Meetups · this month</div><div class="val">${st.meets}</div></div>
       <div class="kpi"><div class="lab">Reflections · this month</div><div class="val">${st.refl}</div></div>
       <div class="kpi"><div class="lab">☀ Feeling check-ins · this month</div><div class="val">${st.checkins}</div></div>
     </div>`;
   $("pExport").onclick=exportPersonal;
-  const cn=$("closeNudge"); if(cn) cn.onclick=()=>{ pDayIso=openRecent[0]; switchPTab("today"); };
   host.querySelectorAll("[data-ovgo]").forEach(c=>c.onclick=()=>{ if(c.dataset.ovgo==="today") pDayIso=todayISO(); switchPTab(c.dataset.ovgo); });
 }
 
@@ -5267,7 +5250,6 @@ function renderPLog(){
         <span class="pi-badge" style="margin-top:2px">${fmtShort(r.dt)}${r.pl.mood?" "+MOODS[r.pl.mood-1]:""}</span>
         ${(r.pl.checkins||[]).length?`<span style="margin-top:4px;display:inline-flex;flex-wrap:wrap;gap:2px">${checkinDots(r.pl,4)}</span>`:""}
         ${r.doneN?`<span class="pi-badge" style="margin-top:2px;color:var(--s-done)">✓ ${r.doneN} done</span>`:""}
-        ${(!r.pl.finalized&&r.dt<todayISO())?`<span class="pi-badge" style="margin-top:2px;color:var(--faint)" title="This day was never finalized">◷ open</span>`:""}
         <textarea class="dp-ta write" data-lfeel rows="1" placeholder="how did this day feel?" style="flex:1;font-size:12.5px;line-height:1.5">${esc(r.pl.feeling)}</textarea>
         <button class="pi-act" data-lopen title="Open that day">↗</button>
       </div>`;
