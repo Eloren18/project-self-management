@@ -152,7 +152,9 @@ One component (`mnoteCardHTML` / `bindMnoteCards`) renders meeting notes in both
 
 ---
 
-## 5. Personal Life platform — 10 tabs
+## 5. Personal Life platform — 12 tabs under four sidebar titles
+
+**Sidebar (Nov 2026):** **Overview** on top, then four titles — **Day** (Today, Tomorrow, To-Do, Calendar), **Habits** (Routines, Detox, Focus), **Reflect** (Journal, Self Notes), **Life** (People, Bucket List). Clicking a title folds / unfolds its group (chevron); which titles are folded is remembered per device (`psmUI_pnav`, first run: only Day open). The group holding the open tab is always shown and cannot be folded; jumping to a tab in a folded group (e.g. from the Overview) opens it. In narrow windows (the horizontal tab row) the titles disappear and every tab is shown. Work's sidebar is unchanged. (S16 static + browser check)
 
 ### 5.1 Overview (hub) — day flags, overdue people, missed for-me items this week, weekly main things, stats, jump-offs into the other tabs.
 - **Finalization stats [ALWAYS CHECK]**: a "◷ N recent days still open" nudge (jumps to the latest unclosed day), plus **Days closed · this week**, **Days recorded · this month %**, **🔥 Finalize streak**, **☀ Feeling check-ins · this month**, **↻ Routines done · this month** and **🛡 Slips · this month** KPI tiles (the Morning-wins tile, the first-thing-blocker line and the gym tiles are gone, Oct 2026).

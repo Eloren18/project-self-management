@@ -63,6 +63,13 @@
   .nav .lbl{font-size:9.5px;font-weight:700;letter-spacing:.9px;color:#565b68;text-transform:uppercase;padding:14px 10px 5px;}
   .tab{display:flex;align-items:center;padding:9px 13px;color:var(--side-ink);font-weight:600;font-size:12px;border:0;background:transparent;width:100%;text-align:left;margin-bottom:1px;transition:.12s;text-transform:uppercase;letter-spacing:.5px;}
   .tab:hover{background:rgba(255,255,255,.05);color:#e8e9ee;}
+  /* Personal sidebar: tabs grouped under titles that fold (the group holding the open tab is always shown) */
+  .nav .grp-h{display:flex;align-items:center;justify-content:space-between;width:100%;border:0;background:transparent;text-align:left;cursor:pointer;font-family:inherit;transition:color .12s;}
+  .nav .grp-h:hover{color:#a9aebb;}
+  .nav .grp-h .chev{font-size:10px;transition:transform .12s;}
+  .nav-grp.closed .grp-h .chev{transform:rotate(-90deg);}
+  .nav-grp.closed .grp-body{display:none;}
+  .nav-grp .grp-body .tab{padding-left:20px;}
   .tab.active{background:var(--side-active);color:#fff;box-shadow:inset 3px 0 0 #E4002B;}
   .sidefoot{padding:14px 16px;border-top:1px solid #23242b;display:flex;align-items:center;gap:10px;}
   .sidefoot .av{width:34px;height:34px;border-radius:3px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:12px;flex:none;background:#E4002B;}
@@ -519,7 +526,8 @@
     .brand{border-bottom:0;padding:12px 14px;}
     .nav{display:flex;flex:1;padding:0 8px;flex-wrap:wrap;align-items:center;} /* narrow windows: tabs WRAP onto more rows — never a sideways scroll, never cut off */
     .nav .lbl{display:none;}
-    .tab{width:auto;white-space:nowrap;padding:11px 12px;margin-bottom:0;}
+    .nav .nav-grp,.nav .nav-grp .grp-body,.nav .nav-grp.closed .grp-body{display:contents;} /* groups dissolve into the tab row; folding only exists in the wide sidebar */
+    .tab,.nav-grp .grp-body .tab{width:auto;white-space:nowrap;padding:11px 12px;margin-bottom:0;}
     .tab.active{box-shadow:inset 0 -3px 0 #E4002B;background:transparent;}
     .sidefoot{display:none;}
     /* every single-column grid uses minmax(0,1fr), never a bare 1fr: 1fr = minmax(auto,1fr), and "auto" lets one
@@ -843,17 +851,38 @@
   <nav class="nav" id="personalTabs" style="display:none">
     <div class="lbl">Personal Life</div>
     <button class="tab" data-ptab="hub">Overview</button>
-    <button class="tab" data-ptab="today">Today</button>
-    <button class="tab" data-ptab="todo">To-Do</button>
-    <button class="tab" data-ptab="tomorrow">Tomorrow</button>
-    <button class="tab" data-ptab="routines">Routines</button>
-    <button class="tab" data-ptab="pcal">Calendar</button>
-    <button class="tab" data-ptab="focus">Focus</button>
-    <button class="tab" data-ptab="bucket">Bucket List</button>
-    <button class="tab" data-ptab="people">People</button>
-    <button class="tab" data-ptab="log">Journal</button>
-    <button class="tab" data-ptab="detox">Detox</button>
-    <button class="tab" data-ptab="pnotes">Self Notes</button>
+    <!-- the tabs sit under four titles; a title folds its group away (per-device preference, see renderPNav) -->
+    <div class="nav-grp" data-pgrp="day">
+      <button class="lbl grp-h" type="button" data-pgrph="day" aria-expanded="true"><span>Day</span><span class="chev" aria-hidden="true">▾</span></button>
+      <div class="grp-body">
+        <button class="tab" data-ptab="today">Today</button>
+        <button class="tab" data-ptab="tomorrow">Tomorrow</button>
+        <button class="tab" data-ptab="todo">To-Do</button>
+        <button class="tab" data-ptab="pcal">Calendar</button>
+      </div>
+    </div>
+    <div class="nav-grp" data-pgrp="habits">
+      <button class="lbl grp-h" type="button" data-pgrph="habits" aria-expanded="true"><span>Habits</span><span class="chev" aria-hidden="true">▾</span></button>
+      <div class="grp-body">
+        <button class="tab" data-ptab="routines">Routines</button>
+        <button class="tab" data-ptab="detox">Detox</button>
+        <button class="tab" data-ptab="focus">Focus</button>
+      </div>
+    </div>
+    <div class="nav-grp" data-pgrp="reflect">
+      <button class="lbl grp-h" type="button" data-pgrph="reflect" aria-expanded="true"><span>Reflect</span><span class="chev" aria-hidden="true">▾</span></button>
+      <div class="grp-body">
+        <button class="tab" data-ptab="log">Journal</button>
+        <button class="tab" data-ptab="pnotes">Self Notes</button>
+      </div>
+    </div>
+    <div class="nav-grp" data-pgrp="life">
+      <button class="lbl grp-h" type="button" data-pgrph="life" aria-expanded="true"><span>Life</span><span class="chev" aria-hidden="true">▾</span></button>
+      <div class="grp-body">
+        <button class="tab" data-ptab="people">People</button>
+        <button class="tab" data-ptab="bucket">Bucket List</button>
+      </div>
+    </div>
   </nav>
   <div class="sidefoot"><span class="av" id="sideAvatar">?</span><div><div class="nm" id="sideName">Local workspace</div><div class="ro">Workspace owner</div></div></div>
 </aside>
@@ -4455,11 +4484,29 @@ function applyMode(m){
     switchTab(wt);
   }
 }
+/* ---- Personal sidebar groups: which titles are folded is a per-device preference; first run shows only "Day" open ---- */
+const PNAV_KEY="psmUI_pnav";
+let pNavClosed=new Set(["habits","reflect","life"]);
+try{ const raw=localStorage.getItem(PNAV_KEY); if(raw){ const a=JSON.parse(raw); if(Array.isArray(a)) pNavClosed=new Set(a.filter(x=>typeof x==="string")); } }catch(e){}
+function renderPNav(){ /* never hides the tab you are on: its group is opened (and stays open) */
+  const nav=$("personalTabs"); if(!nav) return;
+  const act=nav.querySelector('.tab[data-ptab="'+pTab+'"]'), actGrp=act&&act.closest(".nav-grp");
+  if(actGrp && pNavClosed.delete(actGrp.dataset.pgrp)){ try{ localStorage.setItem(PNAV_KEY, JSON.stringify([...pNavClosed])); }catch(e){} }
+  nav.querySelectorAll(".nav-grp").forEach(g=>{ const closed=pNavClosed.has(g.dataset.pgrp); g.classList.toggle("closed",closed); const h=g.querySelector(".grp-h"); if(h) h.setAttribute("aria-expanded", closed?"false":"true"); });
+}
+function togglePNavGroup(id){
+  const nav=$("personalTabs"), g=nav&&nav.querySelector('.nav-grp[data-pgrp="'+id+'"]'); if(!g) return;
+  const holdsActive=!!g.querySelector(".tab.active");
+  if(pNavClosed.has(id)) pNavClosed.delete(id); else if(!holdsActive) pNavClosed.add(id); /* the group of the open tab cannot be folded */
+  try{ localStorage.setItem(PNAV_KEY, JSON.stringify([...pNavClosed])); }catch(e){}
+  renderPNav();
+}
 function switchPTab(t){
   pTab=t;
   $("page-project").classList.add("hidden");
   document.querySelectorAll("#mainArea > .page").forEach(s=>s.classList.toggle("hidden", s.id!=="ppage-"+t));
   $("personalTabs").querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.ptab===t));
+  renderPNav();
   $("viewTitle").textContent=({hub:"Overview",today:"Today",todo:"To-Do",tomorrow:"Tomorrow",routines:"Routines",pcal:"Calendar",focus:"Focus",bucket:"Bucket List",people:"People",log:"Journal",detox:"Detox",pnotes:"Self Notes"})[t]||"Today";
   pR(); window.scrollTo(0,0);
 }
@@ -5923,7 +5970,7 @@ function updatePip(clock,phase){
 /* ---- personal boot ---- */
 function initPersonalUI(){
   $("modePill").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b&&b.dataset.mode!==appMode) applyMode(b.dataset.mode); });
-  $("personalTabs").addEventListener("click",e=>{ const b=e.target.closest(".tab"); if(b) switchPTab(b.dataset.ptab); });
+  $("personalTabs").addEventListener("click",e=>{ const h=e.target.closest(".grp-h"); if(h){ togglePNavGroup(h.dataset.pgrph); return; } const b=e.target.closest(".tab"); if(b) switchPTab(b.dataset.ptab); });
   ["pItemModal","pprojModal","bucketModal","memoryModal","qpModal","ptimeModal","dayModal"].forEach(idm=>$(idm).addEventListener("click",e=>{ if(e.target.id===idm){ closePM(idm); if(idm==="dayModal"||idm==="pprojModal") pR(); } }));
   $("uiDialog").addEventListener("click",e=>{ if(e.target.id==="uiDialog") uiClose(false); });
   if(appMode==="personal") applyMode("personal");
