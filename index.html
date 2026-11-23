@@ -722,6 +722,14 @@
   .day-log.static{margin-top:12px;} .day-log.static .day-log-h{padding:11px 14px;font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px;}
   /* ===== Today / Tomorrow: 4-box layout + collapsible log ===== */
   .day4{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;margin-bottom:12px;}
+  .day3 .day-people{grid-column:1/-1;} /* three boxes: routines | detox, people across */
+  .ov-today{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-bottom:6px;}
+  .ov-card{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--primary);padding:14px 16px;cursor:pointer;transition:.12s;min-width:0;}
+  .ov-card:hover{background:var(--surface-2);}
+  .ov-card .ov-lab{font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);}
+  .ov-card .ov-val{font-size:26px;font-weight:800;margin-top:6px;line-height:1.1;}
+  .ov-card .ov-val em{font-style:normal;font-size:12.5px;font-weight:600;color:var(--muted);}
+  .ov-card .ov-sub{font-size:12px;color:var(--muted);margin-top:8px;overflow-wrap:anywhere;}
   .day-first textarea{width:100%;border:1px solid var(--border);background:var(--surface-2);padding:9px 11px;font-size:14px;font-weight:600;color:var(--text);outline:none;resize:none;overflow:hidden;line-height:1.4;font-family:inherit;}
   .day-first textarea:focus{border-color:var(--primary);background:var(--surface);}
   .day-first textarea::placeholder{color:var(--faint);font-weight:500;font-size:13px;}
@@ -856,8 +864,6 @@
       <button class="lbl grp-h" type="button" data-pgrph="day" aria-expanded="true"><span>Day</span><span class="chev" aria-hidden="true">▾</span></button>
       <div class="grp-body">
         <button class="tab" data-ptab="today">Today</button>
-        <button class="tab" data-ptab="tomorrow">Tomorrow</button>
-        <button class="tab" data-ptab="todo">To-Do</button>
         <button class="tab" data-ptab="pcal">Calendar</button>
       </div>
     </div>
@@ -1002,14 +1008,11 @@
 
   <!-- ============ PERSONAL LIFE PAGES ============ -->
   <section class="page hidden" id="ppage-today"><div id="pTodayBody"></div></section>
-  <section class="page hidden" id="ppage-todo"><div id="pToDoBody"></div></section>
-  <section class="page hidden" id="ppage-tomorrow"><div id="pTomorrowBody"></div></section>
   <section class="page hidden" id="ppage-routines"><div id="pRoutinesBody"></div></section>
   <section class="page hidden" id="ppage-pcal"><div id="pCalBody"></div></section>
   <section class="page hidden" id="ppage-focus"><div id="pFocusBody"></div></section>
   <section class="page hidden" id="ppage-hub">
     <div id="pOverviewBody"></div>
-    <div id="pProjectsBody" style="margin-top:26px"></div>
   </section>
   <section class="page hidden" id="ppage-bucket"><div id="pBucketBody"></div></section>
   <section class="page hidden" id="ppage-people"><div id="pPeopleBody"></div></section>
@@ -4233,7 +4236,7 @@ function blockAwareComplete(e,it){
     else completeItemEffects(it);
   } else uncompleteItemEffects(it);
 }
-/* ---- carry-over + To-Do plumbing ---- */
+/* ---- carry-over plumbing ---- */
 function agoLabel(sinceISO, refISO){
   const a=parseISO(sinceISO), b=parseISO(refISO||todayISO()); if(!a||!b) return "";
   const d=Math.round((d0(b)-d0(a))/864e5);
@@ -4242,116 +4245,20 @@ function agoLabel(sinceISO, refISO){
   if(d<21) return "2 weeks ago"; if(d<28) return "3 weeks ago";
   const m=Math.round(d/30.4); return (m<=1?"1 month":m+" months")+" ago";
 }
-/* on finalize, carry unfinished actionable things (tasks + for-me + planned meetups; not recurring)
-   from a finalized day onto the next day. The old day remembers how many rolled off (rolledCount). */
+/* on finalize, a meetup that was only PLANNED moves on to the next day (the closed day remembers how many moved,
+   rolledCount). Routines never roll. The task / for-me carry-over went with the To-Do sections (Nov 2026):
+   entries of old tasks stay on the day they were on, as history. */
 function rollOverDay(dt){
   const plan=P().dayPlans[dt]; if(!plan) return 0;
-  const next=iso(addDays(parseISO(dt),1)); const np=planFor(next,true);
-  let rolled=0; const keep=[];
-  plan.entries.forEach(e=>{ const it=pItem(e.itemId);
-    if(!it || e.done || it.recurringRule){ keep.push(e); return; }
-    if(np.entries.some(x=>x.itemId===e.itemId)){ keep.push(e); return; }   /* already on tomorrow */
-    np.entries.push({id:uid(),itemId:e.itemId,time:"",dur:e.dur||0,done:false,label:"",since:e.since||dt});
-    rolled++;
-  });
-  plan.entries=keep;
-  const mkeep=[];
-  (plan.meetups||[]).forEach(mu=>{ if(mu.status!=="planned"){ mkeep.push(mu); return; }
-    np.meetups.push({id:uid(),personId:mu.personId,note:mu.note||"",status:"planned",createdAt:Date.now(),since:mu.since||dt}); rolled++;
-  });
-  plan.meetups=mkeep;
-  plan.rolledCount=(plan.rolledCount||0)+rolled;
-  return rolled;
+  const planned=(plan.meetups||[]).filter(mu=>mu.status==="planned"); if(!planned.length) return 0;
+  const np=planFor(iso(addDays(parseISO(dt),1)),true);
+  np.meetups=Array.isArray(np.meetups)?np.meetups:[];
+  planned.forEach(mu=>np.meetups.push({id:uid(),personId:mu.personId,note:mu.note||"",status:"planned",createdAt:Date.now(),since:mu.since||dt}));
+  plan.meetups=(plan.meetups||[]).filter(mu=>mu.status!=="planned");
+  plan.rolledCount=(plan.rolledCount||0)+planned.length;
+  return planned.length;
 }
 function itemEntries(itemId){ const out=[]; Object.keys(P().dayPlans).forEach(dt=>{ (P().dayPlans[dt].entries||[]).forEach(e=>{ if(e.itemId===itemId) out.push({dt,e}); }); }); return out; }
-function latestItemEntry(itemId){ return itemEntries(itemId).sort((a,b)=>(b.dt||"").localeCompare(a.dt||""))[0]||null; }
-/* a task disappears from To-Do only once it's checked off AND its day is finalized */
-function todoCleared(it){ const es=itemEntries(it.id);
-  if(!es.length) return it.status==="done";          /* no-day: cleared once done (checking files it to today) */
-  return es.every(({dt,e})=> e.done && P().dayPlans[dt] && P().dayPlans[dt].finalized);
-}
-function todoToggle(it){
-  const latest=latestItemEntry(it.id);
-  if(latest){ latest.e.done=!latest.e.done; blockAwareComplete(latest.e,it); }
-  else { /* un-scheduled task: file it as a completed task on today, then it clears when today is finalized */
-    const today=todayISO(); const plan=planFor(today,true);
-    plan.entries.push({id:uid(),itemId:it.id,time:"",dur:0,done:true,label:"",since:iso(new Date(it.createdAt||Date.now()))});
-    completeItemEffects(it);
-  }
-  save();
-}
-/* ---- schedule a To-Do task: a single day, a whole period (anytime in a span), or nothing ---- */
-function periodLabel(p){
-  if(!p) return "";
-  const ws=iso(weekStart(new Date())), we=iso(addDays(parseISO(ws),6));
-  const nws=iso(addDays(parseISO(ws),7)), nwe=iso(addDays(parseISO(nws),6));
-  const sat=iso(addDays(parseISO(ws),5));
-  if(p.start===ws&&p.end===we) return "this week";
-  if(p.start===nws&&p.end===nwe) return "next week";
-  if(p.start===sat&&p.end===we) return "this weekend";
-  if(p.start===p.end) return fmtShort(p.start);
-  return fmtShort(p.start)+"–"+fmtShort(p.end);
-}
-function periodActive(it){ return !!(it.period && it.period.end>=todayISO()); }  /* still has today or a future day left */
-function clearOpenScheduling(it){ /* drop unfinished day-entries; keep completed ones as history */
-  Object.keys(P().dayPlans).forEach(dt=>{ const pl=P().dayPlans[dt]; pl.entries=(pl.entries||[]).filter(e=> e.itemId!==it.id || e.done); });
-}
-function reopenIfDone(it){ if(it.status==="done"){ it.status="open"; it.completedAt=0; } }
-function assignSingleDay(it,dt){ clearOpenScheduling(it); it.period=null; reopenIfDone(it);
-  const plan=planFor(dt,true); if(!plan.entries.some(e=>e.itemId===it.id&&!e.done)) plan.entries.push({id:uid(),itemId:it.id,time:"",dur:it.timeEstimate||0,done:false,label:"",since:dt}); save(); }
-function assignPeriod(it,start,end){ clearOpenScheduling(it); reopenIfDone(it); it.period={start,end}; save(); }
-function assignSomeday(it){ clearOpenScheduling(it); it.period=null; save(); }
-async function assignFromMenu(it,val){
-  const ws=weekStart(new Date());
-  if(val==="today") assignSingleDay(it,todayISO());
-  else if(val==="tomorrow") assignSingleDay(it,iso(addDays(new Date(),1)));
-  else if(val==="week") assignPeriod(it,iso(ws),iso(addDays(ws,6)));
-  else if(val==="nextweek"){ const n=addDays(ws,7); assignPeriod(it,iso(n),iso(addDays(n,6))); }
-  else if(val==="weekend") assignPeriod(it,iso(addDays(ws,5)),iso(addDays(ws,6)));
-  else if(val==="someday") assignSomeday(it);
-  else if(val==="date"){ const v=await pickOneDate(); if(v) assignSingleDay(it,v); }
-  else if(val==="range"){ const r=await pickRange(); if(r) assignPeriod(it,r.start,r.end); }
-}
-function pickOneDate(){ return new Promise(res=>{
-  openMini(`<h3>Pick a day</h3><div class="field"><label>Day</label><input type="date" id="pdDay" value="${todayISO()}"></div>
-    <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn ghost" id="pdCancel">Cancel</button><button class="btn primary" id="pdGo">Assign</button></div>`);
-  $("pdCancel").onclick=()=>{ closePM("qpModal"); res(null); };
-  $("pdGo").onclick=()=>{ const v=$("pdDay").value; if(!parseISO(v)){ toast("Pick a day"); return; } closePM("qpModal"); res(v); };
-}); }
-function pickRange(){ return new Promise(res=>{
-  openMini(`<h3>Custom period</h3><p class="sub">The task shows on every day in this range until you do it.</p>
-    <div class="grid2"><div class="field"><label>From</label><input type="date" id="prFrom" value="${todayISO()}"></div><div class="field"><label>To</label><input type="date" id="prTo" value="${iso(addDays(new Date(),6))}"></div></div>
-    <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn ghost" id="prCancel">Cancel</button><button class="btn primary" id="prGo">Assign</button></div>`);
-  $("prCancel").onclick=()=>{ closePM("qpModal"); res(null); };
-  $("prGo").onclick=()=>{ const a=$("prFrom").value,b=$("prTo").value; if(!parseISO(a)||!parseISO(b)||b<a){ toast("Pick a valid range (To on/after From)"); return; } closePM("qpModal"); res({start:a,end:b}); };
-}); }
-async function deleteItemFromTodo(it){
-  if(!await uiConfirm("Delete “"+(it.title||"this task")+"”? It's removed from every day.",{title:"Delete task?"})) return false;
-  P().items=P().items.filter(x=>x.id!==it.id);
-  Object.keys(P().dayPlans).forEach(dt=>{ const pl=P().dayPlans[dt]; pl.entries=(pl.entries||[]).filter(e=>e.itemId!==it.id); });
-  save(); return true;
-}
-/* complete a period task on ONE day → file a done entry there + finish it, so it clears from the other days */
-function completePeriodOnDay(it,dt){
-  const plan=planFor(dt,true); let e=plan.entries.find(x=>x.itemId===it.id);
-  if(!e){ e={id:uid(),itemId:it.id,time:"",dur:it.timeEstimate||0,done:true,label:"",since:(it.period&&it.period.start)||dt}; plan.entries.push(e); } else e.done=true;
-  completeItemEffects(it); it.period=null; save();
-}
-/* period tasks that should appear on a given day's plan (today onward, within the span, not already placed) */
-function periodItemsForDay(dt,type){
-  const plan=P().dayPlans[dt], t=todayISO();
-  return P().items.filter(it=> it.type===type && it.status!=="done" && it.period && it.period.start && it.period.end
-    && dt>=it.period.start && dt<=it.period.end && dt>=t
-    && !(plan && (plan.entries||[]).some(e=>e.itemId===it.id)) );
-}
-function perRowHTML(it){
-  return `<div class="pi-row ${it.type==="forMe"?"forme":""}" data-peritem="${it.id}" style="align-items:center">
-    <div class="check-sm" data-perdone title="Do it now — clears from the rest of ${esc(periodLabel(it.period))}"></div>
-    <div style="flex:1;min-width:0"><div class="dp-title-disp">${esc(it.title)||"Untitled"}</div>
-      <div class="pi-sub"><span class="pi-badge" style="color:#8a6116;border-color:#e0a10066">◷ ${esc(periodLabel(it.period))}</span>${projChipHTML(it)}</div></div>
-    <button class="pi-act" data-perdel title="Take off the calendar (back to the To-Do list)">✕</button>
-  </div>`;
-}
 function overduePeople(){
   const t0=d0(new Date());
   return P().people.filter(p=>{ if(!p.freqWeeks) return false; if(!p.lastSeen) return true; const d=parseISO(p.lastSeen); return d && (t0-d0(d))/864e5 > p.freqWeeks*7; });
@@ -4398,32 +4305,6 @@ function openPM(id){ const m=$(id); m.classList.remove("hidden"); requestAnimati
 function closePM(id){ const m=$(id); m.classList.remove("show"); setTimeout(()=>m.classList.add("hidden"),200); }
 
 /* ---- for-me week flag (3 days total in the current week without something for me) ---- */
-function dayHasForMe(dt){
-  const pl=P().dayPlans[dt]; if(!pl) return false;
-  if(pl.entries.some(e=>{ const it=pItem(e.itemId); return it&&it.type==="forMe"&&e.done; })) return true;
-  return (pl.happened||[]).some(h=>h.kind==="forMe");
-}
-function forMeMissThisWeek(){
-  const ws=weekStart(new Date()); const out={misses:0,flagged:false};
-  for(let k=0;;k++){ const dt=iso(addDays(ws,k)); if(dt>todayISO()) break; if(!dayHasForMe(dt)) out.misses++; }
-  out.flagged = out.misses>=3 && !P().flagAck[curWeekIso()];
-  return out;
-}
-function ackFlag(){ P().flagAck[curWeekIso()]=true; save(); pR(); }
-function flagBannerHTML(fm){
-  return `<div class="pinned-hint" style="cursor:default;border-color:#c9a227;background:color-mix(in srgb,#e9c400 14%,var(--surface))">🧡 This week, <b>${fm.misses} day${fm.misses>1?"s":""}</b> went by without a single thing just for you.<span class="grow"></span><button class="btn sm" id="flagAckBtn">Got it — noted for this week</button></div>`;
-}
-function bindFlagBanner(host){ const b=host.querySelector("#flagAckBtn"); if(b) b.onclick=ackFlag; }
-function maybeShowFlag(){
-  const fm=forMeMissThisWeek();
-  if(!fm.flagged||flagShownSession) return;
-  flagShownSession=true;
-  uiDialog(`<h3>🧡 A quiet word</h3><p class="sub">This week, ${fm.misses} days went by without anything just for you. Not a judgement — just a nudge: plan one small thing for yourself today or tomorrow. Even 15 minutes.</p>
-    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" id="uiNo">Remind me next time</button><button class="btn primary" id="uiYes">Got it — I'm on it</button></div>`);
-  $("uiNo").onclick=()=>uiClose(false);
-  $("uiYes").onclick=()=>{ uiClose(true); ackFlag(); };
-}
-
 /* ---- stats (Overview) ---- */
 /* consecutive finalized days, ending today (if closed) or yesterday — the routine's heartbeat */
 function finalizeStreak(){
@@ -4459,9 +4340,7 @@ function pStats(){
   slips=log.filter(x=>x.tier==="never"&&x.date>=monthStart&&x.date<=tISO).length;
   const slipsAvoid=log.filter(x=>x.tier==="avoid"&&x.date>=monthStart&&x.date<=tISO).length;
   return {
-    meWeek:days(ws,tISO,dayHasForMe),
     weekLen:Math.round((d0(new Date())-d0(parseISO(ws)))/864e5)+1,
-    meMonth:days(monthStart,tISO,dayHasForMe),
     monthLen:Math.round((d0(new Date())-d0(parseISO(monthStart)))/864e5)+1,
     meets,refl,checkins,routDone,routDue,routStreak:routineStreak(plans,P().items,tISO),slips,slipsAvoid,finalizedWeek,finalizedMonth,streak:finalizeStreak()
   };
@@ -4507,11 +4386,11 @@ function switchPTab(t){
   document.querySelectorAll("#mainArea > .page").forEach(s=>s.classList.toggle("hidden", s.id!=="ppage-"+t));
   $("personalTabs").querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.ptab===t));
   renderPNav();
-  $("viewTitle").textContent=({hub:"Overview",today:"Today",todo:"To-Do",tomorrow:"Tomorrow",routines:"Routines",pcal:"Calendar",focus:"Focus",bucket:"Bucket List",people:"People",log:"Journal",detox:"Detox",pnotes:"Self Notes"})[t]||"Today";
+  $("viewTitle").textContent=({hub:"Overview",today:"Today",routines:"Routines",pcal:"Calendar",focus:"Focus",bucket:"Bucket List",people:"People",log:"Journal",detox:"Detox",pnotes:"Self Notes"})[t]||"Today";
   pR(); window.scrollTo(0,0);
 }
-function renderPHub(){ renderPOverview(); renderPProjects(); }
-function pR(){ if(appMode!=="personal") return; if(["overview","resp","pprojects"].includes(pTab)) pTab="hub"; ({hub:renderPHub,today:renderPToday,todo:renderPToDo,tomorrow:renderPTomorrow,routines:renderPRoutines,pcal:renderPCal,focus:renderPFocus,bucket:renderPBucket,people:renderPPeople,log:renderPLog,detox:renderPDetox,pnotes:renderPNotes}[pTab]||renderPToday)(); }
+function renderPHub(){ renderPOverview(); }
+function pR(){ if(appMode!=="personal") return; if(["overview","resp","pprojects"].includes(pTab)) pTab="hub"; if(["todo","tomorrow"].includes(pTab)) pTab="today"; /* tabs removed Nov 2026 */ ({hub:renderPHub,today:renderPToday,routines:renderPRoutines,pcal:renderPCal,focus:renderPFocus,bucket:renderPBucket,people:renderPPeople,log:renderPLog,detox:renderPDetox,pnotes:renderPNotes}[pTab]||renderPToday)(); }
 /* ============ ADDICTION / DOPAMINE-DETOX ============ */
 const DETOX_GOAL=30;
 /* two tiers, two counters: days since the last "never do" slip and days since the last "try to avoid" slip
@@ -4700,7 +4579,7 @@ function dayRecapHTML(dt,plan){
   return `<div class="day-recap">
     <div class="recap-head"><span>✓ Day closed${plan.finalizedAt?" · "+new Date(plan.finalizedAt).toLocaleString(undefined,{weekday:"short",hour:"numeric",minute:"2-digit"}):""}</span><span class="grow"></span><button class="btn ghost sm" data-reopen>Reopen to edit</button></div>
     <div class="recap-chips">
-      ${chip("✔ "+tDone+" task"+(tDone===1?"":"s")+" done")}
+      ${tDone?chip("✔ "+tDone+" task"+(tDone===1?"":"s")+" done"):""}
       ${mDone?chip("🧡 "+mDone+" for me","forme"):""}
       ${rr.length?chip("↻ "+rDone+"/"+rr.length+" routines"):""}
       ${plan.rolledCount?chip("↪ "+plan.rolledCount+" rolled over"):""}
@@ -4740,20 +4619,6 @@ function dayPageHTML(dt){
   if(dt>=todayISO()) ensureRoutineEntries(dt);
   if(plan.finalized) return dayRecapHTML(dt,plan);
   const rows=plan.entries.map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it);
-  /* planned things: open first, then what's already ticked (stays in the box, struck through — tick = logged as done) */
-  const lane=(type,label,cls)=>{
-    const mine=rows.filter(x=>!x.it.recurringRule&&x.it.type===type);
-    const open=mine.filter(x=>!x.e.done), done=mine.filter(x=>x.e.done);
-    const per=periodItemsForDay(dt,type);   /* "anytime this period" tasks that land on this day */
-    return `<div class="lane ${cls}" data-lane="${type}">
-      <h3>${label} <span class="grow"></span><span title="done / planned">${done.length}/${open.length+done.length+per.length}</span></h3>
-      ${open.map(x=>dpRowHTML(plan,x.e)).join("")}
-      ${per.map(perRowHTML).join("")}
-      ${done.length?`<div class="dp-done-div">done ${done.length}</div>`+done.map(x=>dpRowHTML(plan,x.e)).join(""):""}
-      <div class="dp-add"><input data-dpadd="${type}" placeholder="${type==="forMe"?"+ add something for me… Enter":"+ add a task… Enter"}" autocomplete="off"></div>
-      ${type==="responsibility"?(()=>{ const pool=P().items.filter(i=>i.type==="responsibility"&&i.status!=="done"&&!i.recurringRule&&!plan.entries.some(e=>e.itemId===i.id));
-        return pool.length?`<select data-dpimport style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--border);background:var(--surface-2);font-size:11.5px;color:var(--muted)"><option value="">＋ pick from Need To / project steps…</option>${pool.map(i=>{ const pr=i.projId?P().projects.find(p=>p.id===i.projId):null; return `<option value="${i.id}">${pr?"◆ "+esc(pr.title)+" · ":""}${esc(i.title)}</option>`; }).join("")}</select>`:""; })():""}
-    </div>`; };
   /* routines: their own box — everything that repeats lands here, tick it like a task, ✕ skips it for the day */
   const routineLane=(()=>{
     const mine=rows.filter(x=>!!x.it.recurringRule);
@@ -4784,11 +4649,11 @@ function dayPageHTML(dt){
     : `<div class="finalize-bar"><div><b>◷ This day isn't closed yet</b><div class="fb-sub">Finalize it to record it in your stats &amp; streak</div></div><span class="grow"></span><button class="btn primary" data-finalize>✓ Finalize day</button></div>`;
   /* "How I felt" is always visible (plans, routines and slips are ticked in the boxes above) */
   const howFelt=isFuture?"":`<div class="day-log static">
-      <div class="day-log-h">📓 What happened & how I felt<span class="grow"></span><span class="hint">tick the boxes above as the day goes · log how you feel here</span></div>
+      <div class="day-log-h">📓 What happened & how I felt<span class="grow"></span><span class="hint">tick routines and slips above · log how you feel here</span></div>
       <div class="day-log-body">${feelLaneHTML(dt,plan)}</div>
     </div>`;
   return `
-    <div class="day4">${lane("responsibility",isToday?"Tasks for today":"Tasks","")}${lane("forMe","Things for me 🧡","forme")}${routineLane}${isFuture?"":detoxBoxHTML(dt)}${peopleBox}</div>
+    <div class="day4 day3">${routineLane}${isFuture?"":detoxBoxHTML(dt)}${peopleBox}</div>
     ${howFelt}
     ${dt<=todayISO()?finalizeBar:""}`;
 }
@@ -4831,20 +4696,6 @@ function bindDayPage(host,dt,rerender){
       plan.entries.splice(to,0,moved); save(); rerender();
     });
   });
-  host.querySelectorAll(".pi-row[data-peritem]").forEach(row=>{ const it=pItem(row.dataset.peritem); if(!it) return;
-    row.querySelector("[data-perdone]").onclick=()=>{ completePeriodOnDay(it,dt); rerender(); };
-    row.querySelector("[data-perdel]").onclick=()=>{ it.period=null; save(); rerender(); toast("Back on the To-Do list — pick a new day when you like"); };
-  });
-  const di=host.querySelector("[data-dpimport]");
-  if(di) di.onchange=()=>{ if(!di.value) return; addToPlan(dt,di.value); rerender(); };
-  host.querySelectorAll("[data-dpadd]").forEach(inp=>inp.addEventListener("keydown",ev=>{
-    if(ev.key!=="Enter") return; const t=(inp.value||"").trim(); if(!t) return;
-    const type=inp.dataset.dpadd;
-    const it={id:uid(),title:t,notes:"",type,timeEstimate:0,energy:"medium",tags:[],status:"open",createdAt:Date.now(),completedAt:0,recurringRule:null,intention:"",isRest:false,personId:"",bucketId:"",stepId:"",projId:"",focusSessions:0};
-    P().items.push(it); plan.entries.push({id:uid(),itemId:it.id,time:"",dur:0,done:false,label:"",since:dt});
-    save(); rerender();
-    const again=host.querySelector(`[data-dpadd="${type}"]`); if(again) again.focus();
-  }));
   /* routines box: quick-add = an every-day routine (weekdays are picked on the Routines tab) */
   const ra=host.querySelector("[data-rtadd]");
   if(ra) ra.addEventListener("keydown",ev=>{ if(ev.key!=="Enter") return; const t=(ra.value||"").trim(); if(!t) return;
@@ -4990,7 +4841,6 @@ function renderPToday(){
   const isToday=dt===todayISO();
   const yplan=P().dayPlans[iso(addDays(parseISO(dt),-1))];
   const pinned=P().bucket.find(b=>b.pinned&&b.status!=="done");
-  const fm=forMeMissThisWeek();
   host.innerHTML=`
     <div class="toolbar">
       <button class="icon-btn" id="dayPrev" title="Previous day"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button>
@@ -5001,7 +4851,6 @@ function renderPToday(){
       <div class="grow"></div>
       <button class="btn ghost sm" id="dayRoutines" title="Routines — things that land on your day every day or on chosen weekdays">↻ Routines</button>
     </div>
-    ${isToday&&fm.flagged?flagBannerHTML(fm):""}
     ${isToday&&pinned?`<div class="pinned-hint" id="pinnedHint">🧭 Currently pursuing: <b>${esc(pinned.title)}</b><span class="grow"></span><span style="color:var(--muted)">${pinned.steps.filter(s=>s.done).length}/${pinned.steps.length} steps</span></div>`:""}
     <div id="dayPageHost">${dayPageHTML(dt)}</div>`;
   $("dayPrev").onclick=()=>{ pDayIso=iso(addDays(parseISO(pDayIso),-1)); renderPToday(); };
@@ -5009,87 +4858,7 @@ function renderPToday(){
   const jt=$("dayToday"); if(jt) jt.onclick=()=>{ pDayIso=todayISO(); renderPToday(); };
   $("dayRoutines").onclick=()=>switchPTab("routines");
   const ph=$("pinnedHint"); if(ph) ph.onclick=()=>switchPTab("bucket");
-  bindFlagBanner(host);
   bindDayPage($("dayPageHost"),dt,renderPToday);
-  if(isToday) maybeShowFlag();
-}
-
-/* ---- To-Do: every open actionable thing across all days, with how long it's been carried ---- */
-function renderPToDo(){
-  const host=$("pToDoBody"); if(!host) return;
-  const tISO=todayISO();
-  const rows=[];
-  P().items.forEach(it=>{
-    if(it.recurringRule) return;
-    if(todoCleared(it)) return;
-    const latest=latestItemEntry(it.id);
-    rows.push({kind:"item",it,done:latest?latest.e.done:(it.status==="done"),dayISO:latest?latest.dt:"",since:latest?(latest.e.since||latest.dt):iso(new Date(it.createdAt||Date.now()))});
-  });
-  Object.keys(P().dayPlans).forEach(dt=>{ (P().dayPlans[dt].meetups||[]).forEach(mu=>{ if(mu.status!=="planned") return;
-    rows.push({kind:"meet",mu,dt,per:P().people.find(p=>p.id===mu.personId),since:mu.since||dt}); }); });
-  const open=rows.filter(r=>!r.done).sort((a,b)=>(a.since||"").localeCompare(b.since||""));
-  const done=rows.filter(r=>r.done).sort((a,b)=>(b.since||"").localeCompare(a.since||""));
-  const agoBadge=since=>{ const l=agoLabel(since,tISO); return l?`<span class="pi-badge carry" title="on your plate since ${esc(since)}">↪ ${l}</span>`:""; };
-  const rowHTML=r=>{
-    if(r.kind==="meet") return `<div class="pi-row" data-tdmeet="${r.dt}|${r.mu.id}" style="align-items:center;border-left-color:${CAL_COLORS.meet}">
-      <span style="min-width:16px;text-align:center">👥</span><b style="color:${CAL_COLORS.meet}">${esc(r.per?r.per.name:"someone")}</b>
-      <span class="pi-badge">planned</span>${agoBadge(r.since)}<span class="grow"></span><button class="btn sm" data-tdmet>met ✓</button></div>`;
-    const it=r.it;
-    return `<div class="pi-row ${it.type==="forMe"?"forme":""} ${r.done?"done":""}" data-tditem="${it.id}" style="align-items:center">
-      <div class="check-sm ${r.done?"on":""}" data-tddone>${r.done?TICK:""}</div>
-      <div style="flex:1;min-width:0">
-        <div class="dp-title-disp">${esc(it.title)||"Untitled"}</div>
-        <div class="pi-sub">
-          ${it.type==="forMe"?`<span class="pi-badge" style="color:${CAL_COLORS.forMe}">🧡 for me</span>`:""}
-          ${projChipHTML(it)}
-          ${r.dayISO?`<span class="pi-badge">${r.dayISO===tISO?"today":esc(fmtShort(r.dayISO))}</span>`:(periodActive(it)?`<span class="pi-badge" style="color:#8a6116;border-color:#e0a10066">◷ ${esc(periodLabel(it.period))}</span>`:`<span class="pi-badge">unscheduled</span>`)}
-          ${agoBadge(r.since)}
-          ${r.done?`<span class="pi-badge" style="color:var(--s-done)">✓ clears when you finalize its day</span>`:""}
-        </div>
-      </div>
-      ${r.done?"":`<select class="td-assign" data-tdassign title="Put it on a day, or a whole period">
-        <option value="">📅 plan…</option>
-        <option value="today">Today</option><option value="tomorrow">Tomorrow</option>
-        <option value="week">This week (period)</option><option value="nextweek">Next week (period)</option>
-        <option value="weekend">This weekend</option>
-        <option value="date">Pick a date…</option><option value="range">Custom period…</option>
-        <option value="someday">Someday (no day)</option>
-      </select>`}
-      <button class="pi-act" data-tdopen title="Open its day">↗</button>
-      <button class="pi-act" data-tddel title="Delete this task">✕</button>
-    </div>`;
-  };
-  host.innerHTML=`
-    <div class="toolbar"><h1 class="page-title">To-Do</h1><span style="color:var(--faint);font-size:12.5px;font-weight:600">${open.length} open</span><div class="grow"></div></div>
-    <div class="qadd"><input id="tdCapture" placeholder="A task for the list… press Enter" autocomplete="off" style="flex:1;min-width:180px;border:none;background:transparent;outline:none;font-weight:600;padding:4px 2px"><button class="btn primary sm" id="tdAdd">Add</button></div>
-    ${open.length?open.map(rowHTML).join(""):`<div class="empty"><div>Nothing on your plate — you're clear ✨<br><span style="color:var(--faint)">Anything you add on a day shows here until it's checked off and that day is finalized.</span></div></div>`}
-    ${done.length?`<div class="section-h" style="margin-top:18px">Done — clears when you close their day <span class="line"></span><span style="font-weight:700">${done.length}</span></div>${done.map(rowHTML).join("")}`:""}`;
-  const add=()=>{ const t=($("tdCapture").value||"").trim(); if(!t) return;
-    P().items.push({id:uid(),title:t,notes:"",type:"responsibility",timeEstimate:0,energy:"medium",tags:[],status:"open",createdAt:Date.now(),completedAt:0,recurringRule:null,intention:"",isRest:false,personId:"",bucketId:"",stepId:"",projId:"",focusSessions:0});
-    save(); renderPToDo(); const c=$("tdCapture"); if(c) c.focus(); };
-  $("tdAdd").onclick=add; $("tdCapture").addEventListener("keydown",e=>{ if(e.key==="Enter") add(); });
-  host.querySelectorAll("[data-tditem]").forEach(row=>{ const it=pItem(row.dataset.tditem); if(!it) return;
-    row.querySelector("[data-tddone]").onclick=()=>{ todoToggle(it); renderPToDo(); };
-    const asg=row.querySelector("[data-tdassign]"); if(asg) asg.onchange=async e=>{ const v=e.target.value; if(!v) return; await assignFromMenu(it,v); renderPToDo(); };
-    const del=row.querySelector("[data-tddel]"); if(del) del.onclick=async()=>{ if(await deleteItemFromTodo(it)) renderPToDo(); };
-    const op=row.querySelector("[data-tdopen]"); if(op) op.onclick=()=>{ const l=latestItemEntry(it.id); if(!l){ toast("Not on a day yet — pick one from the 📅 plan menu"); return; } if(l.dt>tISO){ switchPTab("tomorrow"); } else { pDayIso=l.dt; switchPTab("today"); } };
-  });
-  host.querySelectorAll("[data-tdmeet]").forEach(row=>{ const [dt,mid]=row.dataset.tdmeet.split("|"); const pl=P().dayPlans[dt]; const mu=pl&&(pl.meetups||[]).find(x=>x.id===mid); if(!mu) return;
-    row.querySelector("[data-tdmet]").onclick=()=>{ mu.status="met"; syncLastSeen(mu.personId); save(); renderPToDo(); };
-  });
-}
-/* ---- Tomorrow (same simple day page, fixed on tomorrow) ---- */
-function renderPTomorrow(){
-  const host=$("pTomorrowBody"); if(!host) return;
-  const dt=iso(addDays(new Date(),1));
-  const fm=forMeMissThisWeek();
-  host.innerHTML=`
-    <div class="toolbar"><h1 class="page-title">Tomorrow</h1><span style="color:var(--faint);font-size:12.5px;font-weight:600">${parseISO(dt).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"})}</span><div class="grow"></div></div>
-    ${fm.flagged?flagBannerHTML(fm):""}
-    <div id="tmwHost">${dayPageHTML(dt)}</div>`;
-  bindFlagBanner(host);
-  bindDayPage($("tmwHost"),dt,renderPTomorrow);
-  maybeShowFlag();
 }
 
 /* ---- Calendar (monthly; color-coded; day click opens the day page) ---- */
@@ -5112,14 +4881,13 @@ function renderPCal(){
       <button class="btn ghost sm" id="pcToday">Today</button>
       <span style="font-size:11.5px;color:var(--s-done);font-weight:700" title="Days you finalized this month">✓ ${finMonth} closed</span>
       <div class="grow"></div>
-      <button class="btn primary sm" id="pcSpread">⧉ Spread a task over days</button>
     </div>
     <div class="cal-grid">${WD_NAMES.map(d2=>`<div class="cal-dow">${d2}</div>`).join("")}${cells.map(c=>{
       const ci=iso(c.date); const pl=P().dayPlans[ci];
-      const evs=(pl?pl.entries:[]).map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it).sort((a,b)=>slotMinutes(a.e.time)-slotMinutes(b.e.time));
+      const evs=(pl?pl.entries:[]).map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it&&(x.it.recurringRule||x.e.done)).sort((a,b)=>slotMinutes(a.e.time)-slotMinutes(b.e.time)); /* routines + what was ticked; open old tasks are not shown */
       const evHtml=evs.map(x=>{
-        const isMe=x.it.type==="forMe";
-        const col=isMe?CAL_COLORS.forMe:(x.e.done?CAL_COLORS.taskDone:"");
+        const isMe=false;
+        const col=x.e.done?CAL_COLORS.taskDone:"";
         return `<div class="pw-ev ${x.e.done&&!isMe?"":""}" draggable="true" data-wentry="${x.e.id}" data-wday="${ci}" style="${col?`border-left-color:${col};color:${col};font-weight:700;`:""}${x.e.done?"opacity:.75;":""}" title="${esc(x.it.title)}${x.e.label?" — "+esc(x.e.label):""}">${x.e.done?"✓ ":""}${x.e.time?esc(slotSharp(x.e.time))+" · ":""}${esc(x.it.title)}${x.e.label?" · "+esc(x.e.label):""}</div>`;
       }).join("");
       const meets=(pl?(pl.meetups||[]).filter(mu=>mu.status==="met"):[]).map(mu=>{ const per=P().people.find(p=>p.id===mu.personId);
@@ -5134,8 +4902,7 @@ function renderPCal(){
       return `<div class="cal-cell ${c.other?"other":""} ${ci===tISO?"today":""} ${fin?"finalized":""} ${openPast?"dayopen":""}" data-pday="${ci}"><span class="addhint">+</span><div class="cal-num">${c.d}</div>${finMark}${evHtml}${meets}${slipMark}${refl}</div>`;
     }).join("")}</div>
     <div class="legend">
-      <span><span class="d" style="background:${CAL_COLORS.taskDone}"></span>done task</span>
-      <span><span class="d" style="background:${CAL_COLORS.forMe}"></span>for me</span>
+      <span><span class="d" style="background:${CAL_COLORS.taskDone}"></span>routine done</span>
       <span><span class="d" style="background:${CAL_COLORS.meet}"></span>met someone</span>
       <span><span class="d" style="background:var(--p-asap)"></span>detox slip</span>
       <span><span class="d" style="background:#e9c400"></span>reflection</span>
@@ -5144,7 +4911,6 @@ function renderPCal(){
   $("pcPrev").onclick=()=>{ pCalDate=new Date(y,m-1,1); renderPCal(); };
   $("pcNext").onclick=()=>{ pCalDate=new Date(y,m+1,1); renderPCal(); };
   $("pcToday").onclick=()=>{ pCalDate=new Date(); renderPCal(); };
-  $("pcSpread").onclick=()=>openSpreadModal();
   host.querySelectorAll(".pw-ev[data-wentry]").forEach(ev=>{
     ev.addEventListener("dragstart",e=>{ e.dataTransfer.setData("application/x-psm-pweek",JSON.stringify([ev.dataset.wday,ev.dataset.wentry])); });
     ev.addEventListener("click",e=>{ e.stopPropagation(); const pl=P().dayPlans[ev.dataset.wday]; const en=pl&&pl.entries.find(x=>x.id===ev.dataset.wentry); if(en) openPTime(pl,en); });
@@ -5239,125 +5005,63 @@ function openScheduleModal(it){
 }
 
 /* ---- Overview (weekly priorities + catch-ups + flag + gentle stats) ---- */
-function weeklyFor(ws){ const w=P().weekly; if(!w[ws]) w[ws]={me:[],tasks:[]}; return w[ws]; }
+/* ---- Overview: the personal side is a routine + detox tracker with notes on people and days (Nov 2026 — the
+   To-Do sections, the weekly task lists, the for-me nudges and the Projects block are gone) ---- */
 function renderPOverview(){
   const host=$("pOverviewBody"); if(!host) return;
-  const ws=curWeekIso(); const wk=weeklyFor(ws);
-  const od=overduePeople(); const fm=forMeMissThisWeek(); const st=pStats();
+  const ws=curWeekIso(); const wi=weekInfo(ws);
+  const od=overduePeople(); const st=pStats();
   const openRecent=openDaysRecent(7);
-  const wi=weekInfo(ws);
-  const prioRow=(x,key,cls)=>{ const pr=x.projId?P().projects.find(p=>p.id===x.projId):null; const pg=pr?projProgress(pr):null;
-    return `<div class="pi-row ${cls} ${x.done?"done":""}" data-prio="${x.id}" data-pkey="${key}" style="align-items:center">
-      <div class="check-sm ${x.done?"on":""}" data-pridone>${x.done?TICK:""}</div>
-      ${pr?`<div style="flex:1;min-width:0"><span class="pproj-chip" data-prioproj="${pr.id}" style="background:${pr.color}">◆ ${esc(pr.title)}</span> <span style="font-size:11px;color:var(--faint)">${pg.done}/${pg.total} tasks</span></div>`
-        :`<input class="dp-title" data-pritext value="${esc(x.text)}" style="flex:1">`}
-      ${x.done?"":`<button class="pi-act" data-pricarry title="Carry to next week">→</button>`}
-      <button class="pi-act" data-pridel>✕</button>
-    </div>`; };
-  const openProjs=P().projects.filter(p=>p.status!=="done");
-  const prioLane=(arr,key,label,cls)=>`<div class="lane ${cls}" style="flex:1;min-width:240px">
-    <h3>${label} <span class="grow"></span><span>${arr.filter(x=>x.done).length}/${arr.length}</span></h3>
-    ${arr.map(x=>prioRow(x,key,cls)).join("")}
-    <div class="dp-add"><input data-prioadd="${key}" placeholder="+ a main thing this week… Enter" autocomplete="off"></div>
-    ${openProjs.length?`<select data-priolink="${key}" style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--border);background:var(--surface);font-size:11.5px"><option value="">🔗 link a project as a main thing…</option>${openProjs.map(p=>`<option value="${p.id}">${esc(p.title)}</option>`).join("")}</select>`:""}
-  </div>`;
+  /* today at a glance — read-only: nothing is created or saved by looking at the Overview */
+  const tISO=todayISO(); const pl=P().dayPlans[tISO];
+  const ents=pl?(pl.entries||[]).map(e=>({e,it:pItem(e.itemId)})).filter(x=>x.it&&x.it.recurringRule):[];
+  const skip=(pl&&Array.isArray(pl.routineSkip))?pl.routineSkip:[];
+  const extra=P().items.filter(it=>routineWantedOn(it,tISO) && !ents.some(x=>x.it.id===it.id) && !skip.includes(it.id));
+  const rTotal=ents.length+extra.length, rDone=ents.filter(x=>x.e.done).length;
+  const rOpen=[...ents.filter(x=>!x.e.done).map(x=>x.it.title), ...extra.map(it=>it.title)];
+  const slipsToday=detoxSlipsOn(tISO);
+  const nClean=detoxCleanDays("never"), aClean=detoxCleanDays("avoid");
+  const cks=checkinsOf(pl).length, metToday=pl?(pl.meetups||[]).length:0, wrote=!!(pl&&(pl.feeling||"").trim());
+  const closed=!!(pl&&pl.finalized);
   host.innerHTML=`
     <div class="toolbar"><h1 class="page-title">Overview</h1><span style="color:var(--faint);font-size:12.5px;font-weight:600">Week ${wi?wi.week:"?"}</span><div class="grow"></div><button class="btn sm ghost" id="pExport" title="Download all personal data as JSON">⤓ Export</button></div>
-    ${fm.flagged?flagBannerHTML(fm):(fm.misses>=3?`<div class="pinned-hint" style="cursor:default;opacity:.75">🧡 ${fm.misses} for-me-less days this week — acknowledged.</div>`:"")}
     ${openRecent.length?`<div class="pinned-hint" id="closeNudge" style="border-color:#e0a100;background:color-mix(in srgb,#e0a100 12%,var(--surface));color:var(--text)">◷ ${openRecent.length} recent day${openRecent.length>1?"s":""} still open — close ${openRecent.length>1?"them":"it"} to keep the habit<span class="grow"></span><span style="color:var(--muted);font-weight:700">Close ${fmtShort(openRecent[0])} →</span></div>`:""}
-    <div class="section-h" style="margin-top:2px">This week's main things <span class="line"></span></div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:stretch">
-      ${prioLane(wk.me,"me","For me 🧡","forme")}
-      ${prioLane(wk.tasks,"tasks","Tasks","")}
+    <div class="section-h" style="margin-top:2px">Today <span class="line"></span></div>
+    <div class="ov-today">
+      <div class="ov-card" data-ovgo="today" title="Open today">
+        <div class="ov-lab">↻ Routines</div>
+        <div class="ov-val">${rDone}<em> / ${rTotal} done</em>${st.routStreak?`<span class="rt-streak" style="margin-left:8px" title="${st.routStreak} day${st.routStreak===1?"":"s"} in a row with every fixed-day routine done">🔥 ${st.routStreak}d</span>`:""}</div>
+        <div class="ov-sub">${rTotal?(rOpen.length?"Still open: "+esc(rOpen.slice(0,4).join(" · "))+(rOpen.length>4?" · +"+(rOpen.length-4)+" more":""):"All done for today ✓"):"Nothing repeats today — add routines on the Routines tab."}</div>
+      </div>
+      <div class="ov-card" data-ovgo="detox" title="Open Detox" style="border-top-color:var(--p-asap)">
+        <div class="ov-lab">🛡 Detox</div>
+        <div class="ov-val">${nClean}<em> ${nClean===1?"day":"days"} without a never-do slip</em></div>
+        <div class="ov-sub">⚠️ ${aClean} ${aClean===1?"day":"days"} since a try-to-avoid slip · ${slipsToday.length?`<b style="color:var(--p-asap)">slipped today: ${esc(slipsToday.map(x=>x.note||x.tier).join(", "))}</b>`:"clean today"}</div>
+      </div>
+      <div class="ov-card" data-ovgo="today" title="Open today" style="border-top-color:#e9c400">
+        <div class="ov-lab">📓 Day notes</div>
+        <div class="ov-val">${cks}<em> feeling check-in${cks===1?"":"s"}</em></div>
+        <div class="ov-sub">${metToday?"👥 "+metToday+" "+(metToday===1?"person":"people")+" logged":"nobody logged yet"} · ${wrote?"reflection written":"no reflection yet"} · ${closed?"✓ day closed":"◷ day still open"}</div>
+      </div>
     </div>
     <div class="section-h">People to catch up with <span class="line"></span></div>
-    ${od.length?od.map(p=>`<span class="pi-badge" style="margin:0 6px 6px 0;padding:6px 10px;font-size:11.5px;color:${CAL_COLORS.meet};border-color:${CAL_COLORS.meet}">💛 <b>${esc(p.name)}</b> · ${p.lastSeen?(weeksSince(p.lastSeen)+"w since last time"):"never logged"}</span>`).join("")
+    ${od.length?od.map(p=>`<span class="pi-badge" data-ovgo="people" style="cursor:pointer;margin:0 6px 6px 0;padding:6px 10px;font-size:11.5px;color:${CAL_COLORS.meet};border-color:${CAL_COLORS.meet}">💛 <b>${esc(p.name)}</b> · ${p.lastSeen?(weeksSince(p.lastSeen)+"w since last time"):"never logged"}</span>`).join("")
       :`<div style="font-size:12.5px;color:var(--faint)">All caught up — nobody's overdue.</div>`}
     <div class="section-h">Gently, the numbers <span class="line"></span></div>
     <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
-      <div class="kpi"><div class="lab">Days closed · this week</div><div class="val">${st.finalizedWeek}<em> / ${st.weekLen}</em></div></div>
-      <div class="kpi"><div class="lab">Days recorded · this month</div><div class="val">${Math.round(st.finalizedMonth/Math.max(1,st.monthLen)*100)}<em>%</em></div></div>
-      <div class="kpi"><div class="lab">🔥 Finalize streak</div><div class="val">${st.streak}<em> ${st.streak===1?"day":"days"}</em></div></div>
-      <div class="kpi"><div class="lab">For-me days · this week</div><div class="val">${st.meWeek}<em> / ${st.weekLen}</em></div></div>
-      <div class="kpi"><div class="lab">For-me days · this month</div><div class="val">${st.meMonth}<em> / ${st.monthLen}</em></div></div>
       <div class="kpi"><div class="lab">↻ Routines done · this month</div><div class="val">${st.routDone}<em> / ${st.routDue}</em></div></div>
       <div class="kpi"><div class="lab">🔥 Routine streak</div><div class="val">${st.routStreak}<em> ${st.routStreak===1?"day":"days"}</em></div></div>
       <div class="kpi"><div class="lab" style="color:var(--p-asap)">🛡 Slips · this month</div><div class="val" style="color:var(--p-asap)">${st.slips}<em> never · ${st.slipsAvoid} avoid</em></div></div>
+      <div class="kpi"><div class="lab">Days closed · this week</div><div class="val">${st.finalizedWeek}<em> / ${st.weekLen}</em></div></div>
+      <div class="kpi"><div class="lab">Days recorded · this month</div><div class="val">${Math.round(st.finalizedMonth/Math.max(1,st.monthLen)*100)}<em>%</em></div></div>
+      <div class="kpi"><div class="lab">🔥 Finalize streak</div><div class="val">${st.streak}<em> ${st.streak===1?"day":"days"}</em></div></div>
       <div class="kpi"><div class="lab">Meetups · this month</div><div class="val">${st.meets}</div></div>
       <div class="kpi"><div class="lab">Reflections · this month</div><div class="val">${st.refl}</div></div>
       <div class="kpi"><div class="lab">☀ Feeling check-ins · this month</div><div class="val">${st.checkins}</div></div>
     </div>`;
   $("pExport").onclick=exportPersonal;
   const cn=$("closeNudge"); if(cn) cn.onclick=()=>{ pDayIso=openRecent[0]; switchPTab("today"); };
-  bindFlagBanner(host);
-  host.querySelectorAll("[data-prioadd]").forEach(inp=>inp.addEventListener("keydown",e=>{
-    if(e.key!=="Enter") return; const t=(inp.value||"").trim(); if(!t) return;
-    weeklyFor(ws)[inp.dataset.prioadd].push({id:uid(),text:t,done:false,createdAt:Date.now()});
-    save(); renderPOverview(); const again=host.querySelector(`[data-prioadd="${inp.dataset.prioadd}"]`); if(again) again.focus();
-  }));
-  host.querySelectorAll("[data-priolink]").forEach(sel=>sel.onchange=()=>{ if(!sel.value) return; const pr=P().projects.find(p=>p.id===sel.value); if(!pr) return;
-    const key=sel.dataset.priolink; if(weeklyFor(ws)[key].some(x=>x.projId===pr.id)){ toast("Already a main thing"); return; }
-    weeklyFor(ws)[key].push({id:uid(),text:pr.title,done:false,projId:pr.id,createdAt:Date.now()}); save(); renderPOverview(); });
-  host.querySelectorAll("[data-prio]").forEach(row=>{
-    const key=row.dataset.pkey; const arr=weeklyFor(ws)[key]; const x=arr.find(z=>z.id===row.dataset.prio); if(!x) return;
-    row.querySelector("[data-pridone]").onclick=()=>{ x.done=!x.done; save(); renderPOverview(); };
-    const tx=row.querySelector("[data-pritext]"); if(tx) tx.addEventListener("input",e=>{ x.text=e.target.value; save(); });
-    const pp=row.querySelector("[data-prioproj]"); if(pp) pp.onclick=()=>openPProjModal(pp.dataset.prioproj);
-    row.querySelector("[data-pridel]").onclick=()=>{ weeklyFor(ws)[key]=arr.filter(z=>z.id!==x.id); save(); renderPOverview(); };
-    const c=row.querySelector("[data-pricarry]");
-    if(c) c.onclick=()=>{ const nxt=iso(addDays(parseISO(ws),7)); weeklyFor(nxt)[key].push({id:uid(),text:x.text,done:false,projId:x.projId||"",createdAt:Date.now()});
-      weeklyFor(ws)[key]=arr.filter(z=>z.id!==x.id); save(); renderPOverview(); toast("Carried to next week →"); };
-  });
-}
-
-/* ---- Need To (backlog of tasks; schedule / spread onto the calendar) ---- */
-function renderPResp(){
-  const host=$("pRespBody"); if(!host) return;
-  const list=P().items.filter(i=>i.type==="responsibility"&&i.status!=="done").sort((a,b)=>a.createdAt-b.createdAt);
-  const tI=todayISO();
-  const schedOf=id=>{ const out=[]; Object.keys(P().dayPlans).sort().forEach(k=>{ if(k<tI) return; P().dayPlans[k].entries.forEach(e=>{ if(e.itemId===id&&!e.done) out.push({date:k,e}); }); }); return out; };
-  host.innerHTML=`
-    <div class="toolbar"><h1 class="page-title">Need To</h1><div class="grow"></div><button class="btn sm" id="respSpreadTop">⧉ Spread a task over days</button></div>
-    <div class="qadd"><input id="respCapture" placeholder="A chore, errand, admin thing… press Enter" autocomplete="off" style="flex:1;min-width:180px;border:none;background:transparent;outline:none;font-weight:600;padding:4px 2px"><button class="btn primary sm" id="respAdd">Add</button><button class="btn sm ghost" id="respAddFull">+ with details</button></div>
-    ${list.map(i=>{ const sch=schedOf(i.id);
-      return `<div class="pi-row" data-resp="${i.id}" style="align-items:flex-start">
-        <div class="check-sm" data-rdone title="Done"></div>
-        <div style="flex:1;min-width:0">
-          <input class="dp-title" data-rtitle value="${esc(i.title)}" placeholder="What needs doing">
-          <div class="pi-sub">
-            ${projChipHTML(i)}
-            ${sch.map(s2=>`<button class="chip trow-dl" data-schedday="${s2.date}" data-schede="${s2.e.id}" title="Click to adjust or move">📅 ${esc(fmtShort(s2.date))}${s2.e.time?" · "+esc(slotSharp(s2.e.time)):""}${s2.e.label?" · "+esc(s2.e.label):""}</button>`).join("")}
-            <button class="chip trow-dl" data-rsched>+ schedule</button>
-            ${i.recurringRule?`<span class="pi-badge">↻</span>`:""}
-            <button class="pi-act" data-rspread title="Spread over multiple days">⧉</button>
-            <button class="pi-act" data-rbreak title="Break into steps (becomes a project)">⑃</button>
-            <button class="pi-act" data-redit title="Edit details">✎</button>
-            <button class="pi-act" data-rdel title="Delete">✕</button>
-          </div>
-        </div>
-      </div>`;}).join("")||`<div class="empty"><div>Nothing you need to do. Enjoy that feeling.</div></div>`}`;
-  $("respSpreadTop").onclick=()=>openSpreadModal();
-  const add=()=>{ const t=($("respCapture").value||"").trim(); if(!t){ $("respCapture").focus(); return; }
-    P().items.push({id:uid(),title:t,notes:"",type:"responsibility",timeEstimate:0,energy:"medium",tags:[],status:"open",createdAt:Date.now(),completedAt:0,recurringRule:null,intention:"",isRest:false,personId:"",bucketId:"",stepId:"",focusSessions:0});
-    save(); renderPResp(); const i2=$("respCapture"); if(i2) i2.focus(); };
-  $("respAdd").onclick=add;
-  $("respCapture").addEventListener("keydown",e=>{ if(e.key==="Enter") add(); });
-  $("respAddFull").onclick=()=>openPItemModal(null,{type:"responsibility"});
-  host.querySelectorAll("[data-resp]").forEach(row=>{
-    const i=pItem(row.dataset.resp); if(!i) return;
-    row.querySelector("[data-rdone]").onclick=()=>{ completeItemEffects(i); save(); renderPResp(); toast("Done ✓"); };
-    row.querySelector("[data-rtitle]").addEventListener("input",e=>{ i.title=e.target.value; save(); });
-    row.querySelector("[data-rsched]").onclick=()=>openScheduleModal(i);
-    row.querySelector("[data-rspread]").onclick=()=>openSpreadModal(i.id);
-    row.querySelector("[data-rbreak]").onclick=()=>openBreakdownModal(i);
-    const pc=row.querySelector("[data-goproj]"); if(pc) pc.onclick=()=>openPProjModal(pc.dataset.goproj);
-    row.querySelector("[data-redit]").onclick=()=>openPItemModal(i.id);
-    row.querySelector("[data-rdel]").onclick=async()=>{ if(!await uiConfirm("Delete “"+i.title+"” and its calendar blocks?")) return;
-      P().items=P().items.filter(x=>x.id!==i.id);
-      Object.values(P().dayPlans).forEach(pl=>{ pl.entries=pl.entries.filter(e=>e.itemId!==i.id); });
-      save(); renderPResp(); };
-    row.querySelectorAll("[data-schedday]").forEach(b=>b.onclick=()=>{ const pl=P().dayPlans[b.dataset.schedday]; const en=pl&&pl.entries.find(x=>x.id===b.dataset.schede); if(en) openPTime(pl,en); });
-  });
+  host.querySelectorAll("[data-ovgo]").forEach(c=>c.onclick=()=>{ if(c.dataset.ovgo==="today") pDayIso=todayISO(); switchPTab(c.dataset.ovgo); });
 }
 
 /* ---- item edit modal ---- */

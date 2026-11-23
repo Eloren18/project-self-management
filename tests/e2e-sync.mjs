@@ -1239,14 +1239,26 @@ sCheck('a meetup can be logged with a brand-new person from the day page (＋ Ne
 sCheck('gym is gone from the Personal platform (no toggles, counters, KPIs, calendar or journal markers)', !/data-gym|gymCount|gymPlanned|gymRow|gymPlanStrip|st\.gymWeek|🏋/.test(src.slice(src.indexOf('<script type="module">'))) && !/openRoutinesModal|detoxTrackHTML/.test(src));
 sCheck('Week Prep core goals are wired: migration in normalize, goals excluded from "already due", own ★ Core group on To-Do, copy button', /migrateWeekPrepItems\(d\);/.test(src) && /if\(it\.goal\) return false;/.test(src) && /todo-sec core/.test(src) && /id="wpCopy"/.test(src) && /copyToClipboard\(weekSummaryText\(prepWeekStart,data\.tasks\)\)/.test(src) && /id="wpAddExtra"/.test(src) && /trow-proj goal/.test(src));
 sCheck('no grid uses a bare 1fr track (1fr = minmax(auto,1fr): one unwrappable child widened the whole page in half-screen windows)', !/grid-template-columns:[^;]*(?<![\d.])1fr(?!\))/.test(src.slice(0, src.indexOf('</style>'))) && /\.mnote-snip\{[^}]*width:0;/.test(src));
-sCheck('the Personal sidebar groups its 12 tabs under four folding titles (Day / Habits / Reflect / Life), Overview stays on top, the open tab is never hidden, narrow windows show every tab', (() => {
+sCheck('the Personal sidebar groups its 10 tabs under four folding titles (Day / Habits / Reflect / Life), Overview stays on top, the open tab is never hidden, narrow windows show every tab', (() => {
   const a = src.indexOf('<nav class="nav" id="personalTabs"'), nav = src.slice(a, src.indexOf('</nav>', a));
   const tabs = [...nav.matchAll(/data-ptab="([a-z]+)"/g)].map(m => m[1]);
   const grp = id => { const i = nav.indexOf('data-pgrp="' + id + '"'), j = nav.indexOf('data-pgrp="', i + 12); return [...nav.slice(i, j < 0 ? nav.length : j).matchAll(/data-ptab="([a-z]+)"/g)].map(m => m[1]).join(','); };
-  return tabs.length === 12 && new Set(tabs).size === 12 && tabs[0] === 'hub' && nav.indexOf('data-ptab="hub"') < nav.indexOf('nav-grp')
-    && grp('day') === 'today,tomorrow,todo,pcal' && grp('habits') === 'routines,detox,focus' && grp('reflect') === 'log,pnotes' && grp('life') === 'people,bucket'
+  return tabs.length === 10 && new Set(tabs).size === 10 && tabs[0] === 'hub' && nav.indexOf('data-ptab="hub"') < nav.indexOf('nav-grp')
+    && grp('day') === 'today,pcal' && grp('habits') === 'routines,detox,focus' && grp('reflect') === 'log,pnotes' && grp('life') === 'people,bucket'
     && /function renderPNav\(\)/.test(src) && /function togglePNavGroup\(id\)/.test(src) && /pNavClosed\.delete\(actGrp\.dataset\.pgrp\)/.test(src) && /else if\(!holdsActive\) pNavClosed\.add\(id\);/.test(src)
     && /\.nav \.nav-grp,\.nav \.nav-grp \.grp-body,\.nav \.nav-grp\.closed \.grp-body\{display:contents;\}/.test(src) && /const h=e\.target\.closest\("\.grp-h"\); if\(h\)\{ togglePNavGroup\(h\.dataset\.pgrph\); return; \}/.test(src);
+})());
+sCheck('Personal is a routine + detox tracker with people / day notes: no To-Do or Tomorrow tab, no task or for-me boxes on the day page, no for-me nudges, no weekly task lists or Projects block on the Overview, finalize carries only planned meetups', (() => {
+  const js = src.slice(src.indexOf('<script type="module">'));
+  return !/data-ptab="(todo|tomorrow)"|id="ppage-(todo|tomorrow)"|id="pProjectsBody"/.test(src)
+    && !/function (renderPToDo|renderPTomorrow|renderPResp|forMeMissThisWeek|maybeShowFlag|periodItemsForDay|assignFromMenu|weeklyFor)\(/.test(js)
+    && !/data-dpadd|data-dpimport|data-lane="\$\{type\}"|Tasks for today|Things for me|data-prioadd|pcSpread|Spread a task over days/.test(js)
+    && /<div class="day4 day3">\$\{routineLane\}\$\{isFuture\?"":detoxBoxHTML\(dt\)\}\$\{peopleBox\}<\/div>/.test(js)
+    && /if\(\["todo","tomorrow"\]\.includes\(pTab\)\) pTab="today";/.test(js)
+    && /function renderPHub\(\)\{ renderPOverview\(\); \}/.test(js)
+    && /const planned=\(plan\.meetups\|\|\[\]\)\.filter\(mu=>mu\.status==="planned"\); if\(!planned\.length\) return 0;/.test(js)
+    && /class="ov-card" data-ovgo="today"/.test(js) && /class="ov-card" data-ovgo="detox"/.test(js) && !/For-me days/.test(js)
+    && /\.filter\(x=>x\.it&&\(x\.it\.recurringRule\|\|x\.e\.done\)\)/.test(js);
 })());
 sCheck('the Meetings list is reordered by dragging a row or ▲/▼ through moveMeetingBefore, is shown in meetingsInOrder (list + jump menu), and new meetings go on top', /const meetings=meetingsInOrder\(data\.meetings\);/.test(src) && /id="mtgList"/.test(src) && /data-mtg="\$\{m\.id\}" draggable="true"/.test(src) && /application\/x-psm-mtg/.test(src) && /data-mmove="up"/.test(src) && /moveMeetingBefore\(data\.meetings,id,beforeId\)/.test(src) && /order:\(data\.meetings\.length\?Math\.min\(\.\.\.data\.meetings\.map\(x=>x\.order\?\?0\)\):0\)-1\}/.test(src) && !/\[\.\.\.data\.meetings\]\.sort\(/.test(src));
 sCheck('the Documents list can be collapsed (per-device preference) and reordered by drag or ▲/▼ through moveDocBefore', /psmUI_docList/.test(src) && /id="docListToggle"/.test(src) && /id="docJump"/.test(src) && /application\/x-psm-doc/.test(src) && /data-dmove="up"/.test(src) && /moveDocBefore\(data\.docs,id,beforeId\)/.test(src) && /const sorted=docsInOrder\(data\.docs\)/.test(src));
